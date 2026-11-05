@@ -414,7 +414,7 @@ def fit_rect_for_mode(
     """Where a source frame lands, for the fit the user actually chose.
 
     ONE implementation for both consumers.  The render path (``services/
-    display._fit``) and the ``Theme.zt`` exporter (``services/video_export``)
+    layers.Picture``) and the ``Theme.zt`` exporter (``services/video_export``)
     each composed this themselves, which is why the trimmer's W/H buttons
     could letterbox on screen and do something else on the panel — and why the
     exporter ignored the choice entirely (#291).

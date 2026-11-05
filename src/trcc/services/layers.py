@@ -12,8 +12,12 @@ layer only draws.  Rotation, brightness and the wire encode are not layers:
 they turn the finished picture into what a panel receives, and stay in the
 service's output step.
 
-Increment L1 of the Layer plan (memory: project_layer_abc_trace): the mask,
-the overlay, the split overlay and the spectrum.  The backgrounds follow.
+Increments L1-L2 of the Layer plan (memory: project_layer_abc_trace): the
+mask, the overlay, the split overlay, the spectrum, and the two ways a
+background is drawn -- a picture, or a solid colour.  WHICH picture (a
+playing video, an override, the theme's own) is still chosen in one place,
+``DisplayService._resolve_background`` with its one identity token: a layer
+draws what it is given.
 """
 from __future__ import annotations
 
@@ -24,7 +28,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..core.geometry import fit_rect_for_mode
 from ..core.logs import per_frame
+from ..core.models import FitMode, RenderContent
 from ..core.ports import Renderer
 
 log = logging.getLogger(__name__)
@@ -43,6 +49,62 @@ class Layer(ABC):
     @abstractmethod
     def draw(self, canvas: Any, renderer: Renderer) -> Any:
         """*canvas* with this layer drawn on top."""
+
+
+@dataclass(frozen=True, slots=True)
+class SolidColor(Layer):
+    """A background of one colour (the ``color`` background mode)."""
+
+    rgb: tuple[int, int, int]
+
+    def key(self) -> Hashable:
+        frame_log.debug("SolidColor.key: %s", self.rgb)
+        return self.rgb
+
+    def draw(self, canvas: Any, renderer: Renderer) -> Any:
+        """A fresh canvas of the colour, the size of the one below.  Not a
+        fill over it: Qt fills through an antialiased painter, ~6 M
+        instructions at 1600x720 against ~0.3-0.5 M for the allocation
+        (measured).  It runs only when the background is rebuilt -- a colour
+        is cached with the mask until a setting changes."""
+        frame_log.debug("SolidColor.draw: %s", self.rgb)
+        return renderer.create_surface(*renderer.surface_size(canvas),
+                                       color=(*self.rgb, 255))
+
+
+@dataclass(frozen=True, slots=True)
+class Picture(Layer):
+    """A background picture -- an image, or the current frame of a video.
+
+    Drawn by where it came from, as the C# draws it: the user's own is fitted
+    to the canvas by *fit_mode*; a program or cloud picture goes on native at
+    (0, 0), or not at all when it is wider than the canvas
+    (``Renderer.bg_fit``, ``UCScreenImage.cs:824-834``).  *identity* is the
+    background token -- which picture, and which frame of it."""
+
+    identity: Hashable
+    surface: Any = field(compare=False, repr=False)
+    is_user: bool
+    fit_mode: FitMode
+
+    def key(self) -> Hashable:
+        frame_log.debug("Picture.key: %s", self.identity)
+        return (self.identity, self.fit_mode)
+
+    def draw(self, canvas: Any, renderer: Renderer) -> Any:
+        if self.surface is None:
+            frame_log.debug("Picture.draw: no picture -- the canvas stays black")
+            return canvas
+        if not self.is_user:
+            frame_log.debug("Picture.draw: program picture, native-or-black")
+            return renderer.bg_fit(canvas, RenderContent(self.surface, None))
+        src = renderer.surface_size(self.surface)
+        rect = fit_rect_for_mode(src, renderer.surface_size(canvas), self.fit_mode)
+        frame_log.debug("Picture.draw: user picture %dx%d -> fit %s -> %dx%d at "
+                        "(%d, %d)", *src, self.fit_mode.value, rect.width,
+                        rect.height, rect.x, rect.y)
+        fitted = renderer.resize(self.surface, rect.width, rect.height)
+        return renderer.composite(canvas, fitted, position=(rect.x, rect.y))
 
 
 @dataclass(frozen=True, slots=True)

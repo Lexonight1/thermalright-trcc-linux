@@ -494,27 +494,6 @@ def test_a_degenerate_source_fills_rather_than_dividing_by_zero(mode) -> None:
                                                                   0, 0)
 
 
-@pytest.mark.parametrize("mode", [FitMode.WIDTH, FitMode.HEIGHT,
-                                  FitMode.STRETCH])
-@pytest.mark.parametrize("panel", _CASCADE_PANELS)
-@pytest.mark.parametrize("source", [(1920, 1080), (1080, 1920), (640, 640)])
-def test_the_render_path_delegates_without_changing_a_pixel(
-    source, panel, mode,
-) -> None:
-    """``services/display._fit`` must stay byte-identical to the shared one.
-
-    The exporter and the render path each had their own copy of this
-    arithmetic, so the same button could mean one thing on screen and
-    another on the panel.  They are one implementation now; this is the
-    gate that says the consolidation changed no behaviour.
-    """
-    from trcc.services.display import _fit
-
-    rect = fit_rect_for_mode(source, panel, mode)
-    assert _fit(mode, *source, *panel) == (rect.width, rect.height,
-                                           rect.x, rect.y)
-
-
 # ── The catalog spelling rule (long, short) ────────────────────────────────
 
 

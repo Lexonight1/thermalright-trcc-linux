@@ -27,7 +27,6 @@ from typing import Any
 
 from ..core.geometry import (
     content_is_portrait,
-    fit_rect_for_mode,
     oriented_canvas,
     plan_orientation,
 )
@@ -37,7 +36,6 @@ from ..core.models import (
     RENDER_CACHE_MAX_BYTES,
     SPLIT_OVERLAY_MAP,
     DeviceSettings,
-    FitMode,
     MediaKind,
     ProductInfo,
     RawFrame,
@@ -54,7 +52,7 @@ from ..core.protocol import (
 from ._clock import compute_clock
 from .background import Background, BackgroundSlot
 from .bg_cache import BgMaskCache
-from .layers import Mask, Overlay, Spectrum, Split
+from .layers import Layer, Mask, Overlay, Picture, SolidColor, Spectrum, Split
 from .media import MediaService
 from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
@@ -1088,97 +1086,54 @@ class DisplayService:
             background.
         """
         s = self._settings.for_device(info.key)
-        mode = s.background_mode
         frame_log.debug(
             "_build_bg_mask: key=%s mode=%s mask_visible=%s mask_path=%s "
             "fit=%s playback=%s",
-            info.key, mode, s.mask_visible, s.mask_path,
+            info.key, s.background_mode, s.mask_visible, s.mask_path,
             getattr(s.fit_mode, "value", s.fit_mode),
             (self._media.playback(info.key) is not None),
         )
-
-        # Initial canvas — 'color' mode fills with the user's chosen
-        # colour; 'theme' / 'transparent' start solid black.  RGB565
-        # has no alpha on the wire so the alpha channel is moot
-        # post-encode, but we keep 255 to avoid renderer quirks where
-        # alpha=0 composite-blends to white (per
-        # render-dc-divergence-audit).
-        if mode == "color":
-            r, g, b = s.overlay_background
-            canvas = self._r.create_surface(
-                *visual_size, color=(r, g, b, 255),
-            )
-            log.debug(
-                "build_bg_mask %s: mode=color fill=%s — skipping theme bg",
-                info.key, s.overlay_background,
-            )
-        else:
-            canvas = self._r.create_surface(
-                *visual_size, color=(0, 0, 0, 255),
-            )
-
-        # Paint the fitted theme background only in 'theme' mode.
-        # 'color' has already painted; 'transparent' is intentionally
-        # left at solid black so the overlay draws on a clean canvas.
-        if mode == "theme":
-            # The slot answers first.  On a match nothing is resolved and no
-            # file is re-opened; on a miss -- a new theme, a new override, the
-            # next video frame -- the theme source resolves itself and pushes,
-            # which is what makes ``_resolve_background`` a producer rather
-            # than something the renderer asks every tick.
-            token = self._background_token(info, theme)
-            held = self._backgrounds.current(info.key, token)
-            if held is None:
-                resolved = self._resolve_background(info, theme, visual_size)
-                held = Background(resolved.background,
-                                  resolved.background_is_user)
-                self._backgrounds.push(info.key, token, held)
-            content = RenderContent(held.surface, None,
-                                    background_is_user=held.is_user_content)
-            if content.background is not None:
-                src_w, src_h = self._r.surface_size(content.background)
-                dst_w, dst_h = visual_size
-                if content.background_is_user:
-                    # User upload — native resolution; honor the user's chosen
-                    # fit_mode (scale/letterbox as selected).
-                    fit_w, fit_h, off_x, off_y = _fit(
-                        s.fit_mode, src_w, src_h, dst_w, dst_h,
-                    )
-                    log.debug(
-                        "build_bg_mask %s: user background %dx%d → fit %s → "
-                        "%dx%d at (%d, %d)",
-                        info.key, src_w, src_h,
-                        s.fit_mode.value if hasattr(s.fit_mode, "value")
-                        else s.fit_mode,
-                        fit_w, fit_h, off_x, off_y,
-                    )
-                    fitted = self._r.resize(content.background, fit_w, fit_h)
-                    canvas = self._r.composite(
-                        canvas, fitted, position=(off_x, off_y),
-                    )
-                else:
-                    # Program/cloud content — the C# native-or-black width test,
-                    # shared with Renderer.build_frame (increment 2c): native at
-                    # (0,0) when it fits the canvas width, else solid black.
-                    # bg_fit logs the native/black branch (incl. the drop warn).
-                    canvas = self._r.bg_fit(canvas, content)
-            else:
-                log.warning(
-                    "build_bg_mask %s: no background source resolved for theme %r — "
-                    "canvas stays solid black",
-                    info.key, theme.name,
-                )
-        elif mode == "transparent":
-            log.debug(
-                "build_bg_mask %s: mode=transparent — skipping theme bg "
-                "(canvas stays solid black; overlay draws on top)",
-                info.key,
-            )
-
-        # Mask layer: per-device override (ApplyMask Command) takes
-        # precedence over the theme's bundled mask; mask_visible=False
-        # skips the layer entirely. Position defaults to (0, 0).
+        canvas = self._r.create_surface(*visual_size, color=(0, 0, 0, 255))
+        background = self._background_layer(info, theme, s, visual_size)
+        if background is not None:
+            canvas = background.draw(canvas, self._r)
         return self._composite_mask(info, s, theme, canvas)
+
+    def _background_layer(
+        self, info: ProductInfo, theme: Theme, s: DeviceSettings,
+        visual_size: tuple[int, int],
+    ) -> Layer | None:
+        """The panel's background as a layer -- the ONE reading of
+        ``background_mode``: a solid colour, the picture (``theme``), or none
+        (``transparent``: the canvas stays black and the overlay draws on
+        top -- the screencast path's mode)."""
+        match s.background_mode:
+            case "color":
+                frame_log.debug("_background_layer %s: colour %s", info.key,
+                                s.overlay_background)
+                r, g, b = s.overlay_background
+                return SolidColor((r, g, b))
+            case "theme":
+                token = self._background_token(info, theme)
+                held = self._backgrounds.current(info.key, token)
+                if held is None:
+                    resolved = self._resolve_background(info, theme, visual_size)
+                    held = Background(resolved.background,
+                                      resolved.background_is_user)
+                    self._backgrounds.push(info.key, token, held)
+                if held.surface is None:
+                    log.warning(
+                        "build_bg_mask %s: no background source resolved for "
+                        "theme %r — canvas stays solid black",
+                        info.key, theme.name,
+                    )
+                return Picture(token, held.surface, held.is_user_content,
+                               s.fit_mode)
+            case _:
+                frame_log.debug("_background_layer %s: %s -- no background, "
+                                "the canvas stays black", info.key,
+                                s.background_mode)
+                return None
 
     def _composite_mask(
         self,
@@ -1704,29 +1659,3 @@ class DisplayService:
                         profile.encode_baseline)
         return self._r.encode_payload(surface, profile)
 
-
-# =========================================================================
-# Pure-Python fit algorithm
-# =========================================================================
-
-
-def _fit(
-    mode: FitMode,
-    src_w: int, src_h: int,
-    dst_w: int, dst_h: int,
-) -> tuple[int, int, int, int]:
-    """(fit_w, fit_h, x_offset, y_offset).
-
-    A thin adapter over :func:`~trcc.core.geometry.fit_rect_for_mode`, which
-    the ``Theme.zt`` exporter uses too.  The arithmetic lived here AND in the
-    exporter, so the trimmer's W/H buttons could mean one thing on screen and
-    another on the panel; one implementation makes that unrepresentable.
-    Parity with the previous inline version was measured over 1740 cases.
-    """
-    log.debug("_fit: mode=%s src_w=%s", mode, src_w)
-    rect = fit_rect_for_mode((src_w, src_h), (dst_w, dst_h), mode)
-    return rect.width, rect.height, rect.x, rect.y
-
-
-# Re-exported for unit tests
-fit = _fit

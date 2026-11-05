@@ -35,7 +35,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`Layer`](#layer) | 2 | 0 | 4 |
+| [`Layer`](#layer) | 2 | 0 | 6 |
 | [`LedSource`](#ledsource) | 2 | 0 | 1 |
 | [`LightsPort`](#lightsport) | 2 | 0 | 1 |
 | [`Module`](#module) | 2 | 10 | 2 |
@@ -489,7 +489,7 @@ draw(canvas: 'Any', renderer: 'Renderer') -> Any
 key() -> Hashable
 ```
 
-**Implementations (4):** `Mask` · `Overlay` · `Spectrum` · `Split`
+**Implementations (6):** `Mask` · `Overlay` · `Picture` · `SolidColor` · `Spectrum` · `Split`
 
 ## LedSource
 

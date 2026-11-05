@@ -74,3 +74,39 @@ def test_every_element_field_moves_the_overlay_key(tmp_path: Path,
     setattr(element, field_name, changed)
     after = app.display._overlay_key(app.devices[key].info, theme, (320, 320), {}, {})
     assert after != before, f"changing {field_name} left the overlay key as it was"
+
+
+def test_a_picture_with_nothing_resolved_leaves_the_canvas_black() -> None:
+    """A theme with no background: the canvas stays as it is, black."""
+    from trcc.core.models import FitMode
+    from trcc.services.layers import Picture
+
+    canvas = object()
+    assert Picture(("theme",), None, False, FitMode.WIDTH).draw(
+        canvas, cast(Renderer, _Refuses())) is canvas
+
+
+@pytest.mark.parametrize(("mode", "layer"), [
+    ("color", "SolidColor"), ("theme", "Picture"), ("transparent", None),
+])
+def test_background_mode_is_read_in_one_place(tmp_path: Path, mode: str,
+                                              layer: str | None) -> None:
+    """``background_mode`` becomes the background layer in
+    ``_background_layer`` and nowhere else: colour, the picture, or none.
+    MUTATION CHECK: map 'transparent' to a black SolidColor -- same pixels,
+    so the frame snapshot cannot see it; this does."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.models import Theme
+
+    from .mock_platform import MockPlatform
+
+    key = "0402:3922"
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path),
+              renderer=QtRenderer())
+    app.discover_and_connect()
+    app.settings.set_background_mode(key, mode)
+    s = app.settings.for_device(key)
+    theme = Theme(path=tmp_path, name="t", resolution=(320, 320))
+    found = app.display._background_layer(app.devices[key].info, theme, s, (320, 320))
+    assert (type(found).__name__ if found is not None else None) == layer
