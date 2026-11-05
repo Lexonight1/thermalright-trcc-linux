@@ -46,8 +46,14 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from _mock_bootstrap import DEV_TRCC  # also puts src/ + repo on sys.path
+
 REPO = Path(__file__).resolve().parent.parent
-LOG = REPO / "dev" / ".trcc" / "trcc.latest.log"
+# Where the mock skins log -- the dev root they use, TRCC_DEV_ROOT included.
+# It was spelled out as dev/.trcc here: under ci_local's private dev roots the
+# skins logged elsewhere, every check timed out as a SKIP, and the harness
+# passed having tested nothing (2026-11-05).
+LOG = DEV_TRCC / "trcc.latest.log"
 
 BOOT_TIMEOUT_S = 30
 GRACE_S = 15
@@ -170,13 +176,15 @@ def check(skin: Skin, phase: str) -> str:
     early = phase == "start-up"
     marker = _STARTUP if early else skin.boot_marker
     if not _wait_for_boot(proc, start, marker, settle_s=0 if early else 2):
-        print(f"  SKIP  {skin.name} never logged {marker!r} within "
-              f"{BOOT_TIMEOUT_S}s (rc={proc.poll()}) — environment, not a "
-              f"shutdown verdict")
+        # A FAIL, not a SKIP: a skin that never boots -- or a log this harness
+        # cannot see -- is not a pass.  As a SKIP it passed the daemon case
+        # from August to October, and every case on 2026-11-05.
+        print(f"  FAIL  {skin.name} never logged {marker!r} within "
+              f"{BOOT_TIMEOUT_S}s (rc={proc.poll()}) in {LOG}")
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=5)
-        return "SKIP"
+        return "FAIL"
 
     offset = start if early else (LOG.stat().st_size if LOG.exists() else 0)
     print(f"  {marker!r} seen, pid={proc.pid} — sending SIGTERM")

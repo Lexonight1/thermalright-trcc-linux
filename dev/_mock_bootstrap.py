@@ -58,9 +58,13 @@ os.environ.setdefault("TRCC_DAEMON", "0")
 # ─── Dev paths (every mock_* script writes here, not ~/.trcc) ────────────────
 
 _DEV_DIR = Path(__file__).resolve().parent
-DEV_TRCC = _DEV_DIR / '.trcc'
+#: Where a dev run keeps its state: ``dev/`` itself, unless ``TRCC_DEV_ROOT``
+#: names another folder -- ``dev/ci_local.sh`` gives each smoke harness its
+#: own, so they can run side by side (they shared one trcc.json and log).
+_DEV_ROOT = Path(os.environ.get("TRCC_DEV_ROOT") or _DEV_DIR)
+DEV_TRCC = _DEV_ROOT / '.trcc'
 DEV_DATA = DEV_TRCC / 'data'
-DEV_USER = _DEV_DIR / '.trcc-user'
+DEV_USER = _DEV_ROOT / '.trcc-user'
 DEV_TRCC.mkdir(exist_ok=True)
 DEV_DATA.mkdir(exist_ok=True)
 DEV_USER.mkdir(exist_ok=True)

@@ -85,17 +85,47 @@ if [ "$smokes" = 1 ]; then
       xvfb-run -a dbus-run-session -- "$@"
   }
 
+  # Side by side, TRCC_SMOKE_JOBS at a time (default 6): each harness in a
+  # sandbox of its own -- HOME, runtime dir, X display, D-Bus and the dev
+  # mock's whole state folder (TRCC_DEV_ROOT), empty, as GitHub's runner has
+  # it: the mock's fetcher is offline, so no harness needs the downloaded
+  # data.  One after another they took 184 s of a 316 s run (2026-11-05), and
+  # they could not overlap: they shared one HOME, one socket, one trcc.json --
+  # and dev/.trcc/data, where two of them write the SAME test themes
+  # (smoke_rotation_mask, smoke_portrait_854480: the first parallel run
+  # failed on exactly that).
+  # Each writes its exit status to a file, so no result is lost to the order
+  # in which they finish; the verdicts print in the usual order.
+  run_one() {   # script display -- its log and status in $sandbox
+    local s=$1 name box
+    name=$(basename "$s")
+    box="$sandbox/$name.d"
+    mkdir -p "$box/.config" "$box/run" "$box/dev" && chmod 700 "$box/run"
+    env -u WAYLAND_DISPLAY -u DISPLAY QT_QPA_PLATFORM=offscreen \
+      HOME="$box" XDG_CONFIG_HOME="$box/.config" XDG_RUNTIME_DIR="$box/run" \
+      XDG_DATA_HOME="$box/.local/share" XDG_CACHE_HOME="$box/.cache" \
+      TRCC_DEV_ROOT="$box/dev" PYTHONPATH="src:." \
+      xvfb-run -n "$2" dbus-run-session -- "$py" "$s" > "$sandbox/$name.log" 2>&1
+    echo $? > "$sandbox/$name.rc"
+  }
+
   step "smoke harnesses"
-  failed=""
+  names=()
+  display=100
   for s in dev/smoke_*.py; do
     name=$(basename "$s")
-    case "$name" in
-      smoke_real_hardware.py|smoke_anything.py) continue ;;
-      smoke_reported_bugs.py)            # information, never a verdict (ci.yml)
-        isolated "$py" "$s" > "$sandbox/$name.log" 2>&1 || true
-        continue ;;
-    esac
-    if isolated "$py" "$s" > "$sandbox/$name.log" 2>&1; then
+    case "$name" in smoke_real_hardware.py|smoke_anything.py) continue ;; esac
+    while [ "$(jobs -rp | wc -l)" -ge "${TRCC_SMOKE_JOBS:-6}" ]; do wait -n || true; done
+    run_one "$s" "$display" &
+    names+=("$name")
+    display=$((display + 1))
+  done
+  wait
+  failed=""
+  for name in "${names[@]}"; do
+    # information, never a verdict (ci.yml)
+    [ "$name" = smoke_reported_bugs.py ] && continue
+    if [ "$(cat "$sandbox/$name.rc" 2>/dev/null)" = 0 ]; then
       echo "PASS $name"
     else
       echo "FAIL $name -- last lines:"; tail -15 "$sandbox/$name.log"
