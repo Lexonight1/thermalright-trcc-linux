@@ -201,7 +201,7 @@ def test_a_temperature_element_switches_the_temperature_unit(window: Any, qtbot:
     table = ts.data_table
     ts._show_element(OverlayElementConfig(id="t", mode=OverlayMode.HARDWARE,
                                           metric="cpu:temp"))
-    assert (table.temp_switch.isHidden(), table.unit_btn.isHidden()) == (False, True)
+    assert (table.temp_switch.isHidden(), table.unit_switch.isHidden()) == (False, True)
 
     _click_side(qtbot, table.temp_switch, right=True)
     qtbot.waitUntil(lambda: _unit(window) == "F", timeout=3000)
@@ -210,15 +210,23 @@ def test_a_temperature_element_switches_the_temperature_unit(window: Any, qtbot:
     qtbot.waitUntil(lambda: table.temp_switch._right is False, timeout=3000)
 
 
-def test_any_other_reading_keeps_its_unit_button(window: Any) -> None:
-    """A load has no °F: it keeps the show/hide-unit button."""
+def test_any_other_reading_switches_its_own_unit_on_or_off(
+        window: Any, qtbot: Any) -> None:
+    """A load has no °F: its switch is — | % -- the C#'s show/hide-unit
+    (myModeSub 0 bare, 1 with the unit), labelled with the element's OWN
+    unit.  MUTATION CHECK: label the right side with a fixed "°C"."""
     from trcc.core.models import OverlayElementConfig, OverlayMode
 
     ts = window.uc_theme_setting
     ts._show_element(OverlayElementConfig(id="u", mode=OverlayMode.HARDWARE,
-                                          metric="cpu:usage"))
+                                          metric="cpu:usage", mode_sub=1))
     table = ts.data_table
-    assert (table.temp_switch.isHidden(), table.unit_btn.isHidden()) == (True, False)
+    assert (table.temp_switch.isHidden(), table.unit_switch.isHidden()) == (True, False)
+    assert (table.unit_switch._labels, table.unit_switch._right) == (("—", "%"), True)
+    picked: list[tuple[int, int]] = []
+    table.format_changed.connect(lambda mode, sub: picked.append((mode, sub)))
+    _click_side(qtbot, table.unit_switch, right=False)
+    assert picked == [(OverlayMode.HARDWARE, 0)]
 
 
 def test_a_clock_element_picks_12h_or_24h(window: Any, qtbot: Any) -> None:

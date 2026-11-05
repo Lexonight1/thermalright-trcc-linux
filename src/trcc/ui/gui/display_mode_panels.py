@@ -61,6 +61,12 @@ class TwoWaySwitch(QWidget):
         self._right = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    def set_labels(self, left: str, right: str) -> None:
+        """New words for the two sides -- a reading's own unit."""
+        log.debug("TwoWaySwitch.set_labels: %s | %s", left, right)
+        self._labels = (left, right)
+        self.update()
+
     def set_choice(self, right: bool) -> None:
         """Show *right* (else the left) as the chosen side -- sends nothing."""
         log.debug("TwoWaySwitch.set_choice: %s", self._labels[int(right)])
@@ -103,7 +109,8 @@ class DataTablePanel(QFrame):
     Windows shows different controls depending on the selected element mode:
     - Hardware (mode 0): a temperature gets the °C | °F switch -- the one
       temperature unit, as the About panel's radios set it; any other reading
-      keeps button0, show/hide the unit glyph (myModeSub 0↔1)
+      the — | <its unit> switch, the C#'s button0 (show/hide the unit glyph,
+      myModeSub 0↔1) in the same look
     - Time    (mode 1): the 12H | 24H switch
     - Weekday (mode 2): no controls
     - Date    (mode 3): button3 — date format cycle (YMD→DMY→MD→DM)
@@ -126,21 +133,15 @@ class DataTablePanel(QFrame):
             Sizes.DATA_TABLE_W, Sizes.DATA_TABLE_H,
             fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
 
-        # button0 — show/hide unit glyph (mode 0: hardware).  The C# unit-switch
-        # toggles myModeSub: 1 draws the number + unit, 0 the bare number (unit
-        # baked into the theme art).  NOT the global C/F choice (About panel).
-        # Windows: (80, 15) 70x24
-        self.unit_btn = QPushButton(self)
-        self.unit_btn.setGeometry(80, 15, 70, 24)
-        self.unit_btn.setFlat(True)
-        self.unit_btn.setStyleSheet(Styles.FLAT_BUTTON)
-        self.unit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        # _unit_off = bare (mode_sub 0), _unit_on = unit shown (mode_sub 1).
-        self._unit_off = Assets.load_pixmap('display_mode_unit_c.png', 70, 24)
-        self._unit_on = Assets.load_pixmap('display_mode_unit_f.png', 70, 24)
-        self.unit_btn.setToolTip("Show unit (°C/%/MHz/RPM) on the value")
-        self.unit_btn.clicked.connect(self._on_unit_clicked)
-        self.unit_btn.setVisible(False)
+        # — | <unit> (mode 0, any reading but a temperature) -- the C#'s
+        # button0, its unit switch: myModeSub 1 draws the number + unit, 0 the
+        # bare number (the unit baked into the theme art).  Windows: (80, 15)
+        # 70x24, drawn as P单位开关 / P单位开关a; the same switch as °C | °F now.
+        self.unit_switch = TwoWaySwitch("—", "%", self)
+        self.unit_switch.setGeometry(80, 15, 70, 24)
+        self.unit_switch.setToolTip("Show the unit after the value")
+        self.unit_switch.picked.connect(self._on_unit_picked)
+        self.unit_switch.setVisible(False)
 
         # A temperature's °C | °F -- the one temperature unit (SetTempUnit),
         # the About panel's radios and this switch always the same answer.
@@ -188,17 +189,11 @@ class DataTablePanel(QFrame):
         self._mode_sub = 0
 
     def _hide_all(self):
-        self.unit_btn.setVisible(False)
+        self.unit_switch.setVisible(False)
         self.temp_switch.setVisible(False)
         self.time_switch.setVisible(False)
         self.date_btn.setVisible(False)
         self.text_input.setVisible(False)
-
-    def _update_unit_image(self):
-        px = self._unit_on if self._mode_sub else self._unit_off
-        if not px.isNull():
-            self.unit_btn.setIcon(QIcon(px))
-            self.unit_btn.setIconSize(self.unit_btn.size())
 
     def show_temp_unit(self, unit: str) -> None:
         """The App's temperature unit, changed here or in any UI -- shown on
@@ -219,11 +214,11 @@ class DataTablePanel(QFrame):
         log.info("_on_text_committed: text=%r", text)
         self.text_changed.emit(text)
 
-    def set_mode(self, mode, mode_sub=0, temperature: bool = False):
+    def set_mode(self, mode, mode_sub=0, temperature: bool = False, unit: str = ""):
         """Show the control for the selected element: a *temperature* gets
-        the °C | °F switch, any other reading the show-unit button."""
-        log.debug("set_mode: mode=%s mode_sub=%s temperature=%s", mode, mode_sub,
-                  temperature)
+        the °C | °F switch, any other reading — | its *unit*."""
+        log.debug("set_mode: mode=%s mode_sub=%s temperature=%s unit=%r", mode,
+                  mode_sub, temperature, unit)
         self._current_mode = mode
         self._mode_sub = mode_sub
         self._hide_all()
@@ -233,8 +228,9 @@ class DataTablePanel(QFrame):
                 self.temp_switch.set_choice(self._temp_unit == "F")
                 self.temp_switch.setVisible(True)
             case OverlayMode.HARDWARE:
-                self._update_unit_image()
-                self.unit_btn.setVisible(True)
+                self.unit_switch.set_labels("—", unit or "?")
+                self.unit_switch.set_choice(bool(self._mode_sub))
+                self.unit_switch.setVisible(True)
             case OverlayMode.TIME:
                 self.time_switch.set_choice(self._mode_sub != 1)
                 self.time_switch.setVisible(True)
@@ -248,11 +244,10 @@ class DataTablePanel(QFrame):
             case OverlayMode.CUSTOM:
                 self.text_input.setVisible(True)
 
-    def _on_unit_clicked(self):
-        """Toggle show-unit: mode_sub 0 (bare) ↔ 1 (number + unit)."""
-        log.debug("_on_unit_clicked: mode_sub=%s→%s", self._mode_sub, 0 if self._mode_sub else 1)
-        self._mode_sub = 0 if self._mode_sub else 1
-        self._update_unit_image()
+    def _on_unit_picked(self, side: int) -> None:
+        """The bare number (mode_sub 0) or number + unit (1): this element's."""
+        self._mode_sub = side
+        log.info("_on_unit_picked: mode_sub=%s", side)
         self.format_changed.emit(self._current_mode, self._mode_sub)
 
     def _on_temp_picked(self, side: int) -> None:

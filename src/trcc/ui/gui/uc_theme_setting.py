@@ -20,6 +20,7 @@ plus backward-compatible re-exports.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from functools import partial
 from typing import Any
@@ -191,8 +192,9 @@ class UCThemeSetting(BasePanel):
         self.color_panel.set_color_hex(config.color)
         self.color_panel.set_font_display(config.font_name, config.font_size,
                                               config.font_style)
+        unit = _unit_of(config)
         self.data_table.set_mode(config.mode, config.mode_sub,
-                                 temperature=_is_temperature(config))
+                                 temperature=unit == "°C", unit=unit)
         if config.mode == OverlayMode.CUSTOM:
             self.data_table.text_input.setText(config.text)
 
@@ -394,10 +396,11 @@ class UCThemeSetting(BasePanel):
         self.video_panel.set_enabled(source == "media")
 
 
-def _is_temperature(config: OverlayElementConfig) -> bool:
-    """A hardware element whose reading is a temperature -- the one the
-    renderer converts to °F: its format draws a °C (``metric_text``)."""
+def _unit_of(config: OverlayElementConfig) -> str:
+    """A hardware element's unit -- what its format draws after the value:
+    ``°C`` (a temperature, the one the renderer turns into °F), ``%``,
+    ``MHz``, ``RPM`` ... -- "" for none or for another kind of element."""
     fields = config_fields(config) if config.mode is OverlayMode.HARDWARE else None
-    temperature = fields is not None and "°C" in str(fields.get("format", ""))
-    log.debug("_is_temperature: %s -> %s", config.id, temperature)
-    return temperature
+    unit = re.sub(r"\{[^}]*\}", "", str(fields.get("format", ""))).strip() if fields else ""
+    log.debug("_unit_of: %s -> %r", config.id, unit)
+    return unit
