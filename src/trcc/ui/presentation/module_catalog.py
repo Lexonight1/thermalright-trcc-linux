@@ -41,9 +41,14 @@ REVIEWED = "Reviewed by TRCC -- not guaranteed safe."
 NONE_LISTED = "No modules are listed yet."
 #: What a folder install's permission screen says in its place.
 UNSIGNED = "Unsigned: nobody reviewed it. Install only code you trust."
-#: Developer mode's switch, and the button it shows.
+#: Developer mode's switch, and the button it shows -- and what each does,
+#: their tooltips (the folder install's is the warning its permission
+#: screen gives, the same words).
 DEVELOPER_MODE = "Developer mode"
 FROM_FOLDER = "Install from folder…"
+DEVELOPER_MODE_TIP = ("Install modules from a folder, and run your own while you "
+                      "write them -- code nobody has reviewed.")
+FROM_FOLDER_TIP = UNSIGNED
 MAY = "It may:"
 #: Where a module came from (``ModuleInfo.origin``), in its tile's words.
 _ORIGINS: dict[str, str] = {

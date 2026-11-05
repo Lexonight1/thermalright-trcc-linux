@@ -138,6 +138,10 @@ class Shop:
         manifest.update(version=version, capabilities=list(capabilities),
                         network_hosts=list(hosts), devices=list(devices),
                         min_trcc=min_trcc)
+        # The skeleton's own reading goes with its capability: an author who
+        # drops "metrics" drops the declaration too (the two must agree).
+        if "metrics" not in capabilities:
+            manifest.pop("metrics", None)
         (self._source / "module.json").write_text(json.dumps(manifest), encoding="utf-8")
         return module_bundle.pack(self._source)
 
@@ -668,8 +672,8 @@ def test_the_cli_asks_the_app_for_an_installed_modules_command(
     ``_AsksTheApp.get_command`` and it is "No such command"."""
     from trcc.ui.cli.main import app
 
-    shop.list("1")
-    assert _install(cli_app).ok
+    shop.list("1", capabilities=SKELETON_ASKS)     # its greeting publishes a reading
+    assert _install(cli_app, SKELETON_ASKS).ok
     ran = cli_runner.invoke(app, ["greeter", "Ada"])
     assert (ran.exit_code, ran.output) == (0, "Greeter, Ada!\n")
 
@@ -695,8 +699,8 @@ def test_the_api_serves_what_the_app_runs_and_nothing_copied_in(
     module routes from every folder and the copy's API part is imported."""
     from trcc.ui.api.main import build_app
 
-    shop.list("1")
-    assert _install(cli_app).ok
+    shop.list("1", capabilities=SKELETON_ASKS)     # its greeting publishes a reading
+    assert _install(cli_app, SKELETON_ASKS).ok
     copied = _copy_in_by_hand(cli_app, shop, key="copied")
     cli_app.modules.add(_restart(cli_app).modules._specs["copied"])
     with loopback_client(build_app(trcc=cli_app)) as client:
@@ -885,6 +889,11 @@ def test_the_gui_page_installs_updates_and_removes(
 
 
 # ── developer mode: a folder, installed unsigned ─────────────────────────
+
+
+#: What the skeleton itself asks for: its greeting publishes its own reading,
+#: so a test that greets lists the greeter with both.
+SKELETON_ASKS = ("events", "metrics")
 
 
 def _folder(shop: Shop, version: str = "1", capabilities: tuple[str, ...] = ("events",),

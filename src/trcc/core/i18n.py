@@ -287,6 +287,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': '解锁',
         'Its USB devices need your permission': '其 USB 设备需要您的授权',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC 尚无法在此系统上解锁模块的 USB 设备',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': '从文件夹安装模块，并在编写时运行您自己的模块——这些代码没有人审核过。',
     },
     'zh_TW': {
         'Layer Mask': '佈局蒙板',
@@ -430,6 +431,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': '解鎖',
         'Its USB devices need your permission': '其 USB 裝置需要您的授權',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC 尚無法在此系統上解鎖模組的 USB 裝置',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': '從資料夾安裝模組，並在撰寫時執行您自己的模組——這些程式碼沒有人審核過。',
     },
     'en': {
         'Layer Mask': 'Layer Mask',
@@ -550,6 +552,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unsigned: nobody reviewed it. Install only code you trust.': 'Unsigned: nobody reviewed it. Install only code you trust.',
         'Developer mode': 'Developer mode',
         'Install from folder…': 'Install from folder…',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.',
         'Choose a module folder': 'Choose a module folder',
         'Not run: {problem}': 'Not run: {problem}',
         'hears what happens in the app': 'hears what happens in the app',
@@ -720,6 +723,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Entsperren',
         'Its USB devices need your permission': 'Seine USB-Geräte brauchen deine Erlaubnis',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC kann die USB-Geräte eines Moduls auf diesem System noch nicht freigeben',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Module aus einem Ordner installieren und eigene Module schon beim Schreiben ausführen – Code, den niemand geprüft hat.',
     },
     'ru': {
         'Layer Mask': 'Покрытие',
@@ -863,6 +867,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Разблокировать',
         'Its USB devices need your permission': 'Его USB-устройствам нужно ваше разрешение',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC пока не может открыть доступ к USB-устройствам модуля в этой системе',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Устанавливать модули из папки и запускать собственные, пока вы их пишете, — код, который никто не проверял.',
     },
     'fr': {
         'Layer Mask': 'Masque de couche',
@@ -1006,6 +1011,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Déverrouiller',
         'Its USB devices need your permission': 'Ses périphériques USB ont besoin de votre autorisation',
         "TRCC cannot unlock a module's USB devices on this system yet": "TRCC ne peut pas encore déverrouiller les périphériques USB d'un module sur ce système",
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': "Installer des modules depuis un dossier et exécuter les vôtres pendant que vous les écrivez — du code que personne n'a vérifié.",
     },
     'pt': {
         'Layer Mask': 'Máscara de camada',
@@ -1149,6 +1155,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Desbloquear',
         'Its USB devices need your permission': 'Seus dispositivos USB precisam da sua permissão',
         "TRCC cannot unlock a module's USB devices on this system yet": 'O TRCC ainda não consegue desbloquear os dispositivos USB de um módulo neste sistema',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Instalar módulos de uma pasta e executar os seus enquanto os escreve — código que ninguém revisou.',
     },
     'ja': {
         'Layer Mask': 'レイヤーマスク',
@@ -1292,6 +1299,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'ロック解除',
         'Its USB devices need your permission': 'USB デバイスにはあなたの許可が必要です',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC はこのシステムではまだモジュールの USB デバイスのロックを解除できません',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'フォルダーからモジュールをインストールし、作成中の自作モジュールを実行します。誰も審査していないコードです。',
     },
     'es': {
         'Layer Mask': 'Mascarilla de capa',
@@ -1435,6 +1443,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Desbloquear',
         'Its USB devices need your permission': 'Sus dispositivos USB necesitan tu permiso',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC aún no puede desbloquear los dispositivos USB de un módulo en este sistema',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Instalar módulos desde una carpeta y ejecutar los tuyos mientras los escribes: código que nadie ha revisado.',
     },
     'ko': {
         'Layer Mask': '레이어 마스크',
@@ -1578,6 +1587,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': '잠금 해제',
         'Its USB devices need your permission': 'USB 장치에 권한이 필요합니다',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC는 아직 이 시스템에서 모듈의 USB 장치 잠금을 해제할 수 없습니다',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': '폴더에서 모듈을 설치하고, 작성 중인 직접 만든 모듈을 실행합니다. 아무도 검토하지 않은 코드입니다.',
     },
     'it': {
         'Layer Mask': 'Maschera livello',
@@ -1721,6 +1731,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Sblocca',
         'Its USB devices need your permission': 'I suoi dispositivi USB richiedono il tuo permesso',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC non può ancora sbloccare i dispositivi USB di un modulo su questo sistema',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Installa moduli da una cartella ed esegui i tuoi mentre li scrivi: codice che nessuno ha controllato.',
     },
     'nl': {
         'Layer Mask': 'Laagmasker',
@@ -1864,6 +1875,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Ontgrendelen',
         'Its USB devices need your permission': 'De USB-apparaten hebben je toestemming nodig',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC kan de USB-apparaten van een module op dit systeem nog niet ontgrendelen',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Installeer modules vanuit een map en voer je eigen modules uit terwijl je ze schrijft – code die niemand heeft gecontroleerd.',
     },
     'pl': {
         'Layer Mask': 'Maska warstwy',
@@ -2007,6 +2019,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Odblokuj',
         'Its USB devices need your permission': 'Jego urządzenia USB wymagają Twojej zgody',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC nie może jeszcze odblokować urządzeń USB modułu w tym systemie',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Instaluj moduły z folderu i uruchamiaj własne podczas ich pisania — kod, którego nikt nie sprawdził.',
     },
     'tr': {
         'Layer Mask': 'Katman maskesi',
@@ -2150,6 +2163,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Kilidi aç',
         'Its USB devices need your permission': 'USB aygıtları için izniniz gerekiyor',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC bu sistemde bir modülün USB aygıtlarının kilidini henüz açamıyor',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Klasörden modül yükleyin ve kendi modüllerinizi yazarken çalıştırın — kimsenin incelemediği kod.',
     },
     'ar': {
         'Layer Mask': 'قناع الطبقة',
@@ -2293,6 +2307,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'إلغاء القفل',
         'Its USB devices need your permission': 'تحتاج أجهزة USB الخاصة به إلى إذنك',
         "TRCC cannot unlock a module's USB devices on this system yet": 'لا يستطيع TRCC بعد إلغاء قفل أجهزة USB الخاصة بوحدة على هذا النظام',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'ثبّت وحدات من مجلد، وشغّل وحداتك الخاصة أثناء كتابتها — شيفرة لم يراجعها أحد.',
     },
     'hi': {
         'Layer Mask': 'लेयर मास्क',
@@ -2436,6 +2451,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'अनलॉक करें',
         'Its USB devices need your permission': 'इसके USB डिवाइस को आपकी अनुमति चाहिए',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC अभी इस सिस्टम पर किसी मॉड्यूल के USB डिवाइस अनलॉक नहीं कर सकता',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'फ़ोल्डर से मॉड्यूल इंस्टॉल करें, और अपने मॉड्यूल लिखते समय ही चलाएँ — ऐसा कोड जिसकी किसी ने समीक्षा नहीं की।',
     },
     'th': {
         'Layer Mask': 'มาสก์เลเยอร์',
@@ -2579,6 +2595,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'ปลดล็อก',
         'Its USB devices need your permission': 'อุปกรณ์ USB ของโมดูลนี้ต้องได้รับอนุญาตจากคุณ',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC ยังปลดล็อกอุปกรณ์ USB ของโมดูลบนระบบนี้ไม่ได้',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'ติดตั้งโมดูลจากโฟลเดอร์ และเรียกใช้โมดูลของคุณเองขณะเขียน — โค้ดที่ยังไม่มีใครตรวจสอบ',
     },
     'vi': {
         'Layer Mask': 'Mặt nạ lớp',
@@ -2722,6 +2739,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Mở khóa',
         'Its USB devices need your permission': 'Các thiết bị USB của nó cần bạn cho phép',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC chưa thể mở khóa thiết bị USB của mô-đun trên hệ thống này',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Cài đặt mô-đun từ thư mục và chạy mô-đun của riêng bạn trong khi viết — mã chưa ai kiểm duyệt.',
     },
     'id': {
         'Layer Mask': 'Masker lapisan',
@@ -2865,6 +2883,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Buka kunci',
         'Its USB devices need your permission': 'Perangkat USB-nya memerlukan izin Anda',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC belum dapat membuka kunci perangkat USB modul di sistem ini',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Pasang modul dari folder, dan jalankan modul Anda sendiri saat menulisnya — kode yang belum ditinjau siapa pun.',
     },
     'cs': {
         'Layer Mask': 'Maska vrstvy',
@@ -3008,6 +3027,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Odemknout',
         'Its USB devices need your permission': 'Jeho zařízení USB potřebují vaše svolení',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC zatím v tomto systému nedokáže odemknout zařízení USB modulu',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Instalujte moduly ze složky a spouštějte vlastní moduly už při jejich psaní – kód, který nikdo nezkontroloval.',
     },
     'sv': {
         'Layer Mask': 'Lagermask',
@@ -3151,6 +3171,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Lås upp',
         'Its USB devices need your permission': 'Dess USB-enheter behöver ditt tillstånd',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC kan ännu inte låsa upp en moduls USB-enheter på det här systemet',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Installera moduler från en mapp och kör dina egna medan du skriver dem – kod som ingen har granskat.',
     },
     'da': {
         'Layer Mask': 'Lagmaske',
@@ -3294,6 +3315,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Lås op',
         'Its USB devices need your permission': 'Dens USB-enheder kræver din tilladelse',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC kan endnu ikke låse et moduls USB-enheder op på dette system',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Installer moduler fra en mappe, og kør dine egne, mens du skriver dem – kode, som ingen har gennemgået.',
     },
     'no': {
         'Layer Mask': 'Lagmaske',
@@ -3437,6 +3459,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Lås opp',
         'Its USB devices need your permission': 'USB-enhetene trenger din tillatelse',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC kan ennå ikke låse opp en moduls USB-enheter på dette systemet',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Installer moduler fra en mappe, og kjør dine egne mens du skriver dem – kode som ingen har gjennomgått.',
     },
     'fi': {
         'Layer Mask': 'Tasomaski',
@@ -3580,6 +3603,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Avaa lukitus',
         'Its USB devices need your permission': 'Sen USB-laitteet tarvitsevat lupasi',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC ei vielä voi avata moduulin USB-laitteiden lukitusta tässä järjestelmässä',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Asenna moduuleja kansiosta ja suorita omiasi jo kirjoittaessasi niitä – koodia, jota kukaan ei ole tarkastanut.',
     },
     'hu': {
         'Layer Mask': 'Rétegmaszk',
@@ -3723,6 +3747,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Feloldás',
         'Its USB devices need your permission': 'Az USB-eszközeihez az engedélyed kell',
         "TRCC cannot unlock a module's USB devices on this system yet": 'A TRCC ezen a rendszeren még nem tudja feloldani egy modul USB-eszközeit',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Modulok telepítése mappából, és saját modulok futtatása írás közben – olyan kód, amelyet senki sem ellenőrzött.',
     },
     'ro': {
         'Layer Mask': 'Mască strat',
@@ -3866,6 +3891,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Deblochează',
         'Its USB devices need your permission': 'Dispozitivele sale USB au nevoie de permisiunea ta',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC nu poate încă debloca dispozitivele USB ale unui modul pe acest sistem',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Instalați module dintr-un dosar și rulați-le pe ale dvs. în timp ce le scrieți — cod pe care nu l-a verificat nimeni.',
     },
     'uk': {
         'Layer Mask': 'Маска шару',
@@ -4009,6 +4035,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Розблокувати',
         'Its USB devices need your permission': 'Його USB-пристроям потрібен ваш дозвіл',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC поки не може відкрити доступ до USB-пристроїв модуля в цій системі',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Встановлюйте модулі з теки та запускайте власні, поки їх пишете, — код, який ніхто не перевіряв.',
     },
     'el': {
         'Layer Mask': 'Μάσκα στρώματος',
@@ -4152,6 +4179,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Ξεκλείδωμα',
         'Its USB devices need your permission': 'Οι συσκευές USB του χρειάζονται την άδειά σας',
         "TRCC cannot unlock a module's USB devices on this system yet": 'Το TRCC δεν μπορεί ακόμη να ξεκλειδώσει τις συσκευές USB μιας μονάδας σε αυτό το σύστημα',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Εγκαταστήστε λειτουργικές μονάδες από φάκελο και εκτελέστε τις δικές σας ενώ τις γράφετε — κώδικας που δεν έχει ελέγξει κανείς.',
     },
     'he': {
         'Layer Mask': 'מסכת שכבה',
@@ -4295,6 +4323,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'ביטול נעילה',
         'Its USB devices need your permission': 'התקני ה-USB שלו זקוקים להרשאה שלך',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC עדיין לא יכול לבטל את נעילת התקני ה-USB של מודול במערכת זו',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'התקנת מודולים מתיקייה והרצת מודולים משלך בזמן כתיבתם — קוד שאיש לא בדק.',
     },
     'ms': {
         'Layer Mask': 'Topeng lapisan',
@@ -4438,6 +4467,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Buka kunci',
         'Its USB devices need your permission': 'Peranti USB-nya memerlukan kebenaran anda',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC belum boleh membuka kunci peranti USB modul pada sistem ini',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Pasang modul daripada folder, dan jalankan modul anda sendiri semasa menulisnya — kod yang belum disemak oleh sesiapa.',
     },
     # --- New languages (v8.3.9) ---
     'bn': {
@@ -4582,6 +4612,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'আনলক করুন',
         'Its USB devices need your permission': 'এর USB ডিভাইসগুলোর জন্য আপনার অনুমতি দরকার',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC এখনও এই সিস্টেমে কোনো মডিউলের USB ডিভাইস আনলক করতে পারে না',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'ফোল্ডার থেকে মডিউল ইনস্টল করুন, এবং লেখার সময়ই নিজের মডিউল চালান — এমন কোড যা কেউ পর্যালোচনা করেনি।',
     },
     'ur': {
         'Layer Mask': 'لیئر ماسک',
@@ -4725,6 +4756,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'ان لاک کریں',
         'Its USB devices need your permission': 'اس کے USB آلات کو آپ کی اجازت درکار ہے',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC ابھی اس سسٹم پر کسی ماڈیول کے USB آلات ان لاک نہیں کر سکتا',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'فولڈر سے ماڈیول انسٹال کریں، اور اپنے ماڈیول لکھتے وقت ہی چلائیں — ایسا کوڈ جس کا کسی نے جائزہ نہیں لیا۔',
     },
     'fa': {
         'Layer Mask': 'ماسک لایه',
@@ -4868,6 +4900,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'باز کردن قفل',
         'Its USB devices need your permission': 'دستگاه\u200cهای USB آن به اجازهٔ شما نیاز دارند',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC هنوز نمی\u200cتواند قفل دستگاه\u200cهای USB یک ماژول را در این سیستم باز کند',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'نصب ماژول\u200cها از یک پوشه و اجرای ماژول\u200cهای خودتان هنگام نوشتن — کدی که هیچ\u200cکس بررسی نکرده است.',
     },
     'tl': {
         'Layer Mask': 'Layer Mask',
@@ -5011,6 +5044,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'I-unlock',
         'Its USB devices need your permission': 'Kailangan ng iyong pahintulot ang mga USB device nito',
         "TRCC cannot unlock a module's USB devices on this system yet": 'Hindi pa ma-unlock ng TRCC ang mga USB device ng isang module sa system na ito',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Mag-install ng mga module mula sa isang folder, at patakbuhin ang sarili mo habang isinusulat ang mga ito — code na walang sinumang nagsuri.',
     },
     'ta': {
         'Layer Mask': 'லேயர் மாஸ்க்',
@@ -5154,6 +5188,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'திற',
         'Its USB devices need your permission': 'இதன் USB சாதனங்களுக்கு உங்கள் அனுமதி தேவை',
         "TRCC cannot unlock a module's USB devices on this system yet": 'இந்த கணினியில் ஒரு தொகுதியின் USB சாதனங்களை TRCC இன்னும் திறக்க முடியாது',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'கோப்புறையிலிருந்து தொகுதிகளை நிறுவுங்கள், உங்கள் சொந்தத் தொகுதிகளை எழுதும்போதே இயக்குங்கள் — யாரும் மதிப்பாய்வு செய்யாத குறியீடு.',
     },
     'pa': {
         'Layer Mask': 'ਲੇਅਰ ਮਾਸਕ',
@@ -5297,6 +5332,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'ਅਨਲੌਕ ਕਰੋ',
         'Its USB devices need your permission': 'ਇਸਦੇ USB ਡਿਵਾਈਸਾਂ ਨੂੰ ਤੁਹਾਡੀ ਇਜਾਜ਼ਤ ਚਾਹੀਦੀ ਹੈ',
         "TRCC cannot unlock a module's USB devices on this system yet": "TRCC ਅਜੇ ਇਸ ਸਿਸਟਮ 'ਤੇ ਕਿਸੇ ਮੋਡੀਊਲ ਦੇ USB ਡਿਵਾਈਸ ਅਨਲੌਕ ਨਹੀਂ ਕਰ ਸਕਦਾ",
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'ਫੋਲਡਰ ਤੋਂ ਮੋਡੀਊਲ ਇੰਸਟਾਲ ਕਰੋ, ਅਤੇ ਆਪਣੇ ਮੋਡੀਊਲ ਲਿਖਦੇ ਸਮੇਂ ਹੀ ਚਲਾਓ — ਅਜਿਹਾ ਕੋਡ ਜਿਸਦੀ ਕਿਸੇ ਨੇ ਸਮੀਖਿਆ ਨਹੀਂ ਕੀਤੀ।',
     },
     'sw': {
         'Layer Mask': 'Mask ya Tabaka',
@@ -5440,6 +5476,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'Fungua',
         'Its USB devices need your permission': 'Vifaa vyake vya USB vinahitaji ruhusa yako',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC bado haiwezi kufungua vifaa vya USB vya moduli kwenye mfumo huu',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'Sakinisha moduli kutoka kwenye folda, na uendeshe moduli zako mwenyewe unapoziandika — msimbo ambao hakuna aliyeukagua.',
     },
     'my': {
         'Layer Mask': 'အလွှာမျက်နှာဖုံး',
@@ -5583,6 +5620,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'Unlock': 'လော့ခ်ဖွင့်ရန်',
         'Its USB devices need your permission': '၎င်း၏ USB စက်များအတွက် သင့်ခွင့်ပြုချက် လိုအပ်သည်',
         "TRCC cannot unlock a module's USB devices on this system yet": 'TRCC သည် ဤစနစ်တွင် မော်ဂျူးတစ်ခု၏ USB စက်များကို မဖွင့်နိုင်သေးပါ',
+        'Install modules from a folder, and run your own while you write them -- code nobody has reviewed.': 'ဖိုင်တွဲမှ module များကို ထည့်သွင်းပြီး သင်ကိုယ်တိုင်ရေးနေသော module များကို ရေးရင်း လုပ်ဆောင်ပါ — မည်သူမျှ စစ်ဆေးထားခြင်းမရှိသော ကုဒ်။',
     },
 }
 

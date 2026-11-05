@@ -55,7 +55,9 @@ from ..core.results import ModuleCatalogResult, ModuleResult
 from ._module_faces import face_loaded
 from .presentation.module_catalog import (
     DEVELOPER_MODE,
+    DEVELOPER_MODE_TIP,
     FROM_FOLDER,
+    FROM_FOLDER_TIP,
     NONE_LISTED,
     REOPEN,
     byline,
@@ -567,6 +569,7 @@ class DeveloperMode:
         log.debug("DeveloperMode.controls: on=%s busy=%r", self.on, self.busy)
         translate = self._view._translate
         switch = QCheckBox(translate(DEVELOPER_MODE))
+        switch.setToolTip(translate(DEVELOPER_MODE_TIP))
         switch.setObjectName("modulesDeveloper")
         switch.setChecked(self.on)
         switch.toggled.connect(self._on_switch)
@@ -574,6 +577,7 @@ class DeveloperMode:
         if not self.on:
             return [switch]
         button = QPushButton(translate(FROM_FOLDER))
+        button.setToolTip(translate(FROM_FOLDER_TIP))
         button.setObjectName("modulesFromFolder")
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setEnabled(not self.busy)

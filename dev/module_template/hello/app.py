@@ -66,7 +66,28 @@ class HelloModule(BaseModule, key="hello"):
         log.info("hello: %s was switched %s", event.key,
                  "on" if event.enabled else "off")
 
+    #: How many greetings so far -- published as the "greetings" reading.
+    _greeted = 0
+
     def greet(self, name: str) -> str:
-        """What ``HelloGreet`` answers -- a module's work lives in the module."""
+        """What ``HelloGreet`` answers -- a module's work lives in the module.
+
+        It also counts, to show a module's OWN READING (the "metrics"
+        capability).  Three steps, and nothing else to wire:
+
+        1. ``module.json`` declares it under "metrics": a name, the label a
+           picker shows, a unit, and an explanation (the picker's tooltip).
+        2. Publish a value whenever it changes: ``host.metrics.publish(name,
+           value)`` -- ``None`` means "no value right now".
+        3. Its id is ``<module>:<name>`` -- here ``hello:greetings``.  A theme
+           shows it with the ordinary metric element; every sensor list
+           offers it.  A reading whose unit is "°C" gets the id
+           ``<module>:<name>:temp`` and shows in °F for a user who chose
+           Fahrenheit -- always publish °C.
+
+        Switching the module off takes the reading away; nothing to undo.
+        """
         log.info("hello: greeting %s", name)
+        self._greeted += 1
+        self.host.metrics.publish("greetings", self._greeted)
         return f"Hello, {name}!"

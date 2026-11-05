@@ -74,7 +74,8 @@ def test_the_skeleton_runs_every_hook_through_the_app(
 def test_the_skeletons_manifest_is_valid() -> None:
     manifest = read_manifest(_TEMPLATE / "hello" / "module.json")
     assert (manifest.key, manifest.default_on, manifest.capabilities,
-            Path(manifest.icon).is_file()) == ("hello", False, ("events",), True)
+            Path(manifest.icon).is_file()) == ("hello", False, ("events", "metrics"), True)
+    assert [(m.name, m.label) for m in manifest.metrics] == [("greetings", "Greetings")]
 
 
 def test_a_modules_query_runs_in_the_module_and_only_while_it_is_on(
@@ -88,6 +89,28 @@ def test_a_modules_query_runs_in_the_module_and_only_while_it_is_on(
     on = app.dispatch(_greet(name="Ada"))
     assert (off.ok, off.message) == (False, "Hello is off -- turn it on in Modules")
     assert (on.ok, on.message, type(on).__name__) == (True, "Hello, Ada!", "HelloResult")
+
+
+def test_the_skeletons_own_reading_is_offered_like_any_sensor(
+        hello: Path, tmp_home: Path) -> None:
+    """The skeleton teaches the ``metrics`` capability by doing it: each
+    greeting publishes ``hello:greetings``, which every sensor list offers
+    with its explanation; switched off, the reading is gone.  MUTATION
+    CHECK: drop the ``publish`` from ``HelloModule.greet``."""
+    from trcc.core.commands import ReadSensors
+
+    app = _app(tmp_home, on=True)
+    try:
+        app.dispatch(_greet(name="Ada"))
+        app.dispatch(_greet(name="Grace"))
+        read = {r.sensor_id: r for r in app.dispatch(ReadSensors()).readings}
+        assert (read["hello:greetings"].value, read["hello:greetings"].explanation) == (
+            2.0, "How many times Hello has greeted someone since it was switched on")
+        assert app.dispatch(SetModuleEnabled(key="hello", enabled=False)).ok
+        gone = {r.sensor_id for r in app.dispatch(ReadSensors()).readings}
+        assert "hello:greetings" not in gone
+    finally:
+        app.close()
 
 
 def test_its_types_cross_the_wire_like_the_apps_own(hello: Path) -> None:

@@ -354,3 +354,18 @@ def test_a_tiles_switch_speaks_the_windows_language(view: Any) -> None:
     assert (view.switches["rgb"].text(), view.switches["ticker"].text()) == ("Ein", "Ein")
     view.set_language("en")
     assert view.switches["rgb"].text() == "On"
+
+
+def test_the_developer_controls_say_what_they_do(view: Any, app: _App) -> None:
+    """Item 10 A3: each developer control explains itself as its tooltip, in
+    the window's language -- the folder install with the warning its own
+    permission screen gives."""
+    from trcc.core.i18n import tr
+    from trcc.ui.presentation.module_catalog import DEVELOPER_MODE_TIP, UNSIGNED
+
+    app.developer = True
+    view.set_language("de")
+    switch, button = view.developer.switch, view.developer.button
+    assert switch is not None and button is not None
+    assert switch.toolTip() == tr(DEVELOPER_MODE_TIP, "de") != DEVELOPER_MODE_TIP
+    assert button.toolTip() == tr(UNSIGNED, "de") != UNSIGNED

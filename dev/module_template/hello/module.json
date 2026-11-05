@@ -8,6 +8,15 @@
   "icon": "icon.svg",
   "guide": "https://github.com/Lexonight1/thermalright-trcc-linux/blob/main/doc/GUIDE_MODULES.md#writing-a-module",
   "capabilities": [
-    "events"
+    "events",
+    "metrics"
+  ],
+  "metrics": [
+    {
+      "name": "greetings",
+      "label": "Greetings",
+      "unit": "",
+      "explanation": "How many times Hello has greeted someone since it was switched on"
+    }
   ]
 }
