@@ -129,3 +129,88 @@ def test_the_panel_never_says_module_with_nothing_drawing(
     drawing = app.media.live_kind(_KEY) is not None
     assert drawing or snapshot.display_source != "module", (
         "the snapshot says a module draws the panel, and nothing does")
+
+
+# ── The choice itself (B1): one value, saved and read back ────────────────
+
+
+def _one_of_each() -> list[Any]:
+    from trcc.core.models import (
+        MediaPlayerBackground,
+        ModuleBackground,
+        PictureBackground,
+        ThemeBackground,
+        VideoBackground,
+    )
+    return [ThemeBackground(), PictureBackground("/u/a.png"),
+            VideoBackground("/u/a.mp4"), MediaPlayerBackground("http://radio/x"),
+            ModuleBackground("visualizer")]
+
+
+def test_every_kind_of_choice_is_tested() -> None:
+    """A kind added later is caught here until it joins the round trip."""
+    from trcc.core.models import BACKGROUND_CHOICES
+
+    assert {c.kind for c in _one_of_each()} == set(BACKGROUND_CHOICES)
+
+
+@pytest.mark.parametrize("choice", _one_of_each(), ids=lambda c: c.kind)
+def test_a_choice_survives_being_saved(choice: Any) -> None:
+    """Through real JSON, as trcc.json stores it."""
+    import json
+
+    from trcc.core.models import BackgroundChoice
+
+    assert BackgroundChoice.from_json(json.loads(json.dumps(choice.to_json()))) == choice
+
+
+@pytest.mark.parametrize("saved", [
+    {"kind": "hologram"},             # a newer TRCC's kind
+    {"kind": "picture"},              # its field missing
+    "junk", None,                     # not an object at all
+])
+def test_an_unreadable_choice_is_the_themes_own_background(saved: Any) -> None:
+    from trcc.core.models import BackgroundChoice, ThemeBackground
+
+    assert BackgroundChoice.from_json(saved) == ThemeBackground()
+
+
+@pytest.mark.parametrize(("old", "kind"), [
+    ({}, "theme"),
+    ({"background_path": "/home/u/.trcc-user/data/bg/mine.png"}, "picture"),
+    ({"background_path": "/home/u/.trcc-user/data/bg/cut.zt"}, "video"),
+    ({"background_path": "/home/u/.trcc/data/web/320320/a001.mp4"}, "video"),
+    # The old model stored the theme's OWN video here (bug #2's cause): it is
+    # the theme's background, not something the user picked.
+    ({"background_path": "/themes/T/Theme.mp4"}, "theme"),
+    ({"media_player_uri": "http://radio/x", "background_path": "/u/a.png"}, "media"),
+    ({"module_source": "visualizer", "background_path": "/u/a.png"}, "module"),
+])
+def test_the_old_fields_become_one_choice(old: dict[str, str], kind: str) -> None:
+    from trcc.core.models import background_choice_from_fields
+
+    choice = background_choice_from_fields(
+        old.get("background_path"), old.get("media_player_uri"),
+        old.get("module_source"), theme_dir="/themes/T")
+    assert choice.kind == kind
+
+
+@pytest.mark.parametrize("background_path", [None, "/u/a.png"])
+@pytest.mark.parametrize("media_player_uri", [None, "http://radio/x"])
+@pytest.mark.parametrize("module_source", [None, "visualizer"])
+def test_the_migration_agrees_with_what_the_panel_showed(
+    background_path: str | None, media_player_uri: str | None,
+    module_source: str | None,
+) -> None:
+    """Whatever the old fields held, the one choice names the same source the
+    old ``display_source`` reported -- a user upgrading sees no change."""
+    from trcc.core.models import DeviceSettings, PanelSource, background_choice_from_fields
+
+    old = DeviceSettings(background_path=background_path,
+                         media_player_uri=media_player_uri,
+                         module_source=module_source)
+    choice = background_choice_from_fields(background_path, media_player_uri,
+                                           module_source, theme_dir="/themes/T")
+    source = {"media": PanelSource.MEDIA, "module": PanelSource.MODULE}.get(
+        choice.kind, PanelSource.BACKGROUND)
+    assert source is old.display_source

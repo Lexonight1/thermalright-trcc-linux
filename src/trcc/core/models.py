@@ -12,6 +12,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Literal
 
+from ._safe import is_under
+from .factory import FallBackTo, Registry
 from .i18n import weekdays
 from .logs import per_frame
 
@@ -772,6 +774,118 @@ class PanelSource(str, Enum):
 #: override of the theme's own background -- BACKGROUND either way.
 DISPLAY_SOURCE_FIELDS: tuple[str, ...] = (
     "screencast_region", "media_player_uri", "module_source", "background_path")
+
+
+# =========================================================================
+# What a panel's background is -- the user's ONE choice
+# =========================================================================
+
+
+#: Every kind of background choice, by the ``kind`` it is saved under.  An
+#: unknown kind (a newer TRCC's) reads as the theme's own background.
+BACKGROUND_CHOICES: Registry[str, type[BackgroundChoice]] = Registry(
+    "background choice", on_missing=FallBackTo("theme"))
+
+
+@dataclass(frozen=True)
+class BackgroundChoice:
+    """What the user chose to fill a panel's background -- ONE value.
+
+    It replaces four nullable settings fields kept consistent by hand
+    (``_only_source``), which let a theme playing its OWN video overwrite the
+    user's choice (tests/test_background_choice.py).  Choosing something
+    replaces this value; nothing else writes it.  A screencast is not a
+    choice here: it goes ON TOP and the choice under it survives
+    (``DeviceSettings.screencast_region``).
+
+    Each kind names itself in its class line (``kind="picture"``); the saved
+    form is its fields plus that ``kind``.
+    """
+
+    kind: ClassVar[str] = ""
+
+    def __init_subclass__(cls, kind: str = "", **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if kind:
+            cls.kind = kind
+            BACKGROUND_CHOICES.register(kind)(cls)
+            log.debug("BackgroundChoice: %s is %r", cls.__name__, kind)
+
+    def to_json(self) -> dict[str, Any]:
+        """The saved form: the fields, and which kind it is."""
+        saved = {"kind": self.kind, **{f.name: getattr(self, f.name)
+                                       for f in fields(self)}}
+        log.debug("BackgroundChoice.to_json: %s", saved)
+        return saved
+
+    @staticmethod
+    def from_json(data: Any) -> BackgroundChoice:
+        """A saved choice back; anything unreadable is the theme's own."""
+        kind = data.get("kind", "") if isinstance(data, Mapping) else ""
+        cls = BACKGROUND_CHOICES[kind]       # an unknown kind: the theme + a WARNING
+        try:
+            choice = cls(**{f.name: data[f.name] for f in fields(cls)})
+        except (KeyError, TypeError) as e:
+            log.warning("BackgroundChoice.from_json: %r unreadable (%s) -- "
+                        "the theme's own background", data, e)
+            return ThemeBackground()
+        log.debug("BackgroundChoice.from_json: %r -> %s", data, choice)
+        return choice
+
+
+@dataclass(frozen=True)
+class ThemeBackground(BackgroundChoice, kind="theme"):
+    """The theme's own background -- its image, its video, or a module's
+    picture it names.  What a panel shows until the user picks anything."""
+
+
+@dataclass(frozen=True)
+class PictureBackground(BackgroundChoice, kind="picture"):
+    """A picture the user picked (an upload or a cloud background)."""
+    path: str
+
+
+@dataclass(frozen=True)
+class VideoBackground(BackgroundChoice, kind="video"):
+    """A video the user picked (an upload, a cut, or a cloud video)."""
+    path: str
+
+
+@dataclass(frozen=True)
+class MediaPlayerBackground(BackgroundChoice, kind="media"):
+    """The media player: a local file or a stream URL."""
+    uri: str
+
+
+@dataclass(frozen=True)
+class ModuleBackground(BackgroundChoice, kind="module"):
+    """A module draws the background (the Visualizer's audio visual)."""
+    module: str
+
+
+def background_choice_from_fields(
+    background_path: str | None, media_player_uri: str | None,
+    module_source: str | None, theme_dir: str | None,
+) -> BackgroundChoice:
+    """The ONE choice the four old settings fields meant -- the v7 -> v8
+    migration, in ``display_source``'s own order (media, module, picture or
+    video, the theme).  A ``background_path`` inside the panel's own theme
+    folder is that theme's own video, which the old model stored as if the
+    user had picked it: it is the theme's background, not a choice."""
+    if media_player_uri:
+        found: BackgroundChoice = MediaPlayerBackground(media_player_uri)
+    elif module_source:
+        found = ModuleBackground(module_source)
+    elif background_path and not (
+            theme_dir and is_under(Path(background_path), Path(theme_dir))):
+        found = (VideoBackground(background_path)
+                 if MEDIA.kind_of(Path(background_path)) is MediaKind.ANIMATED
+                 else PictureBackground(background_path))
+    else:
+        found = ThemeBackground()
+    log.debug("background_choice_from_fields: %s / %s / %s (theme %s) -> %s",
+              background_path, media_player_uri, module_source, theme_dir, found)
+    return found
 
 
 @dataclass
