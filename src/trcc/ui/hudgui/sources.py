@@ -46,6 +46,8 @@ from ...core.commands import (
     StopScreencast,
     UploadCustomMask,
 )
+from ..qt_words import say
+from .words import words
 
 if TYPE_CHECKING:
     from ...core.commands import Command
@@ -128,33 +130,38 @@ class SourcesPanel(_DeviceTab):
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(12)
-        self.mask_switch = QCheckBox("Show the mask")
-        self.background_switch = QCheckBox("Draw a background")
-        self.screencast_switch = QCheckBox("Cast a screen region")
-        self.audio_switch = QCheckBox("with sound bars")
-        self.video_switch = QCheckBox("Video player playing")
+        self.mask_switch = say(QCheckBox(), "Show the mask")
+        self.background_switch = say(QCheckBox(), "Draw a background")
+        self.screencast_switch = say(QCheckBox(), "Cast a screen region")
+        self.audio_switch = say(QCheckBox(), "with sound bars")
+        self.video_switch = say(QCheckBox(), "Video player playing")
         self.mask_switch.toggled.connect(self._on_mask)
         self.background_switch.toggled.connect(self._on_background)
         self.screencast_switch.toggled.connect(self._on_screencast)
         self.video_switch.toggled.connect(self._on_video)
-        grid.addWidget(self._group("Mask", self.mask_switch,
-                                   ("Upload a mask…", self._on_mask_upload)), 0, 0)
+        grid.addWidget(self._group("Layer Mask", self.mask_switch,
+                                   ("Upload", self._on_mask_upload)), 0, 0)
         grid.addWidget(self._group("Background", self.background_switch,
-                                   ("Picture…", self._on_picture),
-                                   ("Video…", self._on_background_video)), 0, 1)
+                                   ("Load Image", self._on_picture),
+                                   ("Load Video", self._on_background_video)), 0, 1)
         grid.addWidget(self._group("Screencast", self.screencast_switch, self.audio_switch), 1, 0)
-        grid.addWidget(self._group("Video player", self.video_switch,
-                                   ("File…", self._on_player_file),
-                                   ("Web address…", self._on_player_url)), 1, 1)
+        grid.addWidget(self._group("Media Player", self.video_switch,
+                                   ("Load Video", self._on_player_file),
+                                   ("Web Video", self._on_player_url)), 1, 1)
         grid.setRowStretch(2, 1)
         self.show_state()
 
     def _group(self, title: str, switch: QCheckBox, *extras: Any) -> QGroupBox:
         """One source: its switch, then its buttons (or a second checkbox)."""
         log.debug("SourcesPanel._group: %s", title)
-        group = QGroupBox(title)
+        group = QGroupBox()
         group.setStyleSheet(_GROUP_STYLE)
         column = QVBoxLayout(group)
+        # The title is a label, not the box's own: ``say`` keeps a label's
+        # English, so the language can change under it.
+        heading = say(QLabel(group), title)
+        heading.setStyleSheet("font-weight: bold;")
+        column.addWidget(heading)
         column.addWidget(switch)
         row = QHBoxLayout()
         for extra in extras:
@@ -162,7 +169,7 @@ class SourcesPanel(_DeviceTab):
                 row.addWidget(extra)
                 continue
             text, slot = extra
-            button = QPushButton(text, group)
+            button = say(QPushButton(group), text)
             button.clicked.connect(slot)
             row.addWidget(button)
         row.addStretch(1)
@@ -220,36 +227,38 @@ class SourcesPanel(_DeviceTab):
     # ── The buttons ────────────────────────────────────────────────────
 
     def choose_file(self, title: str, kinds: str) -> str:
-        """A file the user picks, or "" -- a method, so a test picks."""
+        """A file the user picks, or "" -- a method, so a test picks.
+        *title* is English; the dialog says it in the App's language."""
         log.debug("SourcesPanel.choose_file: %s", title)
-        path, _ = QFileDialog.getOpenFileName(self, title, "", kinds)
+        path, _ = QFileDialog.getOpenFileName(self, words(self._app)(title), "", kinds)
         return path
 
     def ask_url(self) -> str:
         """A web address the user types, or "" -- a method, so a test types."""
         log.debug("SourcesPanel.ask_url")
-        url, ok = QInputDialog.getText(self, "Web video",
-                                       "An http, https or rtsp address:")
+        say_now = words(self._app)
+        url, ok = QInputDialog.getText(self, say_now("Web Video"),
+                                       say_now("An http, https or rtsp address:"))
         return url.strip() if ok else ""
 
     def _on_mask_upload(self) -> None:
         log.info("SourcesPanel._on_mask_upload")
-        if path := self.choose_file("Upload a mask", _IMAGES):
+        if path := self.choose_file("Upload", _IMAGES):
             self._send(UploadCustomMask(key=self._selection.key, source=Path(path)))
 
     def _on_picture(self) -> None:
         log.info("SourcesPanel._on_picture")
-        if path := self.choose_file("A picture for the background", _IMAGES):
+        if path := self.choose_file("Load Image", _IMAGES):
             self._send(SetBackground(key=self._selection.key, path=Path(path)))
 
     def _on_background_video(self) -> None:
         log.info("SourcesPanel._on_background_video")
-        if path := self.choose_file("A video for the background", _VIDEOS):
+        if path := self.choose_file("Load Video", _VIDEOS):
             self._send(SetBackground(key=self._selection.key, path=Path(path)))
 
     def _on_player_file(self) -> None:
         log.info("SourcesPanel._on_player_file")
-        if path := self.choose_file("A video to play", _VIDEOS):
+        if path := self.choose_file("Media Player", _VIDEOS):
             self._send(SetMediaPlayer(key=self._selection.key, uri=path))
             self.show_state()
 
@@ -269,12 +278,12 @@ class DeviceControls(_DeviceTab):
         log.debug("DeviceControls: brightness and rotation")
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
-        label = QLabel("Brightness", self)
+        label = say(QLabel(self), "Brightness")
         label.setStyleSheet("color: #dfe5ea;")
         self.brightness = QSlider(Qt.Orientation.Horizontal, self)
         self.brightness.setRange(0, 100)
         self.brightness.sliderReleased.connect(self._on_brightness)
-        self.rotate = QPushButton("Rotate 90°", self)
+        self.rotate = say(QPushButton(self), "Rotate 90°")
         self.rotate.clicked.connect(self._on_rotate)
         row.addWidget(label)
         row.addWidget(self.brightness, stretch=1)

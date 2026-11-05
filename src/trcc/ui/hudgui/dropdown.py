@@ -71,6 +71,13 @@ class DropPanel(QWidget):
         log.debug("DropPanel.title: %r", self._title)
         return self._title
 
+    def set_title(self, title: str) -> None:
+        """The pill's words again (a new language), the panel left as it is."""
+        log.debug("DropPanel.set_title: %r -> %r", self._title, title)
+        if self._title:
+            self._title = title
+            self.update()
+
     def set_content(self, widget: QWidget) -> None:
         """Show *widget* in the frame in place of the last item's panel,
         which is hidden and kept -- its owner shows it again later."""

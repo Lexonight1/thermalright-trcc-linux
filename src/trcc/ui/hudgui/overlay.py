@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -46,13 +47,16 @@ from ...core.commands import (
     UpdateOverlayElement,
 )
 from ...core.results import OverlayElementEntry
+from ..qt_words import say, say_item
 from .sources import _DeviceTab
+from .words import words
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
     from ...core.results import LcdSnapshotResult
     from ..bus_bridge import BusBridge
     from ..device_selection import DeviceSelection
+    from ..qt_words import Tr
 
 log = logging.getLogger(__name__)
 
@@ -73,11 +77,12 @@ def _distance(x: int, y: int, entry: OverlayElementEntry) -> int:
     return found
 
 
-def describe(entry: OverlayElementEntry) -> str:
-    """An element's line in the list: what it shows."""
-    what = {"text": entry.text or "(empty text)", "metric": entry.metric or "(no reading)",
-            "clock": entry.source}.get(entry.type, entry.type)
-    line = f"{entry.type.capitalize()}: {what}"
+def describe(entry: OverlayElementEntry, say_now: Tr = str) -> str:
+    """An element's line in the list: what it shows, in *say_now*'s words."""
+    what = {"text": entry.text or say_now("(empty text)"),
+            "metric": entry.metric or say_now("(no reading)"),
+            "clock": say_now(entry.source.capitalize())}.get(entry.type, entry.type)
+    line = f"{say_now(entry.type.capitalize())}: {what}"
     log.debug("describe: %s -> %s", entry.id, line)
     return line
 
@@ -96,18 +101,19 @@ class OverlayEditor(_DeviceTab):
         column.setContentsMargins(0, 0, 0, 0)
         # Two rows, so it fits the tab: the switch and Delete, then the Adds.
         top = QHBoxLayout()
-        self.on_switch = QCheckBox("Overlay on", self)
+        self.on_switch = say(QCheckBox(self), "Overlay on")
         self.on_switch.toggled.connect(self._on_enabled)
         top.addWidget(self.on_switch)
         top.addStretch(1)
-        self.delete = QPushButton("Delete", self)
+        self.delete = say(QPushButton(self), "Delete")
         self.delete.clicked.connect(self._on_delete)
         top.addWidget(self.delete)
         column.addLayout(top)
         adds = QGridLayout()
-        for index, (label, _type, _source) in enumerate(ADDS):
-            button = QPushButton(f"+ {label}", self)
-            button.setProperty(_ADD, index)
+        adds.addWidget(say(QLabel(self), "Add"), 0, 0)
+        for index, (label, _type, _source) in enumerate(ADDS, 1):
+            button = say(QPushButton(self), label)
+            button.setProperty(_ADD, index - 1)
             button.clicked.connect(self._on_add)
             adds.addWidget(button, index // 3, index % 3)
         column.addLayout(adds)
@@ -131,26 +137,29 @@ class OverlayEditor(_DeviceTab):
         self.colour_box = QPushButton("", self)
         self.font_box = QFontComboBox(self)
         self._narrow(self.font_box)
-        self.bold_box, self.italic_box = QCheckBox("Bold", self), QCheckBox("Italic", self)
+        self.bold_box = say(QCheckBox(self), "Bold")
+        self.italic_box = say(QCheckBox(self), "Italic")
         self.text_box = QLineEdit(self)
         self.metric_box = QComboBox(self)
         self.metric_box.setEditable(True)
         self._narrow(self.metric_box)
         self.format_box = QLineEdit(self)
-        self.unit_box = QCheckBox("Show the unit", self)
+        self.unit_box = say(QCheckBox(self), "Show the unit")
         self.clock_box = QComboBox(self)
-        self.clock_box.addItems(["time", "weekday", "date"])
+        say_now = words(self._app)
+        for source in ("time", "weekday", "date"):
+            say_item(self.clock_box, source.capitalize(), source, say_now)
         style = QHBoxLayout()
         style.addWidget(self.bold_box)
         style.addWidget(self.italic_box)
         for label, widget in (("X", self.x_box), ("Y", self.y_box), ("Size", self.size_box),
                               ("Colour", self.colour_box), ("Font", self.font_box)):
-            form.addRow(label, widget)
+            form.addRow(say(QLabel(self), label), widget)
         form.addRow("", style)
         for label, widget in (("Text", self.text_box), ("Reading", self.metric_box),
                               ("Format", self.format_box), ("", self.unit_box),
                               ("Clock", self.clock_box)):
-            form.addRow(label, widget)
+            form.addRow(say(QLabel(self), label), widget)
         self._form_layout = form
         # Each control carries the field it edits, and edits by its KIND --
         # one handler per kind, not one per field.
@@ -202,10 +211,11 @@ class OverlayEditor(_DeviceTab):
             self.x_box.setRange(0, canvas.width)
             self.y_box.setRange(0, canvas.height)
         self._elements = {e.id: e for e in layout.elements}
+        say_now = words(self._app)
         self.list.blockSignals(True)
         self.list.clear()
         for entry in layout.elements:
-            item = QListWidgetItem(describe(entry))
+            item = QListWidgetItem(describe(entry, say_now))
             item.setData(Qt.ItemDataRole.UserRole, entry.id)
             self.list.addItem(item)
             if entry.id == picked:
@@ -249,7 +259,7 @@ class OverlayEditor(_DeviceTab):
                 self.metric_box.setEditText(entry.metric)
             self.format_box.setText(entry.format)
             self.unit_box.setChecked(entry.show_unit)
-            self.clock_box.setCurrentText(entry.source)
+            self.clock_box.setCurrentIndex(max(0, self.clock_box.findData(entry.source)))
         for widget in self._fields:
             widget.blockSignals(False)
         kind = entry.type if entry is not None else ""
@@ -320,7 +330,8 @@ class OverlayEditor(_DeviceTab):
     def choose_colour(self, start: str) -> str:
         """A colour the user picks, as #rrggbb, or "" -- a method, so a test picks."""
         log.debug("OverlayEditor.choose_colour: %s", start)
-        colour = QColorDialog.getColor(QColor(start), self, "Element colour")
+        colour = QColorDialog.getColor(QColor(start), self,
+                                       words(self._app)("Element colour"))
         return colour.name() if colour.isValid() else ""
 
     def _on_colour(self) -> None:

@@ -19,6 +19,7 @@ only -- the App, and the panels, keep going.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -34,10 +35,14 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
+from ...core.events import LanguageChanged
+from ...core.i18n import tr
 from ...core.logs import per_frame
 from ..bus_bridge import BusBridge
 from ..device_selection import DeviceSelection
+from ..qt_modules import ModulesView
 from ..qt_preview import FRAME_EDGE
+from ..qt_words import retranslate
 from .about import About
 from .chrome import CHROME_HEIGHT, ChromeBar
 from .control_center import ControlCenter
@@ -45,6 +50,7 @@ from .devices import DevicesView
 from .dropdown import DropPanel
 from .modules import modules_panel
 from .sensors import SensorsView
+from .words import language
 
 if TYPE_CHECKING:
     from ...core.events import SensorsUpdated
@@ -87,6 +93,11 @@ class HudWindow(QWidget):
         self.drop.closed.connect(self._to_bar)
         self._bus.sensors_updated.connect(self._on_sensors,
                                           type=Qt.ConnectionType.QueuedConnection)
+        self._bus.app_settings_changed.connect(self._on_app_settings,
+                                               type=Qt.ConnectionType.QueuedConnection)
+        #: The language the words are in now.
+        self._lang = ""
+        self._set_language(language(app))
         self._to_bar()
 
     def _screen_top(self) -> QRect:
@@ -108,7 +119,8 @@ class HudWindow(QWidget):
         """*item*'s panel -- made on its first click, then the same one."""
         if item not in self._panels:
             log.info("HudWindow.panel: making %s's", item)
-            self._panels[item] = self._make(item)
+            made = self._panels[item] = self._make(item)
+            self._translate(made)
         return self._panels[item]
 
     def _make(self, item: str) -> QWidget:
@@ -144,7 +156,7 @@ class HudWindow(QWidget):
             self.active = item
             self.drop.set_content(self.panel(item))
             self.resize(self.width(), CHROME_HEIGHT + DROP_HEIGHT)
-            self.drop.drop(item, CHROME_HEIGHT, self.width(), DROP_HEIGHT)
+            self.drop.drop(tr(item, self._lang), CHROME_HEIGHT, self.width(), DROP_HEIGHT)
         self.bar.set_active(self.active)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
@@ -154,6 +166,34 @@ class HudWindow(QWidget):
             self._on_menu(self.active)
             return
         super().keyPressEvent(event)
+
+    # ── The language ───────────────────────────────────────────────────
+
+    def _on_app_settings(self, event: object) -> None:
+        """An App setting changed in some UI -- a new language is ours too."""
+        log.debug("HudWindow._on_app_settings: %s", type(event).__name__)
+        if isinstance(event, LanguageChanged):
+            self._set_language(event.language)
+
+    def _set_language(self, lang: str) -> None:
+        """Every word on the window -- the bar, each panel made so far, the
+        dropped panel's title -- in *lang*."""
+        log.info("HudWindow._set_language: %r -> %r", self._lang, lang)
+        self._lang = lang
+        self._translate(self)
+        for panel in self._panels.values():
+            self._translate(panel)
+        if self.active is not None:
+            self.drop.set_title(tr(self.active, lang))
+
+    def _translate(self, widget: QWidget) -> None:
+        """*widget*'s fixed words in the window's language -- the shared
+        Modules list says its own (``set_language``)."""
+        log.debug("HudWindow._translate: %s in %s", type(widget).__name__, self._lang)
+        retranslate(widget, partial(tr, lang=self._lang))
+        for modules in (widget, *widget.findChildren(ModulesView)):
+            if isinstance(modules, ModulesView):
+                modules.set_language(self._lang)
 
     # ── Live ───────────────────────────────────────────────────────────
 

@@ -34,6 +34,7 @@ from ...core.commands import DeviceCanvas, LcdSnapshot
 from ...core.results import LcdSnapshotResult
 from ..qt_assets import thumbnail_icon
 from ..qt_background import dispatch_in_background
+from .words import words
 
 if TYPE_CHECKING:
     from ...core.commands import Command
@@ -143,12 +144,14 @@ class TileGrid(QWidget):
             tile.deleteLater()
         self.tiles = {}
         key = self._selection.key
+        say_now = words(self._app)
         if not key:
-            self.note.setText("Pick a device.")
+            self.note.setText(say_now("Pick a device."))
             return
         canvas = self._app.dispatch(DeviceCanvas(key=key))
         if not canvas.ok:
-            self.note.setText(f"No size known for {key} yet -- connect it first.")
+            self.note.setText(say_now("No size known for {key} yet -- connect it first.")
+                              .format(key=key))
             return
         size = (canvas.width, canvas.height)
         for tile in self._tiles(key, size):
@@ -156,7 +159,8 @@ class TileGrid(QWidget):
         self._lay_out()
         log.info("%s.refresh: %s %dx%d -> %d tile(s)", type(self).__name__, key,
                  *size, len(self.tiles))
-        self.note.setText("" if self.tiles else self.EMPTY.format(size=f"{size[0]}x{size[1]}"))
+        self.note.setText("" if self.tiles
+                          else say_now(self.EMPTY).format(size=f"{size[0]}x{size[1]}"))
         self._light_current()
 
     def _tile(self, tile: Tile) -> QToolButton:

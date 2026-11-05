@@ -32,6 +32,8 @@ from ... import __version__
 from ...core.commands import GenerateDebugReport, RunUpgrade, UpdateStatus
 from ...core.credits import GROUPS, INSPIRATIONS, WE_LOVE, WHAT_TRCC_DOES
 from ..presentation.credit_line import credit_html
+from ..qt_words import say
+from .words import words
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
@@ -111,12 +113,12 @@ class About(QScrollArea):
         row.addWidget(self.version)
         row.addWidget(self.update_line, 1)
         #: Shown only when a newer TRCC is out.
-        self.upgrade_button = QPushButton("How to upgrade")
+        self.upgrade_button = say(QPushButton(), "How to upgrade")
         self.upgrade_button.clicked.connect(self._on_upgrade)
         self.upgrade_button.hide()
-        report = QPushButton("Save diagnostic report…")
+        report = say(QPushButton(), "Save diagnostic report…")
         report.clicked.connect(self._on_report)
-        page = QPushButton("Project page")
+        page = say(QPushButton(), "Project page")
         page.clicked.connect(self._on_page)
         for button in (self.upgrade_button, report, page):
             row.addWidget(button)
@@ -147,8 +149,9 @@ class About(QScrollArea):
         newer = bool(answer.ok and answer.update_available)
         log.info("About._show_update: ok=%s newer=%s %s", answer.ok, newer,
                  answer.latest_version)
-        self.update_line.setText(f"Version {answer.latest_version} is out" if newer
-                                 else answer.message)
+        self.update_line.setText(
+            words(self._app)("Version {version} is out").format(version=answer.latest_version)
+            if newer else answer.message)
         self.upgrade_button.setVisible(newer)
 
     # ── The actions ────────────────────────────────────────────────────
@@ -157,7 +160,7 @@ class About(QScrollArea):
         """The command that upgrades this install -- shown, never run."""
         result = self._app.dispatch(RunUpgrade())
         log.info("About._on_upgrade: %s", result.message)
-        self.tell("Upgrade TRCC", result.message)
+        self.tell(words(self._app)("Upgrade TRCC"), result.message)
 
     def _on_report(self) -> None:
         """The diagnostic report, to a file the user picks."""
@@ -167,8 +170,11 @@ class About(QScrollArea):
             return
         result = self._app.dispatch(GenerateDebugReport(output_path=Path(path),
                                                         log_tail_lines=1000))
-        self.tell("Diagnostic report", f"Saved to {result.output_path}" if result.ok
-                  else f"The report could not be saved: {result.message}")
+        say_now = words(self._app)
+        self.tell(say_now("Diagnostic report"),
+                  say_now("Saved to {path}").format(path=result.output_path) if result.ok
+                  else say_now("The report could not be saved: {message}").format(
+                      message=result.message))
 
     def _on_page(self) -> None:
         log.info("About._on_page: %s", PROJECT_PAGE)
@@ -179,7 +185,7 @@ class About(QScrollArea):
     def choose_report_file(self) -> str:
         """Where to save the report, or ""."""
         log.debug("About.choose_report_file")
-        path, _ = QFileDialog.getSaveFileName(self, "Save diagnostic report",
+        path, _ = QFileDialog.getSaveFileName(self, words(self._app)("Save diagnostic report"),
                                               "trcc-debug-report.txt",
                                               "Text files (*.txt);;All files (*)")
         return path

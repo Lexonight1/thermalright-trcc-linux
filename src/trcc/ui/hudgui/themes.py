@@ -33,7 +33,9 @@ from ...core.commands import (
     LoadTheme,
     SaveTheme,
 )
+from ..qt_words import say, say_tip
 from .tiles import TILE, Tile, TileGrid
+from .words import words
 
 if TYPE_CHECKING:
     from ...core.commands import Command
@@ -81,9 +83,9 @@ class LocalThemes(TileGrid):
         bar = QWidget(self)
         row = QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, 0)
-        for text, slot in (("Save as…", self._on_save), ("Import…", self._on_import),
+        for text, slot in (("Save As", self._on_save), ("Import…", self._on_import),
                            ("Export…", self._on_export)):
-            button = QPushButton(text, bar)
+            button = say(QPushButton(bar), text)
             button.clicked.connect(slot)
             row.addWidget(button)
         row.addStretch(1)
@@ -102,7 +104,7 @@ class LocalThemes(TileGrid):
         if tile.removable:
             cross = QToolButton(button)
             cross.setText("✕")
-            cross.setToolTip("Delete this theme")
+            say_tip(cross, "Delete this theme")
             cross.setGeometry(TILE.width() - 24, 4, 20, 20)
             cross.setProperty(_THEME, tile.id)
             cross.clicked.connect(self._on_remove)
@@ -113,20 +115,21 @@ class LocalThemes(TileGrid):
     def ask_name(self) -> str:
         """The name to save the panel's look as, or ""."""
         log.debug("LocalThemes.ask_name")
-        name, ok = QInputDialog.getText(self, "Save theme", "Name:")
+        say_now = words(self._app)
+        name, ok = QInputDialog.getText(self, say_now("Save theme"), say_now("Name:"))
         return name.strip() if ok else ""
 
     def confirm(self, question: str) -> bool:
         """Yes or no."""
         log.debug("LocalThemes.confirm: %s", question)
-        answer = QMessageBox.question(self, "Themes", question)
+        answer = QMessageBox.question(self, words(self._app)("Themes"), question)
         return answer == QMessageBox.StandardButton.Yes
 
     def choose_archive(self, saving: bool) -> str:
         """A ``.tr`` theme file to write (*saving*) or read, or ""."""
         log.debug("LocalThemes.choose_archive: saving=%s", saving)
         pick = QFileDialog.getSaveFileName if saving else QFileDialog.getOpenFileName
-        path, _ = pick(self, "Theme file", "", "TRCC themes (*.tr)")
+        path, _ = pick(self, words(self._app)("Theme file"), "", "TRCC themes (*.tr)")
         return path
 
     # ── The actions ────────────────────────────────────────────────────
@@ -138,8 +141,9 @@ class LocalThemes(TileGrid):
         if not key or not name:
             return
         result = self._app.dispatch(SaveTheme(key=key, name=name))
+        question = words(self._app)("A theme named '{name}' already exists.  Replace it?")
         if not result.ok and getattr(result, "target_exists", False) and self.confirm(
-                f"A theme named '{name}' already exists.  Replace it?"):
+                question.format(name=name)):
             result = self._app.dispatch(SaveTheme(key=key, name=name, overwrite=True))
         self.note.setText("" if result.ok else result.message)
 
@@ -163,7 +167,8 @@ class LocalThemes(TileGrid):
         cross = self.sender()
         path = "" if cross is None else str(cross.property(_THEME))
         log.info("LocalThemes._on_remove: %s", path)
-        if path and self.confirm(f"Delete the theme '{Path(path).name}'?  This cannot be undone."):
+        question = words(self._app)("Delete the theme '{name}'?  This cannot be undone.")
+        if path and self.confirm(question.format(name=Path(path).name)):
             result = self._app.dispatch(DeleteTheme(path=Path(path)))
             self.note.setText("" if result.ok else result.message)
 
@@ -221,7 +226,7 @@ class CloudBackgrounds(TileGrid):
     def _pill(self, prefix: str, name: str) -> None:
         """One category button, before the row's stretch."""
         log.debug("CloudBackgrounds._pill: %s %s", prefix, name)
-        pill = QPushButton(name, self.header)
+        pill = say(QPushButton(self.header), name)
         pill.setCheckable(True)
         pill.setCursor(Qt.CursorShape.PointingHandCursor)
         pill.setStyleSheet(_PILL_STYLE)

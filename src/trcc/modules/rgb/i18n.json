@@ -120,7 +120,6 @@
     "This needs OpenRGB 1.0 or newer.": "This needs OpenRGB 1.0 or newer."
   },
   "de": {
-    "Memory": "Arbeitsspeicher",
     "Motherboard": "Mainboard",
     "OpenRGB": "OpenRGB",
     "Leave alone": "In Ruhe lassen",
@@ -188,7 +187,6 @@
     "Apply": "Übernehmen",
     "LEDs on this header": "LEDs an diesem Anschluss",
     "Blink": "Blinken",
-    "Devices": "Geräte",
     "SDK server": "SDK-Server",
     "Pick a colour": "Farbe wählen",
     "Follow": "Folgen",
@@ -227,7 +225,6 @@
     "Effect": "Effekt",
     "Speed": "Tempo",
     "Direction": "Richtung",
-    "Brightness": "Helligkeit",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-Beleuchtung -- Arbeitsspeicher und OpenRGB-Geräte",
     "RGB Lighting": "RGB-Beleuchtung",
@@ -240,7 +237,6 @@
     "This needs OpenRGB 1.0 or newer.": "Dafür ist OpenRGB 1.0 oder neuer nötig."
   },
   "fr": {
-    "Memory": "Mémoire",
     "Motherboard": "Carte mère",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Laisser tel quel",
@@ -308,7 +304,6 @@
     "Apply": "Appliquer",
     "LEDs on this header": "LED sur ce connecteur",
     "Blink": "Clignoter",
-    "Devices": "Appareils",
     "SDK server": "Serveur SDK",
     "Pick a colour": "Choisir une couleur",
     "Follow": "Suivre",
@@ -347,7 +342,6 @@
     "Effect": "Effet",
     "Speed": "Vitesse",
     "Direction": "Direction",
-    "Brightness": "Luminosité",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Éclairage RGB -- mémoire et appareils OpenRGB",
     "RGB Lighting": "Éclairage RGB",
@@ -360,7 +354,6 @@
     "This needs OpenRGB 1.0 or newer.": "Il faut OpenRGB 1.0 ou plus récent."
   },
   "es": {
-    "Memory": "Memoria",
     "Motherboard": "Placa base",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Dejar como está",
@@ -428,7 +421,6 @@
     "Apply": "Aplicar",
     "LEDs on this header": "LED en este conector",
     "Blink": "Parpadear",
-    "Devices": "Dispositivos",
     "SDK server": "Servidor SDK",
     "Pick a colour": "Elegir un color",
     "Follow": "Seguir",
@@ -467,7 +459,6 @@
     "Effect": "Efecto",
     "Speed": "Velocidad",
     "Direction": "Dirección",
-    "Brightness": "Brillo",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Iluminación RGB -- memoria y dispositivos OpenRGB",
     "RGB Lighting": "Iluminación RGB",
@@ -480,7 +471,6 @@
     "This needs OpenRGB 1.0 or newer.": "Se necesita OpenRGB 1.0 o posterior."
   },
   "it": {
-    "Memory": "Memoria",
     "Motherboard": "Scheda madre",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Lascia com'è",
@@ -548,7 +538,6 @@
     "Apply": "Applica",
     "LEDs on this header": "LED su questo connettore",
     "Blink": "Lampeggia",
-    "Devices": "Dispositivi",
     "SDK server": "Server SDK",
     "Pick a colour": "Scegli un colore",
     "Follow": "Segui",
@@ -587,7 +576,6 @@
     "Effect": "Effetto",
     "Speed": "Velocità",
     "Direction": "Direzione",
-    "Brightness": "Luminosità",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Illuminazione RGB -- memoria e dispositivi OpenRGB",
     "RGB Lighting": "Illuminazione RGB",
@@ -600,7 +588,6 @@
     "This needs OpenRGB 1.0 or newer.": "Serve OpenRGB 1.0 o più recente."
   },
   "pt": {
-    "Memory": "Memória",
     "Motherboard": "Placa-mãe",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Deixar como está",
@@ -668,7 +655,6 @@
     "Apply": "Aplicar",
     "LEDs on this header": "LEDs neste conector",
     "Blink": "Piscar",
-    "Devices": "Dispositivos",
     "SDK server": "Servidor SDK",
     "Pick a colour": "Escolher uma cor",
     "Follow": "Seguir",
@@ -707,7 +693,6 @@
     "Effect": "Efeito",
     "Speed": "Velocidade",
     "Direction": "Direção",
-    "Brightness": "Brilho",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Iluminação RGB -- memória e dispositivos OpenRGB",
     "RGB Lighting": "Iluminação RGB",
@@ -720,7 +705,6 @@
     "This needs OpenRGB 1.0 or newer.": "É preciso o OpenRGB 1.0 ou mais recente."
   },
   "nl": {
-    "Memory": "Geheugen",
     "Motherboard": "Moederbord",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Laten zoals het is",
@@ -788,7 +772,6 @@
     "Apply": "Toepassen",
     "LEDs on this header": "Leds op deze aansluiting",
     "Blink": "Knipperen",
-    "Devices": "Apparaten",
     "SDK server": "SDK-server",
     "Pick a colour": "Kies een kleur",
     "Follow": "Volgen",
@@ -827,7 +810,6 @@
     "Effect": "Effect",
     "Speed": "Snelheid",
     "Direction": "Richting",
-    "Brightness": "Helderheid",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-verlichting -- geheugen en OpenRGB-apparaten",
     "RGB Lighting": "RGB-verlichting",
@@ -840,7 +822,6 @@
     "This needs OpenRGB 1.0 or newer.": "Hiervoor is OpenRGB 1.0 of nieuwer nodig."
   },
   "pl": {
-    "Memory": "Pamięć",
     "Motherboard": "Płyta główna",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Zostaw bez zmian",
@@ -908,7 +889,6 @@
     "Apply": "Zastosuj",
     "LEDs on this header": "Diody na tym złączu",
     "Blink": "Mrugnij",
-    "Devices": "Urządzenia",
     "SDK server": "Serwer SDK",
     "Pick a colour": "Wybierz kolor",
     "Follow": "Podążaj",
@@ -947,7 +927,6 @@
     "Effect": "Efekt",
     "Speed": "Szybkość",
     "Direction": "Kierunek",
-    "Brightness": "Jasność",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Oświetlenie RGB -- pamięć i urządzenia OpenRGB",
     "RGB Lighting": "Oświetlenie RGB",
@@ -960,7 +939,6 @@
     "This needs OpenRGB 1.0 or newer.": "Wymaga OpenRGB 1.0 lub nowszego."
   },
   "ru": {
-    "Memory": "Память",
     "Motherboard": "Материнская плата",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Не трогать",
@@ -1028,7 +1006,6 @@
     "Apply": "Применить",
     "LEDs on this header": "Светодиодов на этом разъёме",
     "Blink": "Мигнуть",
-    "Devices": "Устройства",
     "SDK server": "SDK-сервер",
     "Pick a colour": "Выберите цвет",
     "Follow": "Следовать",
@@ -1067,7 +1044,6 @@
     "Effect": "Эффект",
     "Speed": "Скорость",
     "Direction": "Направление",
-    "Brightness": "Яркость",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-подсветка -- память и устройства OpenRGB",
     "RGB Lighting": "RGB-подсветка",
@@ -1080,7 +1056,6 @@
     "This needs OpenRGB 1.0 or newer.": "Нужен OpenRGB 1.0 или новее."
   },
   "uk": {
-    "Memory": "Пам'ять",
     "Motherboard": "Материнська плата",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Не чіпати",
@@ -1148,7 +1123,6 @@
     "Apply": "Застосувати",
     "LEDs on this header": "Світлодіодів на цьому роз'ємі",
     "Blink": "Блимнути",
-    "Devices": "Пристрої",
     "SDK server": "SDK-сервер",
     "Pick a colour": "Виберіть колір",
     "Follow": "Стежити",
@@ -1187,7 +1161,6 @@
     "Effect": "Ефект",
     "Speed": "Швидкість",
     "Direction": "Напрямок",
-    "Brightness": "Яскравість",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-підсвічування -- пам'ять і пристрої OpenRGB",
     "RGB Lighting": "RGB-підсвічування",
@@ -1200,7 +1173,6 @@
     "This needs OpenRGB 1.0 or newer.": "Потрібен OpenRGB 1.0 або новіший."
   },
   "zh": {
-    "Memory": "内存",
     "Motherboard": "主板",
     "OpenRGB": "OpenRGB",
     "Leave alone": "保持不变",
@@ -1268,7 +1240,6 @@
     "Apply": "应用",
     "LEDs on this header": "此接口上的 LED 数",
     "Blink": "闪烁",
-    "Devices": "设备",
     "SDK server": "SDK 服务器",
     "Pick a colour": "选择颜色",
     "Follow": "跟随",
@@ -1307,7 +1278,6 @@
     "Effect": "效果",
     "Speed": "速度",
     "Direction": "方向",
-    "Brightness": "亮度",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB 灯光 -- 内存和 OpenRGB 设备",
     "RGB Lighting": "RGB 灯光",
@@ -1320,7 +1290,6 @@
     "This needs OpenRGB 1.0 or newer.": "需要 OpenRGB 1.0 或更高版本。"
   },
   "zh_TW": {
-    "Memory": "記憶體",
     "Motherboard": "主機板",
     "OpenRGB": "OpenRGB",
     "Leave alone": "保持不變",
@@ -1388,7 +1357,6 @@
     "Apply": "套用",
     "LEDs on this header": "此接頭上的 LED 數",
     "Blink": "閃爍",
-    "Devices": "裝置",
     "SDK server": "SDK 伺服器",
     "Pick a colour": "選擇顏色",
     "Follow": "跟隨",
@@ -1427,7 +1395,6 @@
     "Effect": "效果",
     "Speed": "速度",
     "Direction": "方向",
-    "Brightness": "亮度",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB 燈光 -- 記憶體和 OpenRGB 裝置",
     "RGB Lighting": "RGB 燈光",
@@ -1508,7 +1475,6 @@
     "Apply": "適用",
     "LEDs on this header": "このヘッダーの LED 数",
     "Blink": "点滅",
-    "Devices": "デバイス",
     "SDK server": "SDK サーバー",
     "Pick a colour": "色を選ぶ",
     "Follow": "追従",
@@ -1547,7 +1513,6 @@
     "Effect": "エフェクト",
     "Speed": "速度",
     "Direction": "方向",
-    "Brightness": "明るさ",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB ライティング -- メモリーと OpenRGB デバイス",
     "RGB Lighting": "RGB ライティング",
@@ -1560,7 +1525,6 @@
     "This needs OpenRGB 1.0 or newer.": "OpenRGB 1.0 以降が必要です。"
   },
   "ko": {
-    "Memory": "메모리",
     "Motherboard": "메인보드",
     "OpenRGB": "OpenRGB",
     "Leave alone": "그대로 두기",
@@ -1628,7 +1592,6 @@
     "Apply": "적용",
     "LEDs on this header": "이 헤더의 LED 수",
     "Blink": "깜박이기",
-    "Devices": "장치",
     "SDK server": "SDK 서버",
     "Pick a colour": "색 선택",
     "Follow": "따라가기",
@@ -1667,7 +1630,6 @@
     "Effect": "효과",
     "Speed": "속도",
     "Direction": "방향",
-    "Brightness": "밝기",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB 조명 -- 메모리와 OpenRGB 장치",
     "RGB Lighting": "RGB 조명",
@@ -1680,7 +1642,6 @@
     "This needs OpenRGB 1.0 or newer.": "OpenRGB 1.0 이상이 필요합니다."
   },
   "tr": {
-    "Memory": "Bellek",
     "Motherboard": "Anakart",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Olduğu gibi bırak",
@@ -1787,7 +1748,6 @@
     "Effect": "Efekt",
     "Speed": "Hız",
     "Direction": "Yön",
-    "Brightness": "Parlaklık",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB aydınlatma -- bellek ve OpenRGB aygıtları",
     "RGB Lighting": "RGB aydınlatma",
@@ -1800,7 +1760,6 @@
     "This needs OpenRGB 1.0 or newer.": "Bunun için OpenRGB 1.0 veya daha yenisi gerekir."
   },
   "cs": {
-    "Memory": "Paměť",
     "Motherboard": "Základní deska",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Nechat být",
@@ -1868,7 +1827,6 @@
     "Apply": "Použít",
     "LEDs on this header": "LED na tomto konektoru",
     "Blink": "Bliknout",
-    "Devices": "Zařízení",
     "SDK server": "SDK server",
     "Pick a colour": "Vyberte barvu",
     "Follow": "Sledovat",
@@ -1907,7 +1865,6 @@
     "Effect": "Efekt",
     "Speed": "Rychlost",
     "Direction": "Směr",
-    "Brightness": "Jas",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB osvětlení -- paměť a zařízení OpenRGB",
     "RGB Lighting": "RGB osvětlení",
@@ -1920,7 +1877,6 @@
     "This needs OpenRGB 1.0 or newer.": "Vyžaduje OpenRGB 1.0 nebo novější."
   },
   "sv": {
-    "Memory": "Minne",
     "Motherboard": "Moderkort",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Lämna som det är",
@@ -1988,7 +1944,6 @@
     "Apply": "Verkställ",
     "LEDs on this header": "Lysdioder på den här kontakten",
     "Blink": "Blinka",
-    "Devices": "Enheter",
     "SDK server": "SDK-server",
     "Pick a colour": "Välj en färg",
     "Follow": "Följ",
@@ -2027,7 +1982,6 @@
     "Effect": "Effekt",
     "Speed": "Hastighet",
     "Direction": "Riktning",
-    "Brightness": "Ljusstyrka",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-belysning -- minne och OpenRGB-enheter",
     "RGB Lighting": "RGB-belysning",
@@ -2040,7 +1994,6 @@
     "This needs OpenRGB 1.0 or newer.": "Det kräver OpenRGB 1.0 eller senare."
   },
   "da": {
-    "Memory": "Hukommelse",
     "Motherboard": "Bundkort",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Lad være",
@@ -2108,7 +2061,6 @@
     "Apply": "Anvend",
     "LEDs on this header": "LED'er på dette stik",
     "Blink": "Blink",
-    "Devices": "Enheder",
     "SDK server": "SDK-server",
     "Pick a colour": "Vælg en farve",
     "Follow": "Følg",
@@ -2147,7 +2099,6 @@
     "Effect": "Effekt",
     "Speed": "Hastighed",
     "Direction": "Retning",
-    "Brightness": "Lysstyrke",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-belysning -- hukommelse og OpenRGB-enheder",
     "RGB Lighting": "RGB-belysning",
@@ -2160,7 +2111,6 @@
     "This needs OpenRGB 1.0 or newer.": "Det kræver OpenRGB 1.0 eller nyere."
   },
   "no": {
-    "Memory": "Minne",
     "Motherboard": "Hovedkort",
     "OpenRGB": "OpenRGB",
     "Leave alone": "La være",
@@ -2228,7 +2178,6 @@
     "Apply": "Bruk",
     "LEDs on this header": "LED-er på denne kontakten",
     "Blink": "Blink",
-    "Devices": "Enheter",
     "SDK server": "SDK-server",
     "Pick a colour": "Velg en farge",
     "Follow": "Følg",
@@ -2267,7 +2216,6 @@
     "Effect": "Effekt",
     "Speed": "Hastighet",
     "Direction": "Retning",
-    "Brightness": "Lysstyrke",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-belysning -- minne og OpenRGB-enheter",
     "RGB Lighting": "RGB-belysning",
@@ -2280,7 +2228,6 @@
     "This needs OpenRGB 1.0 or newer.": "Dette krever OpenRGB 1.0 eller nyere."
   },
   "fi": {
-    "Memory": "Muisti",
     "Motherboard": "Emolevy",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Jätä ennalleen",
@@ -2348,7 +2295,6 @@
     "Apply": "Käytä",
     "LEDs on this header": "LEDejä tässä liittimessä",
     "Blink": "Vilkuta",
-    "Devices": "Laitteet",
     "SDK server": "SDK-palvelin",
     "Pick a colour": "Valitse väri",
     "Follow": "Seuraa",
@@ -2387,7 +2333,6 @@
     "Effect": "Tehoste",
     "Speed": "Nopeus",
     "Direction": "Suunta",
-    "Brightness": "Kirkkaus",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-valaistus -- muisti ja OpenRGB-laitteet",
     "RGB Lighting": "RGB-valaistus",
@@ -2400,7 +2345,6 @@
     "This needs OpenRGB 1.0 or newer.": "Tämä vaatii OpenRGB 1.0:n tai uudemman."
   },
   "hu": {
-    "Memory": "Memória",
     "Motherboard": "Alaplap",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Hagyja békén",
@@ -2468,7 +2412,6 @@
     "Apply": "Alkalmaz",
     "LEDs on this header": "LED-ek ezen a csatlakozón",
     "Blink": "Villogtatás",
-    "Devices": "Eszközök",
     "SDK server": "SDK-kiszolgáló",
     "Pick a colour": "Válasszon színt",
     "Follow": "Követés",
@@ -2507,7 +2450,6 @@
     "Effect": "Effekt",
     "Speed": "Sebesség",
     "Direction": "Irány",
-    "Brightness": "Fényerő",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB-világítás -- memória és OpenRGB-eszközök",
     "RGB Lighting": "RGB-világítás",
@@ -2520,7 +2462,6 @@
     "This needs OpenRGB 1.0 or newer.": "Ehhez OpenRGB 1.0 vagy újabb kell."
   },
   "ro": {
-    "Memory": "Memorie",
     "Motherboard": "Placă de bază",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Lasă așa",
@@ -2588,7 +2529,6 @@
     "Apply": "Aplică",
     "LEDs on this header": "LED-uri pe acest conector",
     "Blink": "Clipește",
-    "Devices": "Dispozitive",
     "SDK server": "Server SDK",
     "Pick a colour": "Alegeți o culoare",
     "Follow": "Urmează",
@@ -2627,7 +2567,6 @@
     "Effect": "Efect",
     "Speed": "Viteză",
     "Direction": "Direcție",
-    "Brightness": "Luminozitate",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Iluminare RGB -- memorie și dispozitive OpenRGB",
     "RGB Lighting": "Iluminare RGB",
@@ -2640,7 +2579,6 @@
     "This needs OpenRGB 1.0 or newer.": "Este nevoie de OpenRGB 1.0 sau mai nou."
   },
   "el": {
-    "Memory": "Μνήμη",
     "Motherboard": "Μητρική",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Άσ' το ως έχει",
@@ -2708,7 +2646,6 @@
     "Apply": "Εφαρμογή",
     "LEDs on this header": "LED σε αυτήν την υποδοχή",
     "Blink": "Αναλαμπή",
-    "Devices": "Συσκευές",
     "SDK server": "Διακομιστής SDK",
     "Pick a colour": "Επιλογή χρώματος",
     "Follow": "Ακολούθηση",
@@ -2747,7 +2684,6 @@
     "Effect": "Εφέ",
     "Speed": "Ταχύτητα",
     "Direction": "Κατεύθυνση",
-    "Brightness": "Φωτεινότητα",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Φωτισμός RGB -- μνήμη και συσκευές OpenRGB",
     "RGB Lighting": "Φωτισμός RGB",
@@ -2760,7 +2696,6 @@
     "This needs OpenRGB 1.0 or newer.": "Απαιτείται OpenRGB 1.0 ή νεότερο."
   },
   "he": {
-    "Memory": "זיכרון",
     "Motherboard": "לוח אם",
     "OpenRGB": "OpenRGB",
     "Leave alone": "להשאיר כמו שהוא",
@@ -2828,7 +2763,6 @@
     "Apply": "החל",
     "LEDs on this header": "נורות במחבר הזה",
     "Blink": "הבהוב",
-    "Devices": "התקנים",
     "SDK server": "שרת SDK",
     "Pick a colour": "בחירת צבע",
     "Follow": "מעקב",
@@ -2867,7 +2801,6 @@
     "Effect": "אפקט",
     "Speed": "מהירות",
     "Direction": "כיוון",
-    "Brightness": "בהירות",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "תאורת RGB -- זיכרון והתקני OpenRGB",
     "RGB Lighting": "תאורת RGB",
@@ -2880,7 +2813,6 @@
     "This needs OpenRGB 1.0 or newer.": "נדרש OpenRGB 1.0 ומעלה."
   },
   "ar": {
-    "Memory": "الذاكرة",
     "Motherboard": "اللوحة الأم",
     "OpenRGB": "OpenRGB",
     "Leave alone": "اتركه كما هو",
@@ -2948,7 +2880,6 @@
     "Apply": "تطبيق",
     "LEDs on this header": "مصابيح LED على هذا المنفذ",
     "Blink": "وميض",
-    "Devices": "الأجهزة",
     "SDK server": "خادم SDK",
     "Pick a colour": "اختر لونًا",
     "Follow": "متابعة",
@@ -2987,7 +2918,6 @@
     "Effect": "التأثير",
     "Speed": "السرعة",
     "Direction": "الاتجاه",
-    "Brightness": "السطوع",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "إضاءة RGB -- الذاكرة وأجهزة OpenRGB",
     "RGB Lighting": "إضاءة RGB",
@@ -3000,7 +2930,6 @@
     "This needs OpenRGB 1.0 or newer.": "يتطلب هذا OpenRGB 1.0 أو أحدث."
   },
   "hi": {
-    "Memory": "मेमोरी",
     "Motherboard": "मदरबोर्ड",
     "OpenRGB": "OpenRGB",
     "Leave alone": "जैसा है वैसा छोड़ें",
@@ -3068,7 +2997,6 @@
     "Apply": "लागू करें",
     "LEDs on this header": "इस हेडर पर LED",
     "Blink": "झपकाएँ",
-    "Devices": "डिवाइस",
     "SDK server": "SDK सर्वर",
     "Pick a colour": "रंग चुनें",
     "Follow": "अनुसरण",
@@ -3107,7 +3035,6 @@
     "Effect": "इफ़ेक्ट",
     "Speed": "गति",
     "Direction": "दिशा",
-    "Brightness": "चमक",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB लाइटिंग -- मेमोरी और OpenRGB डिवाइस",
     "RGB Lighting": "RGB लाइटिंग",
@@ -3120,7 +3047,6 @@
     "This needs OpenRGB 1.0 or newer.": "इसके लिए OpenRGB 1.0 या नया संस्करण चाहिए।"
   },
   "bn": {
-    "Memory": "মেমরি",
     "Motherboard": "মাদারবোর্ড",
     "OpenRGB": "OpenRGB",
     "Leave alone": "যেমন আছে রাখুন",
@@ -3188,7 +3114,6 @@
     "Apply": "প্রয়োগ",
     "LEDs on this header": "এই হেডারে LED",
     "Blink": "জ্বলা-নেভা",
-    "Devices": "ডিভাইস",
     "SDK server": "SDK সার্ভার",
     "Pick a colour": "একটি রং বাছুন",
     "Follow": "অনুসরণ",
@@ -3227,7 +3152,6 @@
     "Effect": "ইফেক্ট",
     "Speed": "গতি",
     "Direction": "দিক",
-    "Brightness": "উজ্জ্বলতা",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB আলো -- মেমরি ও OpenRGB ডিভাইস",
     "RGB Lighting": "RGB আলো",
@@ -3240,7 +3164,6 @@
     "This needs OpenRGB 1.0 or newer.": "এর জন্য OpenRGB 1.0 বা নতুন সংস্করণ লাগবে।"
   },
   "ur": {
-    "Memory": "میموری",
     "Motherboard": "مدر بورڈ",
     "OpenRGB": "OpenRGB",
     "Leave alone": "جیسا ہے رہنے دیں",
@@ -3347,7 +3270,6 @@
     "Effect": "اثر",
     "Speed": "رفتار",
     "Direction": "سمت",
-    "Brightness": "چمک",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB لائٹنگ -- میموری اور OpenRGB ڈیوائسز",
     "RGB Lighting": "RGB لائٹنگ",
@@ -3360,7 +3282,6 @@
     "This needs OpenRGB 1.0 or newer.": "اس کے لیے OpenRGB 1.0 یا نیا ورژن درکار ہے۔"
   },
   "fa": {
-    "Memory": "حافظه",
     "Motherboard": "مادربرد",
     "OpenRGB": "OpenRGB",
     "Leave alone": "دست نزن",
@@ -3428,7 +3349,6 @@
     "Apply": "اعمال",
     "LEDs on this header": "LEDهای این هدر",
     "Blink": "چشمک",
-    "Devices": "دستگاه‌ها",
     "SDK server": "سرور SDK",
     "Pick a colour": "انتخاب رنگ",
     "Follow": "دنبال کردن",
@@ -3467,7 +3387,6 @@
     "Effect": "افکت",
     "Speed": "سرعت",
     "Direction": "جهت",
-    "Brightness": "روشنایی",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "روشنایی RGB -- حافظه و دستگاه‌های OpenRGB",
     "RGB Lighting": "روشنایی RGB",
@@ -3587,7 +3506,6 @@
     "Effect": "ਪ੍ਰਭਾਵ",
     "Speed": "ਗਤੀ",
     "Direction": "ਦਿਸ਼ਾ",
-    "Brightness": "ਚਮਕ",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "RGB ਲਾਈਟਿੰਗ -- ਮੈਮੋਰੀ ਅਤੇ OpenRGB ਡਿਵਾਈਸ",
     "RGB Lighting": "RGB ਲਾਈਟਿੰਗ",
@@ -3600,7 +3518,6 @@
     "This needs OpenRGB 1.0 or newer.": "ਇਸ ਲਈ OpenRGB 1.0 ਜਾਂ ਨਵਾਂ ਸੰਸਕਰਣ ਚਾਹੀਦਾ ਹੈ।"
   },
   "ta": {
-    "Memory": "நினைவகம்",
     "Motherboard": "மதர்போர்டு",
     "OpenRGB": "OpenRGB",
     "Leave alone": "அப்படியே விடு",
@@ -3668,7 +3585,6 @@
     "Apply": "பயன்படுத்து",
     "LEDs on this header": "இந்த ஹெடரில் LED",
     "Blink": "மின்னு",
-    "Devices": "சாதனங்கள்",
     "SDK server": "SDK சேவையகம்",
     "Pick a colour": "ஒரு நிறத்தைத் தேர்ந்தெடு",
     "Follow": "பின்தொடர்",
@@ -3720,7 +3636,6 @@
     "This needs OpenRGB 1.0 or newer.": "இதற்கு OpenRGB 1.0 அல்லது புதியது தேவை."
   },
   "th": {
-    "Memory": "หน่วยความจำ",
     "Motherboard": "เมนบอร์ด",
     "OpenRGB": "OpenRGB",
     "Leave alone": "ปล่อยไว้ตามเดิม",
@@ -3788,7 +3703,6 @@
     "Apply": "นำไปใช้",
     "LEDs on this header": "LED บนเฮดเดอร์นี้",
     "Blink": "กะพริบ",
-    "Devices": "อุปกรณ์",
     "SDK server": "เซิร์ฟเวอร์ SDK",
     "Pick a colour": "เลือกสี",
     "Follow": "ตาม",
@@ -3827,7 +3741,6 @@
     "Effect": "เอฟเฟกต์",
     "Speed": "ความเร็ว",
     "Direction": "ทิศทาง",
-    "Brightness": "ความสว่าง",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "ไฟ RGB -- หน่วยความจำและอุปกรณ์ OpenRGB",
     "RGB Lighting": "ไฟ RGB",
@@ -3840,7 +3753,6 @@
     "This needs OpenRGB 1.0 or newer.": "ต้องใช้ OpenRGB 1.0 ขึ้นไป"
   },
   "vi": {
-    "Memory": "Bộ nhớ",
     "Motherboard": "Bo mạch chủ",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Để nguyên",
@@ -3908,7 +3820,6 @@
     "Apply": "Áp dụng",
     "LEDs on this header": "Số LED trên header này",
     "Blink": "Nháy",
-    "Devices": "Thiết bị",
     "SDK server": "Máy chủ SDK",
     "Pick a colour": "Chọn màu",
     "Follow": "Theo",
@@ -3947,7 +3858,6 @@
     "Effect": "Hiệu ứng",
     "Speed": "Tốc độ",
     "Direction": "Hướng",
-    "Brightness": "Độ sáng",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Đèn RGB -- bộ nhớ và thiết bị OpenRGB",
     "RGB Lighting": "Đèn RGB",
@@ -3960,7 +3870,6 @@
     "This needs OpenRGB 1.0 or newer.": "Cần OpenRGB 1.0 trở lên."
   },
   "id": {
-    "Memory": "Memori",
     "Motherboard": "Motherboard",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Biarkan",
@@ -4028,7 +3937,6 @@
     "Apply": "Terapkan",
     "LEDs on this header": "LED pada header ini",
     "Blink": "Kedip",
-    "Devices": "Perangkat",
     "SDK server": "Server SDK",
     "Pick a colour": "Pilih warna",
     "Follow": "Ikuti",
@@ -4067,7 +3975,6 @@
     "Effect": "Efek",
     "Speed": "Kecepatan",
     "Direction": "Arah",
-    "Brightness": "Kecerahan",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Pencahayaan RGB -- memori dan perangkat OpenRGB",
     "RGB Lighting": "Pencahayaan RGB",
@@ -4080,7 +3987,6 @@
     "This needs OpenRGB 1.0 or newer.": "Ini memerlukan OpenRGB 1.0 atau yang lebih baru."
   },
   "ms": {
-    "Memory": "Memori",
     "Motherboard": "Papan induk",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Biarkan",
@@ -4148,7 +4054,6 @@
     "Apply": "Guna",
     "LEDs on this header": "LED pada header ini",
     "Blink": "Kelip",
-    "Devices": "Peranti",
     "SDK server": "Pelayan SDK",
     "Pick a colour": "Pilih warna",
     "Follow": "Ikut",
@@ -4187,7 +4092,6 @@
     "Effect": "Kesan",
     "Speed": "Kelajuan",
     "Direction": "Arah",
-    "Brightness": "Kecerahan",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Lampu RGB -- memori dan peranti OpenRGB",
     "RGB Lighting": "Lampu RGB",
@@ -4268,7 +4172,6 @@
     "Apply": "Ilapat",
     "LEDs on this header": "Mga LED sa header na ito",
     "Blink": "Kumislap",
-    "Devices": "Mga device",
     "SDK server": "SDK server",
     "Pick a colour": "Pumili ng kulay",
     "Follow": "Sundan",
@@ -4307,7 +4210,6 @@
     "Effect": "Epekto",
     "Speed": "Bilis",
     "Direction": "Direksyon",
-    "Brightness": "Liwanag",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Ilaw na RGB -- memory at mga device ng OpenRGB",
     "RGB Lighting": "Ilaw na RGB",
@@ -4320,7 +4222,6 @@
     "This needs OpenRGB 1.0 or newer.": "Kailangan nito ang OpenRGB 1.0 o mas bago."
   },
   "sw": {
-    "Memory": "Kumbukumbu",
     "Motherboard": "Ubao mama",
     "OpenRGB": "OpenRGB",
     "Leave alone": "Acha kama ilivyo",
@@ -4388,7 +4289,6 @@
     "Apply": "Tumia",
     "LEDs on this header": "LED kwenye kichwa hiki",
     "Blink": "Mulika",
-    "Devices": "Vifaa",
     "SDK server": "Seva ya SDK",
     "Pick a colour": "Chagua rangi",
     "Follow": "Fuata",
@@ -4427,7 +4327,6 @@
     "Effect": "Athari",
     "Speed": "Kasi",
     "Direction": "Mwelekeo",
-    "Brightness": "Mwangaza",
     "RGB": "RGB",
     "RGB Lighting -- memory and OpenRGB devices": "Taa za RGB -- kumbukumbu na vifaa vya OpenRGB",
     "RGB Lighting": "Taa za RGB",
@@ -4440,7 +4339,6 @@
     "This needs OpenRGB 1.0 or newer.": "Hii inahitaji OpenRGB 1.0 au mpya zaidi."
   },
   "my": {
-    "Memory": "မှတ်ဉာဏ်",
     "Motherboard": "မားသားဘုတ်",
     "OpenRGB": "OpenRGB",
     "Leave alone": "ဒီအတိုင်းထား",

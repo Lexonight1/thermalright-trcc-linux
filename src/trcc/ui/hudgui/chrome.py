@@ -19,6 +19,7 @@ from PySide6.QtGui import QColor, QLinearGradient, QMouseEvent, QPainter, QPaint
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from ...core.logs import per_frame
+from ..qt_words import say, say_tip
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -30,7 +31,7 @@ CHROME_HEIGHT = 40
 MENU = ("Devices", "Sensors", "Modules", "Control Center", "About")
 #: A device side panel's own tabs: left to right, then Settings at the far
 #: end, the room between kept for an installed module's tab (his spec).
-DEVICE_TABS = ("Local Themes", "Cloud Masks", "Cloud Backgrounds")
+DEVICE_TABS = ("Local Theme", "Cloud Masks", "Cloud Backgrounds")
 DEVICE_SETTINGS_TAB = "Settings"
 #: The property a menu button carries: the item it opens.
 _ITEM = "hud_menu_item"
@@ -102,7 +103,7 @@ class TabBar(SilverStrip):
     def _tab(self, name: str) -> QPushButton:
         """One tab button."""
         log.debug("TabBar._tab: %s", name)
-        button = QPushButton(name, self)
+        button = say(QPushButton(self), name)
         button.setCheckable(True)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setStyleSheet(_MENU_STYLE)
@@ -157,7 +158,7 @@ class ChromeBar(SilverStrip):
         #: The menu buttons, by item.
         self.buttons: dict[str, QPushButton] = {}
         for item in MENU:
-            button = QPushButton(item, self)
+            button = say(QPushButton(self), item)
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setStyleSheet(_MENU_STYLE)
@@ -176,7 +177,7 @@ class ChromeBar(SilverStrip):
                                    self.close_clicked)):
             button = QPushButton(text, self)
             button.setFixedSize(22, 22)
-            button.setToolTip(tip)
+            say_tip(button, tip)
             button.setStyleSheet(_WINDOW_BUTTON_STYLE)
             button.clicked.connect(signal)
             row.addWidget(button)

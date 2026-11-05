@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from ...core.commands import ControlCenterSnapshot, ReadSensors
 from ...core.logs import per_frame
 from ..presentation.sensor_display import format_sensor_value, group_sensors
+from .words import say_late, words
 
 if TYPE_CHECKING:
     from ...core.events import SensorsUpdated
@@ -94,7 +95,7 @@ class SensorsView(QWidget):
         self._scroll.setWidget(body)        # the old body goes with it
         self._show_values({r.sensor_id: r.value for r in readings},
                           self._app.dispatch(ControlCenterSnapshot()).temp_unit)
-        self.note.setText("" if cards else "No sensors found.")
+        self.note.setText("" if cards else words(self._app)("No sensors found."))
 
     def _card(self, name: str, readings: list[SensorInfo], parent: QWidget) -> QWidget:
         """One card: its name, then a line per reading -- name, value."""
@@ -107,7 +108,8 @@ class SensorsView(QWidget):
         grid = QGridLayout(card)
         grid.setContentsMargins(12, 8, 12, 10)
         grid.setVerticalSpacing(3)
-        title = QLabel(name, card)
+        title = QLabel(card)
+        say_late(self._app, title, name)       # rebuilt on every refresh
         title.setStyleSheet("font-size: 12pt; font-weight: bold; color: #a9e6ff;")
         grid.addWidget(title, 0, 0, 1, 2)
         for line, reading in enumerate(readings, 1):

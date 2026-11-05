@@ -22,7 +22,6 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -159,12 +158,11 @@ class DevicePanel(QWidget):
         #: Each tab's area, by name.
         self.area = QStackedWidget(self)
         self.pages: dict[str, QWidget] = {}
-        grids = {"Local Themes": LocalThemes, "Cloud Masks": CloudMasks,
-                 "Cloud Backgrounds": CloudBackgrounds,
-                 DEVICE_SETTINGS_TAB: SettingsPage}
-        for name in (*DEVICE_TABS, DEVICE_SETTINGS_TAB):
-            grid = grids.get(name)
-            page = grid(app, bus, selection) if grid is not None else _coming(name)
+        pages = dict(zip((*DEVICE_TABS, DEVICE_SETTINGS_TAB),
+                         (LocalThemes, CloudMasks, CloudBackgrounds, SettingsPage),
+                         strict=True))
+        for name, kind in pages.items():
+            page = kind(app, bus, selection)
             self.pages[name] = page
             self.area.addWidget(page)
         row.addWidget(self.area, stretch=1)
@@ -236,13 +234,6 @@ class DevicesView(QWidget):
         self.panel.show()
 
 
-def _coming(name: str) -> QLabel:
-    """A tab whose contents are not built yet."""
-    log.debug("_coming: %s", name)
-    label = QLabel(f"{name} -- coming next.")
-    label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-    label.setStyleSheet("color: #dfe5ea; font-size: 12pt;")
-    return label
 
 
 class SettingsPage(QScrollArea):

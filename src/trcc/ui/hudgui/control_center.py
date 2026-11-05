@@ -37,6 +37,7 @@ from ...core.commands import (
     SetTempUnit,
 )
 from ...core.models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
+from ..qt_words import say, say_item
 
 if TYPE_CHECKING:
     from ...core.commands import Command
@@ -69,40 +70,40 @@ class ControlCenter(QWidget):
         form.setHorizontalSpacing(16)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
 
-        self.autostart_box = QCheckBox("Start TRCC when I log in", self)
+        self.autostart_box = QCheckBox(self)
         self.autostart_box.toggled.connect(self._on_autostart)
-        form.addRow("Startup", self.autostart_box)
+        form.addRow(say(QLabel(self), "Start automatically"), self.autostart_box)
 
         self.unit_box = QComboBox(self)
         for text, unit in UNITS:
             self.unit_box.addItem(text, unit)
         self.unit_box.currentIndexChanged.connect(self._on_unit)
-        form.addRow("Temperature", self.unit_box)
+        form.addRow(say(QLabel(self), "Temperature"), self.unit_box)
 
-        self.hdd_box = QCheckBox("Read the disks' temperature and use", self)
+        self.hdd_box = QCheckBox(self)
         self.hdd_box.toggled.connect(self._on_hdd)
-        form.addRow("Disks", self.hdd_box)
+        form.addRow(say(QLabel(self), "Hard disk information"), self.hdd_box)
 
         self.refresh_box = QSpinBox(self)
         self.refresh_box.setRange(int(MIN_REFRESH_INTERVAL_S), int(MAX_REFRESH_INTERVAL_S))
         self.refresh_box.setSuffix(" s")
         self.refresh_box.editingFinished.connect(self._on_refresh)
-        form.addRow("Refresh every", self.refresh_box)
+        form.addRow(say(QLabel(self), "Data refresh time"), self.refresh_box)
 
         self.gpu_box = QComboBox(self)
         for gpu in app.dispatch(ListGpus()).gpus:
             self.gpu_box.addItem(gpu.name, gpu.key)
         if not self.gpu_box.count():
-            self.gpu_box.addItem("No GPU detected", "")
+            say_item(self.gpu_box, "No GPU detected", "", str)
         self.gpu_box.setEnabled(self.gpu_box.count() > 1)
         self.gpu_box.currentIndexChanged.connect(self._on_gpu)
-        form.addRow("GPU", self.gpu_box)
+        form.addRow(say(QLabel(self), "Graphics card"), self.gpu_box)
 
         self.language_box = QComboBox(self)
         for language in app.dispatch(ListLanguages()).languages:
             self.language_box.addItem(f"{language.name} ({language.code})", language.code)
         self.language_box.currentIndexChanged.connect(self._on_language)
-        form.addRow("Language", self.language_box)
+        form.addRow(say(QLabel(self), "Language selection"), self.language_box)
 
         #: Why the last change was refused, or "".
         self.note = QLabel("", self)

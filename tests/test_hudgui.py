@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel
 
 from tests.conftest import show_a_theme
 from tests.mock_platform import MockPlatform
@@ -69,9 +70,9 @@ def test_devices_lists_the_symbols_and_a_pick_opens_its_side_panel(
     button.click()
     qtbot.waitUntil(devices.panel.isVisible)
     assert window._selection.key == _KEY and button.isChecked()
-    assert list(devices.panel.tabs.tabs) == ["Local Themes", "Cloud Masks",
+    assert list(devices.panel.tabs.tabs) == ["Local Theme", "Cloud Masks",
                                              "Cloud Backgrounds", "Settings"]
-    assert devices.panel.tabs.current == "Local Themes"
+    assert devices.panel.tabs.current == "Local Theme"
     assert isinstance(devices.panel.preview, PreviewSurface)
 
 
@@ -143,7 +144,7 @@ def _tab(window: Any, qtbot: Any, name: str) -> Any:
 
 
 def _local_themes(window: Any, qtbot: Any) -> Any:
-    return _tab(window, qtbot, "Local Themes")
+    return _tab(window, qtbot, "Local Theme")
 
 
 def _lit_names(grid: Any) -> list[str]:
@@ -245,7 +246,7 @@ def test_the_settings_switches_change_the_app_and_show_what_it_holds(
 def test_brightness_and_rotation_sit_under_the_preview(window: Any, qtbot: Any) -> None:
     from trcc.core.commands import LcdSnapshot
 
-    _tab(window, qtbot, "Local Themes")
+    _tab(window, qtbot, "Local Theme")
     controls = window.panel("Devices").panel.controls
     controls.brightness.setValue(40)
     controls.brightness.sliderReleased.emit()
@@ -282,7 +283,7 @@ def _layout(window: Any) -> list[tuple[str, str, int, int]]:
 def _add(editor: Any, label: str) -> None:
     from PySide6.QtWidgets import QPushButton
 
-    next(b for b in editor.findChildren(QPushButton) if b.text() == f"+ {label}").click()
+    next(b for b in editor.findChildren(QPushButton) if b.text() == label).click()
 
 
 def test_the_overlay_editor_adds_edits_and_deletes_through_the_app(
@@ -308,7 +309,7 @@ def test_the_overlay_editor_adds_edits_and_deletes_through_the_app(
     editor.delete.click()
     assert [e[0] for e in _layout(window)] == ["metric", "clock"]
     assert [editor.list.item(i).text() for i in range(editor.list.count())] == [
-        "Metric: cpu:temp", "Clock: date"]
+        "Metric: cpu:temp", "Clock: Date"]
 
 
 def test_the_overlay_switch_is_the_apps(window: Any, qtbot: Any) -> None:
@@ -374,14 +375,14 @@ def test_a_press_with_nothing_selected_picks_the_nearest(window: Any, qtbot: Any
     editor.list.clearSelection()
     editor.list.setCurrentRow(-1)
     window.panel("Devices").panel.preview.pressed.emit(240, 25)
-    assert editor.list.currentItem().text() == "Clock: time"
+    assert editor.list.currentItem().text() == "Clock: Time"
 
 
 def test_a_drag_outside_the_settings_tab_moves_nothing(window: Any, qtbot: Any) -> None:
     editor = _tab(window, qtbot, "Settings").overlay
     _add(editor, "Text")
     devices = window.panel("Devices")
-    devices.panel.tabs.tabs["Local Themes"].click()
+    devices.panel.tabs.tabs["Local Theme"].click()
     devices.panel.preview.pressed.emit(20, 20)
     devices.panel.preview.dragged.emit(120, 120)
     assert _layout(window) == [("text", "Text", 20, 20)]
@@ -655,3 +656,38 @@ def test_about_lists_every_credit(window: Any) -> None:
     view = _about(window)
     text = " ".join(label.text() for label in view.findChildren(QLabel))
     assert all(credit.name in text for _, credits in GROUPS for credit in credits)
+
+
+# ── The language ─────────────────────────────────────────────────────────
+
+
+def test_a_language_set_in_any_ui_retranslates_the_window(window: Any, qtbot: Any) -> None:
+    """The bar, a panel already made, the open panel's title, and a panel
+    made later -- all in the App's language, set here by another UI.
+    MUTATION CHECK: drop the ``LanguageChanged`` branch in ``_on_app_settings``."""
+    from trcc.core.commands import SetLanguage
+
+    window.bar.buttons["Control Center"].click()
+    center = window.panel("Control Center")
+    assert window._app.dispatch(SetLanguage(language="de")).ok     # e.g. the gui
+    qtbot.waitUntil(lambda: window.bar.buttons["Devices"].text() == "Geräte", timeout=2000)
+    assert window.drop.title == "Kontrollzentrum"
+    labels = {label.text() for label in center.findChildren(QLabel)}
+    assert "Grafikkarte" in labels
+    window.bar.buttons["Sensors"].click()
+    sensors = window.panel("Sensors")
+    sensors.refresh()                                   # rebuilt: still German
+    assert any(label.text() == "Lüfter" for label in sensors.findChildren(QLabel)
+               if label.isVisibleTo(sensors))
+
+
+def test_every_word_hudgui_says_is_in_every_language() -> None:
+    """A label hudgui ``say``s, and every word it translates at the moment,
+    is a key of the shared table -- so no language shows it in English."""
+    from trcc.core.i18n import TRANSLATIONS
+    from trcc.ui.hudgui.chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, MENU
+    from trcc.ui.hudgui.overlay import ADDS
+
+    english = TRANSLATIONS["en"]
+    words = {*MENU, *DEVICE_TABS, DEVICE_SETTINGS_TAB, *(a[0] for a in ADDS)}
+    assert words <= english.keys()
