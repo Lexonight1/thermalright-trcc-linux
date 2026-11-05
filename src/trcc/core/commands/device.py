@@ -1636,8 +1636,9 @@ class StartScreencast(Command[ScreencastResult]):
         # A live video playback overlay would race the screencast tick on
         # the same wire — stop it first so the handler owns the surface
         # cleanly.  StopVideo is idempotent so it's safe even if no
-        # playback was loaded.
-        app.dispatch(StopVideo(key=self.key))
+        # playback was loaded.  ``keep_override``: the picked background
+        # stays chosen under the cast, for the off to restore.
+        app.dispatch(StopVideo(key=self.key, keep_override=True))
 
         # Persist the region as the active display source (clears any
         # background/video override — the toggles are mutually exclusive) so
@@ -1970,9 +1971,10 @@ def _stop_cast(app: App, key: str) -> bool:
 
 
 def _theme_background_returns(app: App, key: str) -> None:
-    """The source the user chose ended: the theme's own background shows
-    again -- its video plays, or its picture is drawn.  The one way back for
-    a cast, a media player and a module's picture."""
+    """The media player or a module's picture ended: the theme's own
+    background shows again -- its video plays, or its picture is drawn.  (A
+    cast goes ON TOP of the chosen background, so its off is the startup
+    restore, ``RestoreDeviceState``, instead.)"""
     theme = app.active_themes.get(key)
     video = app.themes.video_path(theme) if theme is not None else None
     log.info("_theme_background_returns: %s theme=%s video=%s", key,
@@ -2180,10 +2182,11 @@ class StopScreencast(Command[ScreencastResult]):
         log.info("StopScreencast.execute: key=%s — ending the session, its "
                  "driver and its capture", self.key)
         if _stop_cast(app, self.key):
-            # The user's off: the panel is the theme's again -- its video
-            # plays, its picture is drawn -- as the media player's off does.
-            # It was left with no source at all: blank (2026-11-04).
-            _theme_background_returns(app, self.key)
+            # The user's off: the panel shows what it showed before the cast,
+            # restored as a start restores it -- the saved theme, and the
+            # background picked over it.  It was left blank (2026-11-04).
+            from .theme import RestoreDeviceState
+            app.dispatch(RestoreDeviceState(key=self.key))
         return ScreencastResult(
             ok=True, key=self.key, active=False,
             message=f"screencast stopped on {self.key}",

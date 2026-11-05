@@ -616,14 +616,19 @@ class Settings:
         """Set (or clear with ``None``) the device's active screencast region.
 
         The screencast toggle's persisted state — SaveTheme bakes it into a
-        theme's ``screencast`` ref and a reload resumes it.  Mutually exclusive
-        with a video/image background, so setting one clears the other.
+        theme's ``screencast`` ref and a reload resumes it.  A cast goes ON
+        TOP of the chosen background, as the C#'s does: it is not erased, so
+        turning the cast off restores it (``display_source`` reads the cast
+        first while it runs).  It erased it until 2026-11-04, and the off
+        showed the theme's background instead of the one the user picked.
         """
         log.info("set_screencast_region: key=%s region=%s", key, region)
         with self._display_write(key) as dev:
             dev.screencast_region = region
             if region is not None:
-                _only_source(dev, "screencast_region")
+                # A theme's module background still waiting would put itself
+                # over the cast when its module came on.
+                dev.pending_background = None
             self._save()
 
     def set_screencast_rect(self, key: str, rect: tuple[int, int, int, int],

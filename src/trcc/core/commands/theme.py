@@ -87,6 +87,7 @@ from ._helpers import (
 from .device import (
     ApplyMask,
     PlayVideo,
+    SetBackground,
     SetMaskPosition,
     SetMediaPlayer,
     StartScreencast,
@@ -2158,9 +2159,12 @@ class RestoreDeviceState(Command[ThemeResult]):
                      self.key, s.media_player_uri)
             app.dispatch(SetMediaPlayer(key=self.key, uri=s.media_player_uri))
         elif s.background_path:
-            log.info("RestoreDeviceState: %s replaying persisted background %s",
+            # SetBackground: a picked IMAGE is a background too -- PlayVideo
+            # refused it ("unsupported video extension '.png'") on every
+            # restore; SetBackground draws an image and plays a video.
+            log.info("RestoreDeviceState: %s restoring its background %s",
                      self.key, s.background_path)
-            app.dispatch(PlayVideo(key=self.key, path=Path(s.background_path)))
+            app.dispatch(SetBackground(key=self.key, path=Path(s.background_path)))
 
         return ThemeResult(
             ok=True, key=self.key, theme_name=theme.name,
