@@ -41,6 +41,7 @@ from ..qt_preview import FRAME_EDGE
 from .chrome import CHROME_HEIGHT, ChromeBar
 from .devices import DevicesView
 from .dropdown import DropPanel
+from .sensors import SensorsView
 
 if TYPE_CHECKING:
     from ...core.events import SensorsUpdated
@@ -109,6 +110,8 @@ class HudWindow(QWidget):
                 self._bus.frames_resumed.connect(devices.panel.preview.refresh)
                 self._bus.follow_previews(devices.panel.preview)
                 self._panels[item] = devices
+            elif item == "Sensors":
+                self._panels[item] = SensorsView(self._app, self._bus)
             else:
                 self._panels[item] = _placeholder(item)
         return self._panels[item]
