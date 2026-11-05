@@ -330,83 +330,75 @@ def _build_device(info: ProductInfo):
 
 
 def probe_video_size_zero(_platform, _info) -> ProbeResult:
-    """VideoDecoder must guard against a zero dimension in ``size``.
+    """The ffmpeg decode must guard against a zero dimension in ``size``.
 
-    Caught #136 questist territory.  ``_FRAME_SIZE_RGB24(0, h) == 0`` then
-    ``len(raw) % 0`` raises ZeroDivisionError — there is no positive-dim
-    guard on ``size`` today, so this reproduces a live latent crash.
+    A zero side gives ffmpeg an ``-s 0x480`` it cannot honour; the guard in
+    ``decode_command`` refuses it with the module's own error first.
     """
     from unittest.mock import patch
 
-    from trcc.services.media import ThemeError, VideoDecoder
-
-    def _fake_run(*_a, **_k):
-        class _R:
-            returncode = 0
-            stdout = b""
-            stderr = b""
-        return _R()
+    from trcc.adapters.media.ffmpeg import decode_command
+    from trcc.core import toolchain
+    from trcc.core.errors import ThemeError
+    from trcc.core.models import VideoDecodeRequest
 
     try:
-        with patch("trcc.services.media.subprocess.run", side_effect=_fake_run), \
-             patch("trcc.core.toolchain.present", return_value=True), \
+        with patch("trcc.core.toolchain.present", return_value=True), \
              patch.object(Path, "exists", return_value=True):
-            VideoDecoder(Path("/tmp/x.mp4"), size=(0, 480)).decode()
-        return _bad("VideoDecoder accepted size=(0,480) silently — "
+            decode_command(VideoDecodeRequest(Path("/tmp/x.mp4"), size=(0, 480), fps=15),
+                           toolchain.generic_install_hint)
+        return _bad("decode_command accepted size=(0,480) silently — "
                     "no positive-dimension guard")
-    except ZeroDivisionError:
-        return _bad("ZeroDivisionError on size=(0,480): len(raw) % frame_size "
-                    "with frame_size=0 — no zero-dim guard on size")
     except (ValueError, ThemeError) as e:
-        return _ok(f"VideoDecoder rejects zero-dim size cleanly: {e}")
+        return _ok(f"decode_command rejects zero-dim size cleanly: {e}")
     except Exception as e:
         return _err(f"{type(e).__name__}: {e}")
 
 
 def probe_video_size_portrait(_platform, _info) -> ProbeResult:
-    """Portrait ``size`` decodes the expected frame count without collapse.
+    """Portrait ``size`` reaches ffmpeg as asked, and its frames split whole.
 
     The payload must be shaped like what ffmpeg ACTUALLY emits.  This probe
     fed ``b"\\x00" * (w*h*3)`` -- one raw RGB24 frame -- until 2026-09-15, and
     reported ``pipeline drops portrait`` on all five devices.  The pipeline
-    drops nothing: ``VideoDecoder`` asks for ``-c:v mjpeg -f image2pipe`` and
+    drops nothing: the decode asks for ``-c:v mjpeg -f image2pipe`` and
     splits the stream on JPEG SOI/EOI markers (#264, #256), so a buffer of
     zero bytes carries no frame to find and the decoder was right to return
     none.  Landscape failed identically, which is the tell that orientation
     was never involved.
 
     A stale harness that accuses the product is worse than no harness -- see
-    ``memory/project_the_mock_did_the_apps_job.md``.  Both orientations are
-    checked now, so the next encoding change fails loudly instead of being
-    reported as a portrait bug.
+    ``memory/project_the_mock_did_the_apps_job.md``.  It went stale a second
+    time: it patched ``subprocess.run`` after the decode moved to ``Popen``.
+    It now checks the two halves the decode is made of -- the command and the
+    splitter -- so no process is needed to fake.
     """
     from unittest.mock import patch
 
-    from trcc.services.media import VideoDecoder
+    from trcc.adapters.media.ffmpeg import _JpegFrames, decode_command
+    from trcc.core import toolchain
+    from trcc.core.models import VideoDecodeRequest
 
     wanted = 3
     mjpeg = (b"\xff\xd8" + b"jpeg-body" + b"\xff\xd9") * wanted
 
-    def _fake_run(*_a, **_k):
-        class _R:
-            returncode = 0
-            stdout = mjpeg
-            stderr = b""
-        return _R()
-
     try:
         for label, size in (("portrait", (320, 480)),
                             ("landscape", (480, 320))):
-            with patch("trcc.services.media.subprocess.run", side_effect=_fake_run), \
-                 patch("trcc.core.toolchain.present", return_value=True), \
+            with patch("trcc.core.toolchain.present", return_value=True), \
                  patch.object(Path, "exists", return_value=True):
-                frames = VideoDecoder(Path("/tmp/x.mp4"), size=size).decode()
+                cmd = decode_command(VideoDecodeRequest(Path("/tmp/x.mp4"), size=size, fps=15),
+                                     toolchain.generic_install_hint)
+            scale = cmd[cmd.index("-s") + 1] if "-s" in cmd else None
+            if scale != f"{size[0]}x{size[1]}":
+                return _bad(f"{label} {size[0]}x{size[1]} reached ffmpeg as -s {scale}")
+            frames = _JpegFrames().feed(mjpeg)
             if len(frames) != wanted:
                 return _bad(
                     f"{label} {size[0]}x{size[1]} decoded {len(frames)} "
                     f"frame(s), expected {wanted}",
                 )
-        return _ok(f"portrait + landscape → {wanted} frame(s) each")
+        return _ok(f"portrait + landscape → -s as asked, {wanted} frame(s) each")
     except Exception as e:
         return _err(f"{type(e).__name__}: {e}")
 
@@ -589,10 +581,10 @@ class Probe:
 
 PROBES: list[Probe] = [
     Probe("video.size.zero",
-          "VideoDecoder guards against a zero dimension in size",
+          "the ffmpeg decode guards against a zero dimension in size",
           probe_video_size_zero),
     Probe("video.size.portrait",
-          "VideoDecoder handles portrait dimensions",
+          "the ffmpeg decode handles portrait dimensions",
           probe_video_size_portrait),
     Probe("device.factory.resolves",
           "every registry wire resolves to a concrete Device subclass",

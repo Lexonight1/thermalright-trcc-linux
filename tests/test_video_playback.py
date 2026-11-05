@@ -37,6 +37,7 @@ from trcc.core.models import (
     Kind,
     ProductInfo,
     Theme,
+    VideoDecodeRequest,
     Wire,
 )
 from trcc.core.ports import Renderer
@@ -47,7 +48,6 @@ from trcc.services.display import DisplayService
 from trcc.services.media import (
     MediaService,
     Playback,
-    VideoDecoder,
 )
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
@@ -678,22 +678,27 @@ def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
     assert open_calls, "Static background should be loaded via open_image"
 
 
-# ── VideoDecoder zero-dim guard ──────────────────────────────────────
+# ── the ffmpeg decode: its size guard, its scale, its frames ─────────
 
 
-class _FakeProc:
-    """Stand-in for subprocess.run's CompletedProcess."""
+def decode_all(request: VideoDecodeRequest, tool: FfmpegTool | None = None) -> list[bytes]:
+    """*request* decoded to the end through the tool -- the frames, or
+    ``ThemeError``.  What ``load_video`` does, without waiting on just two."""
+    frames: list[bytes] = []
+    decode = (tool or FfmpegTool()).decode(request, frames, on_done=_nothing)
+    decode.wait_done()
+    if decode.error:
+        raise ThemeError(f"ffmpeg decode failed: {decode.error}")
+    return frames
 
-    returncode = 0
-    stderr = b""
 
-    def __init__(self, stdout: bytes) -> None:
-        self.stdout = stdout
+def _nothing() -> None:
+    return None
 
 
 class _FakeFfmpeg:
     """``subprocess.Popen`` standing in for ffmpeg: *output* on stdout, then
-    exit *code* -- the shape ``BackgroundDecode`` reads (``read1``, stderr
+    exit *code* -- the shape ``FfmpegDecode`` reads (``read1``, stderr
     lines, ``wait``).  Records each command it was started with."""
 
     def __init__(self, output: bytes, code: int = 0, stderr: bytes = b"") -> None:
@@ -722,13 +727,9 @@ def test_video_decoder_rejects_zero_dimension(
     clip = tmp_home / "clip.mp4"
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
-    monkeypatch.setattr(
-        "trcc.services.media.subprocess.run",
-        lambda *a, **k: _FakeProc(b""),
-    )
 
     with pytest.raises(ThemeError, match="width and height must both be positive"):
-        VideoDecoder(clip, size=(0, 480)).decode()
+        decode_all(VideoDecodeRequest(clip, size=(0, 480), fps=15))
 
 
 @pytest.mark.parametrize(("fit_within", "rescale"), [
@@ -746,8 +747,9 @@ def test_a_4k_user_video_decodes_at_the_largest_size_a_fit_mode_draws(
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
     ffmpeg = _FakeFfmpeg(_encoded_frame(0xFF102030, 16, 16))
-    monkeypatch.setattr("trcc.services.media.subprocess.Popen", ffmpeg)
-    VideoDecoder(clip, size=None, fit_within=fit_within, native=(3840, 2160)).decode()   # a 4K source
+    monkeypatch.setattr("trcc.adapters.media.ffmpeg.subprocess.Popen", ffmpeg)
+    decode_all(VideoDecodeRequest(clip, size=None, fps=15, fit_within=fit_within,
+                                  native=(3840, 2160)))                     # a 4K source
     (cmd,) = ffmpeg.commands
     assert (cmd[cmd.index("-s"):cmd.index("-s") + 2] if "-s" in cmd else []) == rescale
 
@@ -764,9 +766,9 @@ def test_video_decoder_accepts_valid_dimension(
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     two = _encoded_frame(0xFF102030, 320, 480) + _encoded_frame(0xFF405060, 320, 480)
     monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
-    monkeypatch.setattr("trcc.services.media.subprocess.Popen", _FakeFfmpeg(two))
+    monkeypatch.setattr("trcc.adapters.media.ffmpeg.subprocess.Popen", _FakeFfmpeg(two))
 
-    frames = VideoDecoder(clip, size=(320, 480)).decode()
+    frames = decode_all(VideoDecodeRequest(clip, size=(320, 480), fps=15))
     assert len(frames) == 2
     assert all(f.startswith(b"\xff\xd8") and f.endswith(b"\xff\xd9") for f in frames)
 
@@ -1388,7 +1390,7 @@ def test_a_real_gif_decodes_to_many_frames(tmp_home: Path) -> None:
         check=True,
     )
 
-    frames = VideoDecoder(gif, size=(64, 64), fps=5).decode()
+    frames = decode_all(VideoDecodeRequest(gif, size=(64, 64), fps=5))
 
     assert len(frames) == 10, f"expected 10 gif frames, got {len(frames)}"
     playback = Playback(frames=frames, fps=5)

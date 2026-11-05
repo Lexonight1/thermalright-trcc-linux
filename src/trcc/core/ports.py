@@ -65,6 +65,7 @@ if TYPE_CHECKING:
         SensorReading,
         Theme,
         UsbPowerState,
+        VideoDecodeRequest,
         VideoProbe,
         WebPreviewInfo,
         Wire,
@@ -1948,17 +1949,55 @@ class ContentStore(ABC):
 # =========================================================================
 
 
+class VideoDecode(ABC):
+    """A decode the :class:`VideoTool` is running on its own thread, filling
+    the frames it was handed (#264: playback starts on the first frames, the
+    rest arrives behind).  A decode that fails partway keeps what it decoded;
+    one that fails before any frame leaves :attr:`error` for the caller."""
+
+    @property
+    @abstractmethod
+    def error(self) -> str:
+        """Why the decode failed, "" while it has not."""
+
+    @property
+    @abstractmethod
+    def done(self) -> bool:
+        """Whether the decode has ended -- finished, failed or cancelled."""
+
+    @abstractmethod
+    def wait_for(self, frames: int, timeout: float) -> int:
+        """Until *frames* have arrived or the decode ended; how many there are."""
+
+    @abstractmethod
+    def wait_done(self, timeout: float | None = None) -> bool:
+        """Until the decode ended; whether it did."""
+
+    @abstractmethod
+    def cancel(self) -> None:
+        """Stop the decode (idempotent) -- a new video replaced it, or none plays."""
+
+
 class VideoTool(ABC):
     """The tool TRCC hands video work to: today the ``ffmpeg`` and
     ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App
     as the renderer is.  Services ask it; none runs a program itself.  It grows
-    one capability per increment of the port: probe; then decode, stream,
+    one capability per increment of the port: probe and decode; then stream,
     export and the trimmer's preview."""
 
     @abstractmethod
     def probe(self, path: Path) -> VideoProbe:
         """What *path* is -- its length, size, frame rate and frame count --
         from ONE read.  What the tool cannot tell is zero / None."""
+
+    @abstractmethod
+    def decode(self, request: VideoDecodeRequest, frames: list[bytes], *,
+               on_done: Callable[[], None],
+               on_error: Callable[[str], None] | None = None) -> VideoDecode:
+        """Start decoding *request* into *frames* -- ENCODED images, appended
+        as they arrive -- and return at once.  *on_done* runs once it ends,
+        before :attr:`VideoDecode.done` turns true; *on_error* hears of a
+        failure after the first frame.  ``ThemeError`` when it cannot start."""
 
 
 # =========================================================================

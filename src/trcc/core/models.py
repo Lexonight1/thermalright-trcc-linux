@@ -2132,6 +2132,26 @@ class VideoProbe:
 
 
 @dataclass(frozen=True, slots=True)
+class VideoDecodeRequest:
+    """What to decode a video file into a playback's frames (``VideoTool.decode``).
+
+    ``size`` is the output scale: a tuple for program/cloud assets, authored
+    at the device's canvas; ``None`` for a user's upload, decoded at its
+    NATIVE size (``native``, from the probe) so the compositor's fit mode
+    scales it -- capped by ``fit_within``, the canvas, at the largest size a
+    fit mode draws.  ``duration_s`` trims it; ``rotation_degrees`` is the
+    display rotation the tool applies as it decodes.
+    """
+    path: Path
+    size: tuple[int, int] | None
+    fps: int
+    rotation_degrees: int = 0
+    duration_s: float | None = None
+    fit_within: tuple[int, int] | None = None
+    native: tuple[int, int] | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class VideoExportRequest:
     """What to encode into a ``Theme.zt`` — a DTO, not a service type.
 

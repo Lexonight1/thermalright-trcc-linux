@@ -62,7 +62,7 @@ def test_a_video_without_ffmpeg_names_the_platforms_hint(
     _no_ffmpeg(monkeypatch)
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"\0")
-    media = MediaService(install_hint=lambda tool: f"this OS: get {tool}", video_tool=FfmpegTool())
+    media = MediaService(video_tool=FfmpegTool(lambda tool: f"this OS: get {tool}"))
 
     with pytest.raises(ThemeError, match="this OS: get ffmpeg"):
         media.load_video("k", clip, size=(320, 320))
@@ -81,12 +81,21 @@ def test_an_export_without_ffmpeg_names_the_platforms_hint(
             target_w=320, target_h=320, rotation=0))
 
 
-def test_the_app_hands_its_platforms_hint_to_media(fake_platform) -> None:
-    """The composition root is what makes the hint the platform's."""
+def test_the_app_hands_its_platforms_hint_to_the_video_tool(
+    fake_platform, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """The composition root is what makes the hint the platform's.
+
+    MUTATION CHECK: build the App's ``FfmpegTool()`` without the hint -- the
+    generic one shows."""
     from trcc.app import App
     app = App(fake_platform)
+    _no_ffmpeg(monkeypatch)
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"\0")
 
-    assert app.media._install_hint("ffmpeg") == "fake platform: install ffmpeg"
+    with pytest.raises(ThemeError, match="fake platform: install ffmpeg"):
+        app.media.load_video("k", clip, size=(320, 320))
 
 
 def test_a_zt_plays_without_ffmpeg(

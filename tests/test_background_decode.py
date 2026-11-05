@@ -17,11 +17,11 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.media import ffmpeg as ffmpeg_module
+from trcc.adapters.media.ffmpeg import FfmpegTool, _JpegFrames
 from trcc.core.errors import ThemeError
-from trcc.core.models import VideoProbe
-from trcc.core.ports import VideoTool
-from trcc.services import media as media_module
-from trcc.services.media import MediaService, Playback, _JpegFrames
+from trcc.core.models import SUBPROCESS_NO_WINDOW, VideoProbe
+from trcc.services.media import MediaService, Playback
 
 from .test_video_playback import _encoded_frame
 
@@ -62,11 +62,13 @@ class _GatedFfmpeg:
         self.gate = threading.Event()
         self.pipes: list[_Pipe] = []
         self.terminated = 0
+        self.options: list[dict[str, Any]] = []
 
     def release(self) -> None:
         self.gate.set()
 
-    def __call__(self, cmd: list[str], **_: Any) -> Any:
+    def __call__(self, cmd: list[str], **options: Any) -> Any:
+        self.options.append(options)
         pipe = _Pipe(b"".join(self._first), b"".join(self._rest), self.gate)
         self.pipes.append(pipe)
         ffmpeg = self
@@ -92,9 +94,9 @@ class _GatedFfmpeg:
         return _Proc()
 
 
-class _TwoSeconds(VideoTool):
-    """A probe that reads every file as 2 s long -- 30 frames at 15 fps --
-    injected, where this file patched a module function before the port."""
+class _TwoSeconds(FfmpegTool):
+    """The ffmpeg tool, its probe reading every file as 2 s long -- 30 frames
+    at 15 fps -- and its decode the real one, against the fake ffmpeg."""
 
     def probe(self, path: Path) -> VideoProbe:
         return VideoProbe(duration_s=2.0)
@@ -110,7 +112,7 @@ def clip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _ffmpeg(monkeypatch: pytest.MonkeyPatch, ffmpeg: _GatedFfmpeg) -> _GatedFfmpeg:
-    monkeypatch.setattr(media_module.subprocess, "Popen", ffmpeg)
+    monkeypatch.setattr(ffmpeg_module.subprocess, "Popen", ffmpeg)
     return ffmpeg
 
 
@@ -240,3 +242,17 @@ def test_a_load_that_fails_leaves_the_playing_video_decoding(
     old.release()
     media._decodes["k"].wait_done(5)
     assert len(pb.frames) == 3
+
+
+def test_the_decode_never_flashes_a_console_on_windows(
+    clip: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every program the tool runs carries ``SUBPROCESS_NO_WINDOW``; the
+    decode did not before it moved to the adapter, so each video load opened
+    a console window on Windows.
+
+    MUTATION CHECK: drop the creationflags from the Popen -- None != the flag."""
+    ffmpeg = _ffmpeg(monkeypatch, _GatedFfmpeg(first=[_jpeg(1), _jpeg(2)], rest=[]))
+    ffmpeg.release()
+    MediaService(video_tool=_TwoSeconds()).load_video("k", clip, size=(8, 8), fps=15)
+    assert [o.get("creationflags") for o in ffmpeg.options] == [SUBPROCESS_NO_WINDOW]

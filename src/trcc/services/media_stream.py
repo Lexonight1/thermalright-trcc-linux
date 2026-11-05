@@ -6,7 +6,7 @@ URL is the same with ffmpeg in place of the screen grab.  This reader runs
 ffmpeg on the URL in real time and keeps the NEWEST frame; the App's
 ``SourceDriver`` takes it each tick (``CaptureSourceFrame``).
 
-Local files keep ``VideoDecoder``, which decodes a whole video up front.  A
+Local files keep the ``VideoTool`` decode, which reads a whole video.  A
 stream never ends, and a slow download would outlast the 30 s IPC timeout, so
 a URL cannot take that path -- and ``Path("https://x")`` collapses its ``//``.
 

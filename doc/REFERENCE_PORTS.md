@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-91 ports.
+92 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -26,7 +26,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SignatureChecker`](#signaturechecker) | 1 | 0 | 1 |
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
-| [`VideoTool`](#videotool) | 1 | 0 | 1 |
 | [`_QtUI`](#_qtui) | 1 | 4 | 2 |
 | [`BackgroundLayer`](#backgroundlayer) | 2 | 1 | 4 |
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
@@ -45,6 +44,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`TlsIdentity`](#tlsidentity) | 2 | 0 | 1 |
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
+| [`VideoTool`](#videotool) | 2 | 0 | 1 |
 | [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`AppService`](#appservice) | 3 | 0 | 1 |
@@ -91,6 +91,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
 | [`SettingsPort`](#settingsport) | 5 | 0 | 1 |
 | [`SuperIoChip`](#superiochip) | 5 | 0 | 3 |
+| [`VideoDecode`](#videodecode) | 5 | 0 | 1 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
@@ -339,20 +340,6 @@ run() -> int
 **You inherit (11):** `announce` · `bring_up` · `compose` · `dispatch` · `events` · `on_app_gone` · `preflight` · `remote` · `start` · `stop` · `teardown`
 
 **Implementations (5):** `ApiUI` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
-
-## VideoTool
-
-`core/ports.py`
-
-The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe; then decode, stream, export and the trimmer's preview.
-
-**You implement (1):**
-
-```python
-probe(path: 'Path') -> VideoProbe
-```
-
-**Implementations (1):** `FfmpegTool`
 
 ## _QtUI
 
@@ -630,6 +617,21 @@ submit(token: 'str', request: 'VideoExportRequest') -> None
 ```
 
 **Implementations (2):** `SyncVideoExportRunner` · `ThreadVideoExportRunner`
+
+## VideoTool
+
+`core/ports.py`
+
+The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe and decode; then stream, export and the trimmer's preview.
+
+**You implement (2):**
+
+```python
+decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
+probe(path: 'Path') -> VideoProbe
+```
+
+**Implementations (1):** `FfmpegTool`
 
 ## _HidBinding
 
@@ -1432,6 +1434,24 @@ name(chip_id: 'int') -> str | None
 ```
 
 **Implementations (3):** `Ite` · `Nct668x` · `Nuvoton`
+
+## VideoDecode
+
+`core/ports.py`
+
+A decode the :class:`VideoTool` is running on its own thread, filling the frames it was handed (#264: playback starts on the first frames, the rest arrives behind).  A decode that fails partway keeps what it decoded; one that fails before any frame leaves :attr:`error` for the caller.
+
+**You implement (5):**
+
+```python
+cancel() -> None
+done() -> bool
+error() -> str
+wait_done(timeout: 'float | None' = None) -> bool
+wait_for(frames: 'int', timeout: 'float') -> int
+```
+
+**Implementations (1):** `FfmpegDecode`
 
 ## VisualEngine
 

@@ -184,9 +184,8 @@ class App(CommandBus, ModuleServices):
         self.settings = Settings(platform.paths())
         self.themes = FileContentStore(platform.paths())
         #: What video work is handed to -- the ffmpeg programs unless injected.
-        self.video_tool: VideoTool = video_tool or FfmpegTool()
-        self.media = MediaService(install_hint=platform.software_install_hint,
-                                  video_tool=self.video_tool)
+        self.video_tool: VideoTool = video_tool or FfmpegTool(platform.software_install_hint)
+        self.media = MediaService(video_tool=self.video_tool)
         # The current background per device.  Here rather than on
         # DisplayService because ``_wire_display`` rebuilds that service
         # whenever a renderer is attached, and a background that vanished on

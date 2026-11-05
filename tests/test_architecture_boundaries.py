@@ -1205,7 +1205,7 @@ KNOWN_FS_IO: dict[str, int] = {
     "trcc/services/cloud_theme.py": 5,
     "trcc/services/display.py": 4,
     "trcc/services/first_run.py": 5,
-    "trcc/services/media.py": 3,  # _ffmpeg_available probed PATH by hand (2026-10-06)
+    "trcc/services/media.py": 2,  # the ffmpeg decode moved to its adapter (2026-11-05)
     "trcc/services/migration.py": 13,
     "trcc/services/overlay.py": 2,
     "trcc/services/settings.py": 4,

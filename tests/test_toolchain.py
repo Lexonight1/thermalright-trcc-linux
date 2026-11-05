@@ -390,8 +390,10 @@ def test_a_machine_with_only_versioned_ffmpeg_plays_and_probes_video(
 ) -> None:
     """The real binaries, renamed the way pkgsrc names them, alone on PATH."""
     from trcc.adapters.media.ffmpeg import FfmpegTool
+    from trcc.core.models import VideoDecodeRequest
     from trcc.services.cloud_theme import _generate_animated_gif
-    from trcc.services.media import VideoDecoder
+
+    from .test_video_playback import decode_all
 
     clip = tmp_path / "clip.mp4"
     subprocess.run(
@@ -408,7 +410,7 @@ def test_a_machine_with_only_versioned_ffmpeg_plays_and_probes_video(
 
     probe = FfmpegTool().probe(clip)                # the ONE probe, through ffprobe7
     assert (probe.size, probe.duration_ms, round(probe.fps), probe.frames) == ((64, 48), 1000, 8, 8)
-    assert len(VideoDecoder(clip, size=None, fps=8, native=probe.size).decode()) == 8
+    assert len(decode_all(VideoDecodeRequest(clip, size=None, fps=8, native=probe.size))) == 8
     gif = tmp_path / "clip.gif"
     _generate_animated_gif(clip, gif)
     assert gif.is_file()
