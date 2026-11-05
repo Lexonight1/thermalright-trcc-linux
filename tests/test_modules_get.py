@@ -25,6 +25,7 @@ from trcc.core.commands import (
     RemoveModule,
     SetDeveloperMode,
     SetModuleEnabled,
+    UnlockModuleDevices,
 )
 from trcc.core.events import DeveloperModeChanged, EventBus, ModuleInstalled, ModuleRemoved
 from trcc.core.models import MODULE_CAPABILITIES, AvailableModule, ModuleAsks, ModuleInfo
@@ -108,7 +109,8 @@ def _install(key: str, asks: ModuleAsks) -> InstallModule:
 #: Developer mode's Commands, as both windows pass them.
 _DEVELOPER: dict[str, Any] = {"developer": SetDeveloperMode,
                               "read_folder": ReadModuleFolder,
-                              "install_folder": InstallModuleFolder}
+                              "install_folder": InstallModuleFolder,
+                              "unlock": UnlockModuleDevices}
 
 
 @pytest.fixture

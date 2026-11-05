@@ -42,6 +42,7 @@ from ...core.commands import (
     SetHddEnabled,
     SetModuleEnabled,
     SetSensorDashboard,
+    UnlockModuleDevices,
 )
 from ...core.models import Kind, ModuleAsks, PanelConfig, SensorBinding
 from ...core.results import (
@@ -292,6 +293,17 @@ def remove_module(key: str, request: Request) -> ModuleResult:
     log.info("api DELETE /system/modules/%s", key)
     result = request.app.state.trcc.dispatch(RemoveModule(key=key))
     http_error_if_failed(result, status_code=409)
+    return result
+
+
+@router.post("/modules/{key}/unlock")
+def unlock_module(key: str, request: Request) -> ModuleResult:
+    """Let module *key* reach its USB devices -- the App asks for the
+    password; 404 for a key no module has, 409 when it is off or still
+    locked."""
+    log.info("api POST /system/modules/%s/unlock", key)
+    result = request.app.state.trcc.dispatch(UnlockModuleDevices(key=key))
+    http_error_if_failed(result, status_code=404 if not result.found else 409)
     return result
 
 

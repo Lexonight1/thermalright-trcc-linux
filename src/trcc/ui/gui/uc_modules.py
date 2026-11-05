@@ -19,6 +19,7 @@ from ...core.commands import (
     RemoveModule,
     SetDeveloperMode,
     SetModuleEnabled,
+    UnlockModuleDevices,
 )
 from ...core.logs import per_frame
 from ...core.models import ModuleAsks
@@ -69,7 +70,8 @@ class UCModules(QWidget):
                             browse=BrowseModules, install=self._install,
                             remove=RemoveModule, developer=SetDeveloperMode,
                             read_folder=ReadModuleFolder,
-                            install_folder=InstallModuleFolder)
+                            install_folder=InstallModuleFolder,
+                            unlock=UnlockModuleDevices)
         self.view.setGeometry(*_BODY)
         self.view.setStyleSheet(_STYLE)
         # A module switched in any UI: this page follows.

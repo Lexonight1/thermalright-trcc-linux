@@ -2068,6 +2068,18 @@ trcc system modules remove [OPTIONS] KEY
 |---|---|
 | `--yes`, `-y` | Do not ask first |
 
+#### `trcc system modules unlock`
+
+Let a module reach its USB devices -- asks for your password once.
+
+```bash
+trcc system modules unlock KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | The module's key |
+
 ### `trcc system openrgb-ports`
 
 Where OpenRGB finds each cooler: the DDP device to add in OpenRGB. With RGB Lighting on, every connected cooler has its own port on this computer; colours OpenRGB sends there show over the cooler's own mode, and its mode is back a moment after they stop. OpenRGB cannot find a cooler by itself -- add a DDP device with these values.

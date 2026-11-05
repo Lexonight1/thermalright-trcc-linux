@@ -57,6 +57,7 @@ from trcc.core.models import (
     quirks_for,
 )
 from trcc.core.ports import (
+    ModuleDevices,
     RamAccess,
     RgbHardware,
     SensorEnumerator,
@@ -548,6 +549,9 @@ class MockPlatform(FakePlatform):
         self.aura = ScriptedAuraController()
         #: What Find spots: the board's names and its Aura's HID interface.
         self.rgb = ScriptedRgbHardware()
+        #: Each module's USB-device grant, in memory -- locked until unlocked,
+        #: as on Linux, and never the host's helper.
+        self.module_grants = ScriptedModuleDevices()
         log.info("MockPlatform: %d spec(s) loaded, root=%s",
                  len(self._specs), root)
 
@@ -584,6 +588,9 @@ class MockPlatform(FakePlatform):
         log.debug("MockPlatform.rgb_hardware: scripted, not the host's")
         return self.rgb
 
+    def module_devices(self) -> ModuleDevices:
+        log.debug("MockPlatform.module_devices: scripted, not the host's")
+        return self.module_grants
 
     def scan_devices(self) -> list[DeviceInfo]:
         """Surface one ``DeviceInfo`` per spec that resolves in the registry."""
@@ -762,6 +769,31 @@ class ScriptedRamAccess(RamAccess):
         log.info("ScriptedRamAccess.disable")
         self.state = RamAccessState.OFF
         return self.status()
+
+
+class ScriptedModuleDevices(ModuleDevices):
+    """Each module's USB-device grant, in memory: unlocking asks nobody for a
+    password and writes no udev rule -- a mock window's Unlock must never
+    reach the host's polkit.  Starts with nothing granted, as a fresh
+    install does, so the locked tile can be seen and pressed."""
+
+    def __init__(self) -> None:
+        log.info("ScriptedModuleDevices: nothing granted")
+        self.granted: dict[str, tuple[str, ...]] = {}
+
+    def grant(self, key: str, devices: tuple[str, ...]) -> str:
+        log.info("ScriptedModuleDevices.grant: %s %s", key, devices)
+        self.granted[key] = devices
+        return ""
+
+    def revoke(self, key: str) -> None:
+        log.info("ScriptedModuleDevices.revoke: %s", key)
+        self.granted.pop(key, None)
+
+    def locked(self, key: str, devices: tuple[str, ...]) -> str:
+        reached = not devices or set(self.granted.get(key, ())) == set(devices)
+        log.debug("ScriptedModuleDevices.locked: %s reached=%s", key, reached)
+        return "" if reached else "Its USB devices need your permission"
 
 
 # ── Scripted ASUS Aura motherboard controller (USB HID, report 0xEC) ────────

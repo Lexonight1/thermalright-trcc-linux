@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         BulkTransport,
         HotplugMonitor,
         HttpFetcher,
+        ModuleDevices,
         Platform,
         RamAccess,
         RgbHardware,
@@ -520,6 +521,7 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
     from tests.mock_platform import (
         DeviceSpec,
         ScriptedAuraController,
+        ScriptedModuleDevices,
         ScriptedRamAccess,
         ScriptedRgbHardware,
         ScriptedSound,
@@ -547,6 +549,9 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
             self.ram = scripted_ram()
             #: Its grant: switched in memory, never through the host's polkit.
             self.ram_grant = ScriptedRamAccess()
+            #: Each module's USB-device grant: in memory too, never the host's
+            #: trcc-module-devices helper.
+            self.module_grants = ScriptedModuleDevices()
             #: The board's Aura lighting controller -- scripted, so a mock
             #: run with the fan following never lights the host's real one.
             self.aura = ScriptedAuraController()
@@ -626,6 +631,10 @@ def _build_dev_platform(specs: list[dict] | None = None, *,
         def rgb_hardware(self) -> RgbHardware:
             log.debug("DevMockPlatform.rgb_hardware: scripted, not the host's")
             return self.rgb
+
+        def module_devices(self) -> ModuleDevices:
+            log.debug("DevMockPlatform.module_devices: scripted, not the host's")
+            return self.module_grants
 
         # Audio visuals: a scripted beat, never the host's sound, and a
         # scripted MilkDrop, never the host's GPU.

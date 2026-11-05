@@ -94,6 +94,9 @@ class _Devices(ModuleDevices):
     def revoke(self, key: str) -> None:
         self.calls.append(("revoke", key))
 
+    def locked(self, key: str, devices: tuple[str, ...]) -> str:
+        return self.answer
+
 
 class Shop:
     """The maintainer's side: keys, a root, and an index of greeter releases

@@ -49,6 +49,7 @@ from ..core.ports import (
     LedSource,
     LightsPort,
     Module,
+    ModuleDevices,
     ModuleHost,
     ModuleServices,
     NetworkPort,
@@ -533,14 +534,14 @@ class ModuleRunner:
     """The modules an App has, which are on, and which are running."""
 
     def __init__(self, specs: Mapping[str, ModuleSpec], host: ModuleServices,
-                 settings: Settings) -> None:
+                 settings: Settings, devices: ModuleDevices) -> None:
         log.info("ModuleRunner: %s", sorted(specs))
         self._specs = dict(specs)
         #: Loaded modules only: one is imported the first time it switches on.
         self._modules: dict[str, Module] = {}
         #: Each loaded module's own view of the host.
         self._scopes: dict[str, ModuleScope] = {}
-        self._host, self._settings = host, settings
+        self._host, self._settings, self._devices = host, settings, devices
         self._on: set[str] = set()
         self._started: set[str] = set()
         self._session = False
@@ -621,8 +622,11 @@ class ModuleRunner:
         spec = self._specs[key]
         problem = (spec.refused or (f"taken back: {revoked}" if revoked else "")
                    or (module.problem() if module is not None else ""))
+        # Only a module that is on needs its devices now.
+        locked = (self._devices.locked(key, manifest.devices)
+                  if key in self._on else "")
         return ModuleInfo(key=key, title=manifest.title, summary=manifest.summary,
-                          enabled=key in self._on, problem=problem,
+                          enabled=key in self._on, problem=problem, locked=locked,
                           icon=bool(manifest.icon), guide=manifest.guide,
                           origin=spec.origin, allowed=not spec.refused,
                           version=manifest.version, author=manifest.author)

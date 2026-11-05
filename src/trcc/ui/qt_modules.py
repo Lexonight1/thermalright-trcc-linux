@@ -61,6 +61,7 @@ from .presentation.module_catalog import (
     byline,
     catalog_rows,
     consent,
+    locked_line,
     problem_line,
     removable,
     removal_question,
@@ -97,12 +98,13 @@ class ModulesView(QScrollArea):
                  remove: Callable[[str], Command[Any]],
                  developer: Callable[..., Command[Any]],
                  read_folder: Callable[..., Command[Any]],
-                 install_folder: Callable[..., Command[Any]]) -> None:
+                 install_folder: Callable[..., Command[Any]],
+                 unlock: Callable[[str], Command[Any]]) -> None:
         super().__init__(parent)
         log.info("ModulesView: built")
         self._app = app
         self._listing = listing
-        self._switch = switch
+        self._switch, self._unlock = switch, unlock
         self._icon = icon
         self._browse, self._install, self._remove = browse, install, remove
         self.setWidgetResizable(True)
@@ -115,6 +117,8 @@ class ModulesView(QScrollArea):
         self.switches: dict[str, QPushButton] = {}
         #: Each installed module's Remove, by key.
         self.removes: dict[str, QPushButton] = {}
+        #: Unlock, by key, on each module that cannot reach its USB devices.
+        self.unlocks: dict[str, QPushButton] = {}
         #: Each listed module's Install / Update, by key, while browsing.
         self.actions: dict[str, QPushButton] = {}
         #: What the last switch of each module left to say -- why it was
@@ -202,6 +206,7 @@ class ModulesView(QScrollArea):
                 widget.deleteLater()
         self.switches.clear()
         self.removes.clear()
+        self.unlocks.clear()
         self.actions.clear()
         self._titles.clear()
 
@@ -288,6 +293,7 @@ class ModulesView(QScrollArea):
         # say about how it went off (a workspace one that failed stopping).
         note = "\n".join(filter(None, (
             problem_line(module, self._translate),
+            locked_line(module, self._translate),
             self._translate(self.notes.get(module.key, "")))))
         if note:
             problem = QLabel(note)
@@ -312,6 +318,14 @@ class ModulesView(QScrollArea):
             remove.clicked.connect(self._on_remove)
             row.addWidget(remove, 0, Qt.AlignmentFlag.AlignVCenter)
             self.removes[module.key] = remove
+        if module.locked:
+            unlock = QPushButton(self._translate("Unlock"))
+            unlock.setObjectName("moduleUnlock")
+            unlock.setCursor(Qt.CursorShape.PointingHandCursor)
+            unlock.setProperty(_KEY_PROPERTY, module.key)
+            unlock.clicked.connect(self._on_unlock)
+            row.addWidget(unlock, 0, Qt.AlignmentFlag.AlignVCenter)
+            self.unlocks[module.key] = unlock
         switch = QPushButton(self._translate("On" if module.enabled else "Off"))
         switch.setCheckable(True)
         switch.setChecked(module.enabled)
@@ -333,6 +347,18 @@ class ModulesView(QScrollArea):
             sender.setEnabled(False)       # one switch at a time
         dispatch_in_background(self._app, self._switch(key, checked),
                                self._switched,
+                               failed=partial(_could_not, key))
+
+    def _on_unlock(self) -> None:
+        """Ask the App to let the user reach the module's USB devices -- off
+        the GUI thread, since it asks for the password; the tile then shows
+        what is still in the way, or nothing."""
+        sender = self.sender()
+        key = str(sender.property(_KEY_PROPERTY)) if sender is not None else ""
+        log.info("ModulesView._on_unlock: %s", key)
+        if isinstance(sender, QPushButton):
+            sender.setEnabled(False)       # one prompt at a time
+        dispatch_in_background(self._app, self._unlock(key), self._switched,
                                failed=partial(_could_not, key))
 
     def _switched(self, result: ModuleResult) -> None:

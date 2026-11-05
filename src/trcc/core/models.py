@@ -1411,6 +1411,9 @@ class ModuleInfo:
     summary: str
     enabled: bool
     problem: str = ""
+    #: Why this user cannot reach its USB devices yet ("" when it can) --
+    #: ``UnlockModuleDevices`` asks for the permission.
+    locked: str = ""
     icon: bool = False
     guide: str = ""
     #: Where it came from: ``built-in`` (ships with TRCC), ``installed`` (from

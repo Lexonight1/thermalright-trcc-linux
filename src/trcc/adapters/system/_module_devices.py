@@ -79,12 +79,19 @@ class LinuxModuleDevices(ModuleDevices):
         log.debug("LinuxModuleDevices.granted: %s -> %s", key, devices)
         return devices
 
+    def locked(self, key: str, devices: tuple[str, ...]) -> str:
+        """Its rule must name exactly *devices*: one that names fewer locks
+        the rest out, and one naming more was written for another release."""
+        reached = not devices or set(self.granted(key)) == set(devices)
+        log.debug("LinuxModuleDevices.locked: %s reached=%s", key, reached)
+        return "" if reached else "Its USB devices need your permission"
+
     def grant(self, key: str, devices: tuple[str, ...]) -> str:
         log.info("LinuxModuleDevices.grant: %s %s", key, devices)
         if not devices:
             self.revoke(key)
             return ""
-        if set(self.granted(key)) == set(devices):
+        if not self.locked(key, devices):
             log.info("LinuxModuleDevices.grant: %s already reaches them", key)
             return ""
         args = ["enable", key, *devices]

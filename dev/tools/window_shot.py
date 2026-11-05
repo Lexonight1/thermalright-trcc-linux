@@ -22,6 +22,9 @@ up -- as another UI would -- so the picture shows the Modules page following it.
 ``--browse`` presses "Get modules" on each Modules page and prints what the
 page then says; with ``--online`` the App reads the REAL network (the live
 module index) while USB stays scripted -- without it, the index is offline.
+``--unlock KEY`` prints each Modules page's locked tiles, saves the window as
+``<out>-before.png``, presses KEY's Unlock -- the scripted grant, never the
+host's polkit -- and prints what the tile says after.
 Prints what it saw: each module's tab or entry and whether it is visible.
 """
 from __future__ import annotations
@@ -80,7 +83,8 @@ def mock_platform(root: Path, online: bool) -> Any:
 
 def shoot(face: str, out: Path, modules: list[str], open_key: str,
           wait: float = 3.0, lang: str = "", developer: bool = False,
-          browse: bool = False, online: bool = False) -> list[str]:
+          browse: bool = False, online: bool = False,
+          unlock: str = "") -> list[str]:
     """Build *face*, switch *modules*, open *open_key*, save the window to
     *out*; what each module's tab or entry looked like."""
     from PySide6.QtWidgets import QApplication
@@ -136,6 +140,8 @@ def shoot(face: str, out: Path, modules: list[str], open_key: str,
         seen += _developer_mode(app, window, qapp)
     if browse:
         seen += _browse(window, qapp, wait)
+    if unlock:
+        seen += _unlock(window, qapp, unlock, out.with_name(f"{out.stem}-before.png"))
     _settle(qapp, wait)
     window.grab().save(str(out))
     window.close()
@@ -185,6 +191,35 @@ def _browse(window: Any, qapp: Any, wait: float) -> list[str]:
     return lines or ["get modules: no Modules page in this window"]
 
 
+def _locked_tiles(window: Any) -> list[str]:
+    """Each Modules page's tiles that offer Unlock, and what they say."""
+    from PySide6.QtWidgets import QLabel
+
+    from trcc.ui.qt_modules import ModulesView
+
+    lines = []
+    for view in window.findChildren(ModulesView):
+        says = [label.text() for label in view.findChildren(QLabel)
+                if label.objectName() == "moduleProblem" and label.isVisibleTo(window)]
+        lines.append(f"modules page: unlock={sorted(view.unlocks)} says={says}")
+    log.info("_locked_tiles: %s", lines)
+    return lines or ["modules page: none in this window"]
+
+
+def _unlock(window: Any, qapp: Any, key: str, before: Path) -> list[str]:
+    """Press *key*'s Unlock on each Modules page; the pages before and after."""
+    from trcc.ui.qt_modules import ModulesView
+
+    lines = [f"before: {line}" for line in _locked_tiles(window)]
+    window.grab().save(str(before))
+    for view in window.findChildren(ModulesView):
+        if key in view.unlocks:
+            view.unlocks[key].click()
+    _settle(qapp, 1.0)
+    log.info("_unlock: %s pressed, before saved to %s", key, before)
+    return lines + [f"after:  {line}" for line in _locked_tiles(window)]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("face", choices=("gui", "qtgui"))
@@ -199,11 +234,14 @@ def main(argv: list[str] | None = None) -> int:
                     help='press "Get modules" and print what the page says')
     ap.add_argument("--online", action="store_true",
                     help="let the App reach the real network (the live module index)")
+    ap.add_argument("--unlock", default="", metavar="KEY",
+                    help="press this module's Unlock (scripted) and print the tiles")
     ap.add_argument("--wait", type=float, default=3.0,
                     help="seconds to let background answers arrive first")
     args = ap.parse_args(argv)
     for line in shoot(args.face, args.out, args.module, args.open, args.wait,
-                      args.lang, args.developer, args.browse, args.online):
+                      args.lang, args.developer, args.browse, args.online,
+                      args.unlock):
         print(line)
     print(f"saved {args.out}")
     return 0

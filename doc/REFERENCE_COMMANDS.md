@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**170 total: 120 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**171 total: 121 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1644,7 +1644,7 @@ Developer mode on or off: whether a module may be installed from a folder, unsig
 
 ### `SetModuleEnabled`
 
-Switch module *key* on or off -- remembered, and every UI hears it. A module that cannot run here refuses, and nothing changes.
+Switch module *key* on or off -- remembered, and every UI hears it. A module that cannot run here refuses, and nothing changes.  Switched on, it is let reach the USB devices its ``module.json`` names.
 
 *Command* → `ModuleResult`
 
@@ -1652,6 +1652,16 @@ Switch module *key* on or off -- remembered, and every UI hears it. A module tha
 |---|---|---|
 | `key` | `str` | yes |
 | `enabled` | `bool` | yes |
+
+### `UnlockModuleDevices`
+
+Let this user reach module *key*'s USB devices -- the password, once, for what its ``module.json`` names.  What a tile's "locked" line asks for (a cancelled prompt, an upgrade that added a device); nothing is asked when it already reaches them.
+
+*Command* → `ModuleResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
 
 ## rgb module
 

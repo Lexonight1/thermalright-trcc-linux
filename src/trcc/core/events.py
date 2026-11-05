@@ -330,9 +330,10 @@ class ScreencastStopped(Event):
 
 @dataclass(frozen=True, slots=True)
 class ModuleChanged(Event):
-    """A module was switched on or off -- every UI's Modules page follows.
-    ``note`` is what the module had to tell the user as it went off (a
-    permission it could not take back), "" for nothing."""
+    """A module was switched on or off, or let reach its USB devices -- every
+    UI's Modules page follows.  ``note`` is what the user must know: a
+    permission it could not take back as it went off, or the USB devices it
+    still cannot reach; "" for nothing."""
     key: str
     enabled: bool
     note: str = ""

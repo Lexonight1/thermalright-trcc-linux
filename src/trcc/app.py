@@ -458,6 +458,9 @@ class App(CommandBus, ModuleServices):
         #: Every background a module draws, by its theme ref prefix: the
         #: module, and how themes play, save and resume it.
         self._background_kinds: dict[str, tuple[str, BackgroundKind]] = {}
+        #: Letting this user reach each module's USB devices -- one for the
+        #: App: its tiles read it, installing and switching on ask it.
+        self.module_devices = platform.module_devices()
         self.modules = ModuleRunner(
             {key: self._as_installed(spec) for key, spec in module_catalog.specs(
                 user_root=platform.paths().user_modules_dir(),
@@ -467,7 +470,7 @@ class App(CommandBus, ModuleServices):
             if modules is None else {
                 key: m if isinstance(m, ModuleSpec) else ModuleSpec.of(m)
                 for key, m in modules.items()},
-            host=self, settings=self.settings)
+            host=self, settings=self.settings, devices=self.module_devices)
         self.modules.enable_saved()
         self._warn_unsigned_on()
         #: Getting more modules: the signed index, and the user's own folder.
@@ -476,7 +479,7 @@ class App(CommandBus, ModuleServices):
             store=module_catalog.FolderModuleStore(platform.paths().user_modules_dir()),
             settings=self.settings, runner=self.modules, load_spec=self._installed_spec,
             forget=self._forget_module, built_in=self._built_in_module,
-            publish=self.events.publish, devices=platform.module_devices(),
+            publish=self.events.publish, devices=self.module_devices,
             trcc_version=__version__)
         # Once per user: themes a module draws move into its folder.  After
         # the modules, whose manifests say which module draws what.

@@ -205,3 +205,18 @@ def test_a_permission_trcc_did_not_grant_is_left_alone(
     result = app.dispatch(SetModuleEnabled(key="rgb", enabled=False))
     assert (result.ok, result.note, grant.removed) == (True, "", 0)
     app.close()
+
+
+def test_its_manifest_asks_for_every_board_its_driver_writes_to() -> None:
+    """``devices`` in module.json is what the user is asked to unlock; the
+    Aura driver's boards come from the generated OpenRGB catalog.  When a
+    regeneration adds a board, this says the exact list to write.
+    MUTATION CHECK: drop 0b05:19af from module.json."""
+    import trcc.modules.rgb
+    from trcc.adapters.modules._catalog import read_manifest
+    from trcc.modules import MANIFEST
+    from trcc.modules.rgb.adapters.asus_aura import AURA_VID, MAINBOARD_PIDS
+
+    manifest = read_manifest(Path(trcc.modules.rgb.__file__).parent / MANIFEST)
+    boards = sorted(f"{AURA_VID:04x}:{pid:04x}" for pid in MAINBOARD_PIDS)
+    assert sorted(manifest.devices) == boards, f'set "devices" to {boards}'

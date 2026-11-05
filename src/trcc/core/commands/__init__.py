@@ -105,6 +105,7 @@ from .modules import (
     RemoveModule,
     SetDeveloperMode,
     SetModuleEnabled,
+    UnlockModuleDevices,
 )
 from .system import (
     AdvanceSlideshow,
@@ -324,6 +325,7 @@ __all__ = [
     "TickGameMode",
     "ToggleLed",
     "ToggleVideo",
+    "UnlockModuleDevices",
     "UpdateOverlayElement",
     "UpdateStatus",
     "UploadBootAnimation",

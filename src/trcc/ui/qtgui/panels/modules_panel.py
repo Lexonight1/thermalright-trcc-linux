@@ -21,6 +21,7 @@ from ....core.commands import (
     RemoveModule,
     SetDeveloperMode,
     SetModuleEnabled,
+    UnlockModuleDevices,
 )
 from ....core.models import ModuleAsks
 from ...qt_modules import ModulesView
@@ -46,7 +47,8 @@ class ModulesPanel(BasePanel):
                             browse=BrowseModules, install=self._install,
                             remove=RemoveModule, developer=SetDeveloperMode,
                             read_folder=ReadModuleFolder,
-                            install_folder=InstallModuleFolder)
+                            install_folder=InstallModuleFolder,
+                            unlock=UnlockModuleDevices)
         layout.addWidget(self.view, 1)
         self._bus.app_settings_changed.connect(
             self.view.on_event, type=Qt.ConnectionType.QueuedConnection)

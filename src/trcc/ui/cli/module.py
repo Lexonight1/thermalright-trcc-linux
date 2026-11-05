@@ -25,12 +25,14 @@ from ...core.commands import (
     RemoveModule,
     SetDeveloperMode,
     SetModuleEnabled,
+    UnlockModuleDevices,
 )
 from ...core.models import AvailableModule
 from ..presentation.module_catalog import (
     NONE_LISTED,
     byline,
     consent,
+    locked_line,
     problem_line,
     removal_question,
     wanted_line,
@@ -55,6 +57,8 @@ def list_modules() -> None:
         typer.echo(f"        {byline(m, str)}")
         if problem := problem_line(m, str):
             typer.echo(f"        {problem}")
+        if locked := locked_line(m, str):
+            typer.echo(f"        {locked} -- trcc system modules unlock {m.key}")
     # A module a panel chose and this TRCC does not have has no row above --
     # nothing here knows anything about it but its key.
     for want in listed.wanted:
@@ -131,6 +135,16 @@ def install(key: str = typer.Argument(..., help="The module's key"),
     typer.echo(result.message)
     if result.note:
         typer.echo(result.note)
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("unlock")
+def unlock(key: str = typer.Argument(..., help="The module's key")) -> None:
+    """Let a module reach its USB devices -- asks for your password once."""
+    log.info("cli module unlock: %s", key)
+    result = get_app().dispatch(UnlockModuleDevices(key=key))
+    typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
 

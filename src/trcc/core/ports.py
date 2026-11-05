@@ -2456,6 +2456,11 @@ class ModuleDevices(ABC):
     def revoke(self, key: str) -> None:
         """Take back what module *key* was granted; nothing, when nothing was."""
 
+    @abstractmethod
+    def locked(self, key: str, devices: tuple[str, ...]) -> str:
+        """Why this user cannot reach module *key*'s *devices* yet -- "" when
+        it can.  Only reads: never asks for a password."""
+
 
 class OpenModuleDevices(ModuleDevices):
     """An OS where any program the user runs may open a USB device: nothing
@@ -2469,6 +2474,10 @@ class OpenModuleDevices(ModuleDevices):
     def revoke(self, key: str) -> None:
         log.debug("OpenModuleDevices.revoke: %s -- nothing was granted", key)
 
+    def locked(self, key: str, devices: tuple[str, ...]) -> str:
+        log.debug("OpenModuleDevices.locked: %s -- open to every program", key)
+        return ""
+
 
 class _NoModuleDevices(ModuleDevices):
     """An OS where TRCC cannot let a module reach its devices yet."""
@@ -2478,8 +2487,15 @@ class _NoModuleDevices(ModuleDevices):
         log.debug("_NoModuleDevices: %s", os_name)
 
     def grant(self, key: str, devices: tuple[str, ...]) -> str:
-        log.warning("_NoModuleDevices.grant: %s %s -- not on this system yet",
-                    key, devices)
+        if devices:
+            log.warning("_NoModuleDevices.grant: %s %s -- not on this system yet",
+                        key, devices)
+        else:
+            log.debug("_NoModuleDevices.grant: %s names no devices", key)
+        return self.locked(key, devices)
+
+    def locked(self, key: str, devices: tuple[str, ...]) -> str:
+        log.debug("_NoModuleDevices.locked: %s %s", key, devices)
         return ("" if not devices else
                 "TRCC cannot unlock a module's USB devices on this system yet")
 

@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**160 endpoints.**
+**161 endpoints.**
 
 ## Running it
 
@@ -175,6 +175,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /system/modules/{key}` | `ModuleResult` | Switch module *key* on or off; 404 for a key no module has. |
 | `GET /system/modules/{key}/icon` | — | Module *key*'s symbol, as the App reads it (``ModuleIcon``) -- the API opens no file; 404 for a key with none. |
 | `POST /system/modules/{key}/install` | `ModuleResult` | Install or update module *key*.  The body is what the user accepted; 409 when that is not exactly what the index lists, or it is refused. |
+| `POST /system/modules/{key}/unlock` | `ModuleResult` | Let module *key* reach its USB devices -- the App asks for the password; 404 for a key no module has, 409 when it is off or still locked. |
 | `GET /system/openrgb-ports` | `OpenRgbPortsResult` | Each connected cooler's DDP device for OpenRGB: this computer, its own port, its LED count (#160). |
 | `POST /system/quickstart` | `QuickstartResult` | Walk the new-user happy path — doctor, then scan — as one sequence. |
 | `POST /system/ram-effect` | `RgbLightsResult` | Save one of the memory's own effects on the sticks. |

@@ -87,6 +87,24 @@ def test_a_rule_that_is_not_trccs_reads_as_nothing_granted(tmp_path: Path) -> No
     assert run.argv == []
 
 
+# ── what stands in the way ────────────────────────────────────────────────
+
+
+def test_locked_reads_the_rule_and_runs_nothing(tmp_path: Path) -> None:
+    """Reached only when the rule names exactly its devices: one naming
+    fewer locks the rest out.  A tile asks this on every refresh, so it may
+    never prompt.  MUTATION CHECK: compare with ``<=`` in ``locked``."""
+    run = _Run(tmp_path)
+    devices = _devices(tmp_path, run)
+    needs = "Its USB devices need your permission"
+    assert (devices.locked(KEY, ()), devices.locked(KEY, IDS)) == ("", needs)
+    _granted(tmp_path, IDS[:1])
+    assert devices.locked(KEY, IDS) == needs
+    _granted(tmp_path, tuple(reversed(IDS)))
+    assert devices.locked(KEY, IDS) == ""
+    assert run.argv == []
+
+
 # ── granting ──────────────────────────────────────────────────────────────
 
 

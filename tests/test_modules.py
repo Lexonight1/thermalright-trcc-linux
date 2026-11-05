@@ -26,6 +26,7 @@ from trcc.core.commands import (
     RemoveModule,
     SetDeveloperMode,
     SetModuleEnabled,
+    UnlockModuleDevices,
 )
 from trcc.core.errors import ModuleUnavailable
 from trcc.core.events import Event, EventBus, FrameSent, ModuleChanged
@@ -478,7 +479,8 @@ def _install(key: str, asks: ModuleAsks) -> InstallModule:
 _GET: dict[str, Any] = {"browse": BrowseModules, "install": _install,
                         "remove": RemoveModule, "developer": SetDeveloperMode,
                         "read_folder": ReadModuleFolder,
-                        "install_folder": InstallModuleFolder}
+                        "install_folder": InstallModuleFolder,
+                        "unlock": UnlockModuleDevices}
 
 
 def _switch(key: str, enabled: bool) -> SetModuleEnabled:
@@ -1042,3 +1044,143 @@ def test_every_module_keeps_its_tests_in_its_own_folder() -> None:
     missing = [k for k in keys if not any((tests / f"module_{k}").glob("test_*.py"))]
     assert {"rgb", "visualizer"} <= set(keys)      # the glob found them
     assert missing == []
+
+
+# ── a module's USB devices ─────────────────────────────────────────────────
+
+#: The lamp's USB id, as its module.json names it.
+LAMP = ("0b05:19af",)
+#: What a tile says while a module cannot reach them (the Linux adapter's words).
+NEEDS = "Its USB devices need your permission"
+#: What a cancelled password prompt answers.
+CANCELLED = "its USB devices stay locked -- the password was not given"
+
+
+class _Lamp(_Recording):
+    """Lights a USB lamp: its manifest names the lamp."""
+    key = "lamp"
+
+
+def _lamp(default_on: bool = False) -> Any:
+    from trcc.core.models import ModuleManifest
+    from trcc.services.modules import ModuleSpec
+
+    return ModuleSpec(ModuleManifest(
+        key="lamp", title="Lamp", summary="Lights a lamp.", default_on=default_on,
+        capabilities=("hardware",), devices=LAMP), lambda: _Lamp)
+
+
+def _granting(tmp_home: Path) -> Any:
+    """A stand-in OS whose grant lives in memory and counts each ask --
+    refusing, as a cancelled prompt does, while ``refuse`` is set."""
+    from tests.mock_platform import ScriptedModuleDevices
+
+    class Grants(ScriptedModuleDevices):
+        def __init__(self) -> None:
+            super().__init__()
+            self.asked: list[str] = []
+            self.refuse = False
+
+        def grant(self, key: str, devices: tuple[str, ...]) -> str:
+            self.asked.append(key)
+            return CANCELLED if self.refuse else super().grant(key, devices)
+
+    class Granting(FakePlatform):
+        grants = Grants()
+
+        def module_devices(self) -> Grants:
+            return self.grants
+
+    Granting.grants = Grants()
+    return Granting(tmp_home)
+
+
+def _locked(app: App) -> dict[str, str]:
+    return {m.key: m.locked for m in app.dispatch(ListModules()).modules}
+
+
+def test_switching_a_module_on_lets_it_reach_its_devices(tmp_home: Path) -> None:
+    """Its module.json names them; the switch asks once.  One that names
+    none is never asked.  MUTATION CHECK: drop the grant in SetModuleEnabled."""
+    platform = _granting(tmp_home)
+    app = App(platform=platform, modules={"lamp": _lamp(), "on": _On})
+    assert _locked(app) == {"lamp": "", "on": ""}      # off: nothing needed yet
+    result = app.dispatch(SetModuleEnabled(key="lamp", enabled=True))
+    assert (result.ok, result.note) == (True, "")
+    assert (platform.grants.granted, platform.grants.asked) == ({"lamp": LAMP}, ["lamp"])
+    assert _locked(app) == {"lamp": "", "on": ""}
+
+
+def test_a_cancelled_password_leaves_it_locked_and_unlock_asks_again(
+        tmp_home: Path) -> None:
+    """The module still comes on -- its devices are what stay locked -- and
+    every UI hears when they open.  MUTATION CHECK: drop the publish in
+    UnlockModuleDevices."""
+    platform = _granting(tmp_home)
+    platform.grants.refuse = True
+    app = App(platform=platform, modules={"lamp": _lamp()})
+    heard: list[ModuleChanged] = []
+    app.events.subscribe(ModuleChanged, heard.append)
+    switched = app.dispatch(SetModuleEnabled(key="lamp", enabled=True))
+    assert (switched.ok, switched.note) == (True, CANCELLED)
+    assert _locked(app) == {"lamp": NEEDS}
+    platform.grants.refuse = False
+    unlocked = app.dispatch(UnlockModuleDevices(key="lamp"))
+    assert (unlocked.ok, unlocked.note, _locked(app)) == (True, "", {"lamp": ""})
+    assert heard[-1] == ModuleChanged(key="lamp", enabled=True, note="")
+
+
+def test_unlock_asks_nothing_for_a_module_that_is_off(tmp_home: Path) -> None:
+    platform = _granting(tmp_home)
+    app = App(platform=platform, modules={"lamp": _lamp()})
+    result = app.dispatch(UnlockModuleDevices(key="lamp"))
+    assert (result.ok, result.message, platform.grants.asked) == (
+        False, "module 'lamp' is not on", [])
+
+
+def test_a_module_on_at_start_never_asks_in_the_background(tmp_home: Path) -> None:
+    """The App starts at login with no window: a password prompt then comes
+    from nowhere.  Its tile says what is in the way instead.
+    MUTATION CHECK: grant in ModuleRunner.enable_saved."""
+    platform = _granting(tmp_home)
+    app = App(platform=platform, modules={"lamp": _lamp(default_on=True)})
+    assert (app.modules.on, platform.grants.asked) == ({"lamp"}, [])
+    assert _locked(app) == {"lamp": NEEDS}
+
+
+def test_a_locked_tile_offers_unlock(qtbot: Any, tmp_home: Path) -> None:
+    """MUTATION CHECK: drop the Unlock button from ModulesView._tile."""
+    from trcc.ui.qt_modules import ModulesView
+
+    platform = _granting(tmp_home)
+    app = App(platform=platform, modules={"lamp": _lamp(default_on=True)})
+    view = ModulesView(app, ListModules, _switch, ModuleIcon, **_GET)
+    qtbot.addWidget(view)
+    assert (list(view.unlocks), _notes(view)) == (["lamp"], [NEEDS])
+    view.unlocks["lamp"].click()
+    qtbot.waitUntil(lambda: not view.unlocks, timeout=3000)
+    assert (platform.grants.granted, _notes(view)) == ({"lamp": LAMP}, [])
+
+
+def test_the_cli_unlocks(cli_runner: Any, registered: str, cli_app: App) -> None:
+    """``trcc system modules unlock``: the one Command; a module that is off
+    refuses."""
+    from trcc.ui.cli.main import app
+
+    off = cli_runner.invoke(app, ["system", "modules", "unlock", registered])
+    assert (off.exit_code, off.output.strip().splitlines()[-1]) == (
+        1, f"module {registered!r} is not on")
+
+
+def test_the_api_unlocks(fake_platform: FakePlatform, registered: str) -> None:
+    """POST /system/modules/{key}/unlock: off is a 409, no such module a 404."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.ui.api.main import build_app
+
+    from .conftest import loopback_client
+
+    with loopback_client(build_app(trcc=App(platform=fake_platform,
+                                            renderer=QtRenderer()))) as client:
+        statuses = (client.post(f"/system/modules/{registered}/unlock").status_code,
+                    client.post("/system/modules/no-such/unlock").status_code)
+    assert statuses == (409, 404)

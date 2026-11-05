@@ -70,9 +70,11 @@ class ModuleIcon(Query[ModuleIconResult]):
 @dataclass(frozen=True, slots=True)
 class SetModuleEnabled(Command[ModuleResult]):
     """Switch module *key* on or off -- remembered, and every UI hears it.
-    A module that cannot run here refuses, and nothing changes."""
-    #: Switching off may ask for the password (a module taking back a
-    #: permission it was granted), so no timeout cuts the prompt off.
+    A module that cannot run here refuses, and nothing changes.  Switched on,
+    it is let reach the USB devices its ``module.json`` names."""
+    #: Either way may ask for the password -- switching on, for its USB
+    #: devices; off, a module taking back a permission it was granted -- so
+    #: no timeout cuts the prompt off.
     WAITS_ON_USER: ClassVar[bool] = True
     key: str
     enabled: bool
@@ -98,6 +100,10 @@ class SetModuleEnabled(Command[ModuleResult]):
                                 enabled=app.modules.is_on(self.key),
                                 message=str(e))
         app.settings.set_module_enabled(self.key, self.enabled)
+        if self.enabled and module.devices:
+            # After the switch, outside the runner's lock: this may wait on a
+            # password.  "" when it already reaches them.
+            note = app.module_devices.grant(self.key, module.devices)
         if note:
             log.warning("SetModuleEnabled: %s -- %s", self.key, note)
         app.events.publish(ModuleChanged(key=self.key, enabled=self.enabled,
@@ -212,6 +218,30 @@ class InstallModuleFolder(Command[ModuleResult]):
                             message=f"{app.modules.manifest(record.key).title} "
                                     f"{record.version} installed unsigned -- off "
                                     "until you switch it on", note=note)
+
+
+@dataclass(frozen=True, slots=True)
+class UnlockModuleDevices(Command[ModuleResult]):
+    """Let this user reach module *key*'s USB devices -- the password, once,
+    for what its ``module.json`` names.  What a tile's "locked" line asks for
+    (a cancelled prompt, an upgrade that added a device); nothing is asked
+    when it already reaches them."""
+    WAITS_ON_USER: ClassVar[bool] = True
+    key: str
+
+    def execute(self, app: App) -> ModuleResult:
+        log.info("UnlockModuleDevices: %s", self.key)
+        if not app.modules.is_on(self.key):
+            log.warning("UnlockModuleDevices: %s is not on", self.key)
+            return ModuleResult(ok=False, key=self.key, found=self.key in app.modules,
+                                message=f"module {self.key!r} is not on")
+        module = app.modules.manifest(self.key)
+        locked = app.module_devices.grant(self.key, module.devices)
+        log.info("UnlockModuleDevices: %s -> %s", self.key, locked or "reached")
+        app.events.publish(ModuleChanged(key=self.key, enabled=True, note=locked))
+        return ModuleResult(ok=not locked, key=self.key, enabled=True,
+                            message=locked or f"{module.title} reaches its devices",
+                            note=locked)
 
 
 @dataclass(frozen=True, slots=True)

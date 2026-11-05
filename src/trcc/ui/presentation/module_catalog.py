@@ -87,6 +87,13 @@ def problem_line(module: ModuleInfo, tr: Callable[[str], str]) -> str:
     return tr(said).format(problem=module.problem)
 
 
+def locked_line(module: ModuleInfo, tr: Callable[[str], str]) -> str:
+    """Why *module* cannot reach its USB devices yet -- "" when it can.  The
+    tile offers Unlock beside it; the CLI names ``trcc system modules unlock``."""
+    log.debug("locked_line: %s %r", module.key, module.locked)
+    return tr(module.locked) if module.locked else ""
+
+
 #: What a panel wants that is not here, in the words every UI shows.  One
 #: panel names itself; several are counted, because a list of USB ids tells a
 #: user nothing their panel count does not.
