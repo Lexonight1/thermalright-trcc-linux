@@ -25,8 +25,13 @@ frame_log = per_frame(__name__)
 
 #: The bar's height, in pixels.
 CHROME_HEIGHT = 40
-#: The menu, left to right -- each item drops down its own panel.
-MENU = ("Devices", "Themes", "Sensors", "Modules", "Control Center", "About")
+#: The menu, left to right -- each item drops down its own panel.  Themes are
+#: a device's: they are tabs in its side panel (his spec, 2026-11-05).
+MENU = ("Devices", "Sensors", "Modules", "Control Center", "About")
+#: A device side panel's own tabs: left to right, then Settings at the far
+#: end, the room between kept for an installed module's tab (his spec).
+DEVICE_TABS = ("Local Themes", "Cloud Masks", "Cloud Backgrounds")
+DEVICE_SETTINGS_TAB = "Settings"
 #: The property a menu button carries: the item it opens.
 _ITEM = "hud_menu_item"
 
@@ -51,7 +56,85 @@ QPushButton:hover { background: #ffffff; }
 """
 
 
-class ChromeBar(QWidget):
+class SilverStrip(QWidget):
+    """A strip of brushed silver chrome -- the top bar, and a device panel's
+    tab bar, painted once."""
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """Brushed silver: a bright top edge, a soft middle seam, a dark rim."""
+        frame_log.debug("%s.paintEvent", type(self).__name__)
+        painter = QPainter(self)
+        silver = QLinearGradient(0, 0, 0, self.height())
+        silver.setColorAt(0.0, QColor("#fbfcfd"))
+        silver.setColorAt(0.45, QColor("#dfe3e8"))
+        silver.setColorAt(0.55, QColor("#c3c9d0"))
+        silver.setColorAt(1.0, QColor("#959ca5"))
+        painter.fillRect(self.rect(), silver)
+        painter.setPen(QColor(255, 255, 255, 220))
+        painter.drawLine(0, 0, self.width(), 0)
+        painter.setPen(QColor("#4e555e"))
+        painter.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
+        painter.end()
+
+
+class TabBar(SilverStrip):
+    """A device panel's own chrome tab bar: its tabs as a group (one lit at a
+    time), then Settings at the far end -- the room between for modules."""
+
+    #: A tab was chosen -- its name.
+    tab_chosen = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        log.info("TabBar: %s ... %s", ", ".join(DEVICE_TABS), DEVICE_SETTINGS_TAB)
+        self.setFixedHeight(CHROME_HEIGHT - 6)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(10, 0, 10, 0)
+        row.setSpacing(4)
+        #: The tabs, by name.
+        self.tabs: dict[str, QPushButton] = {}
+        for name in DEVICE_TABS:
+            row.addWidget(self._tab(name))
+        row.addStretch(1)                         # an installed module's tab goes here
+        row.addWidget(self._tab(DEVICE_SETTINGS_TAB))
+        self.choose(DEVICE_TABS[0])
+
+    def _tab(self, name: str) -> QPushButton:
+        """One tab button."""
+        log.debug("TabBar._tab: %s", name)
+        button = QPushButton(name, self)
+        button.setCheckable(True)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setStyleSheet(_MENU_STYLE)
+        button.setProperty(_ITEM, name)
+        button.clicked.connect(self._on_tab)
+        self.tabs[name] = button
+        return button
+
+    def _on_tab(self) -> None:
+        """A tab was clicked -- read which off the button."""
+        button = self.sender()
+        name = "" if button is None else str(button.property(_ITEM))
+        log.info("TabBar._on_tab: %s", name)
+        if name:
+            self.choose(name)
+            self.tab_chosen.emit(name)
+
+    def choose(self, name: str) -> None:
+        """Light *name*'s tab and no other."""
+        log.debug("TabBar.choose: %s", name)
+        for tab, button in self.tabs.items():
+            button.setChecked(tab == name)
+
+    @property
+    def current(self) -> str:
+        """The lit tab."""
+        found = next((t for t, b in self.tabs.items() if b.isChecked()), "")
+        log.debug("TabBar.current: %s", found)
+        return found
+
+
+class ChromeBar(SilverStrip):
     """The silver bar: title, menu, live readout, minimise and close."""
 
     #: A menu button was clicked -- its item.
@@ -116,24 +199,6 @@ class ChromeBar(QWidget):
         """The live readout: CPU and GPU temperature in the user's unit."""
         log.debug("ChromeBar.show_temps: %.0f / %.0f °%s", cpu, gpu, unit)
         self.readout.setText(f"CPU {cpu:3.0f}°{unit}   GPU {gpu:3.0f}°{unit}")
-
-    # ── Drawn, not pictured ────────────────────────────────────────────
-
-    def paintEvent(self, event: QPaintEvent) -> None:
-        """Brushed silver: a bright top edge, a soft middle seam, a dark rim."""
-        frame_log.debug("ChromeBar.paintEvent")
-        painter = QPainter(self)
-        silver = QLinearGradient(0, 0, 0, self.height())
-        silver.setColorAt(0.0, QColor("#fbfcfd"))
-        silver.setColorAt(0.45, QColor("#dfe3e8"))
-        silver.setColorAt(0.55, QColor("#c3c9d0"))
-        silver.setColorAt(1.0, QColor("#959ca5"))
-        painter.fillRect(self.rect(), silver)
-        painter.setPen(QColor(255, 255, 255, 220))
-        painter.drawLine(0, 0, self.width(), 0)
-        painter.setPen(QColor("#4e555e"))
-        painter.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
-        painter.end()
 
     # ── The bar is the window's handle ─────────────────────────────────
 

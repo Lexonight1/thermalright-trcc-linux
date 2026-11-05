@@ -179,3 +179,13 @@ class Assets:
         """True if *name* resolves to an on-disk file."""
         log.debug("exists: name=%s", name)
         return _resolve(name).is_file()
+
+    @staticmethod
+    def colour_pixmap(name: str) -> QPixmap:
+        """Load *name* AS DRAWN -- not greyscaled: a product picture (a
+        device's symbol) is content, like a theme preview, not chrome.
+        Placeholder if missing."""
+        log.debug("colour_pixmap: name=%s", name)
+        path = _resolve(name)
+        pixmap = QPixmap(str(path)) if path.is_file() else QPixmap()
+        return pixmap if not pixmap.isNull() else _placeholder()

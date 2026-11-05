@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QPushButton, QScrollArea, QWidget
 
+from ..presentation.device_symbols import device_symbols
 from ..presentation.panel_spec import (
     Background,
     ImageButton,
@@ -59,114 +60,11 @@ _DEVICE_BTN_QSS = (
     f"QPushButton:checked {{ border: 2px solid {Colors.ACCENT_BORDER}; }}"
 )
 
-# Map device model names to A1 image base names (without .png)
-DEVICE_IMAGE_MAP = {
-    'CZTV': 'A1CZTV',
-    'CZ1': 'A1CZ1',
-    'FROZEN_WARFRAME': 'A1FROZEN WARFRAME',
-    'FROZEN_WARFRAME_PRO': 'A1FROZEN WARFRAME PRO',
-    'FROZEN_WARFRAME_SE': 'A1FROZEN WARFRAME SE',
-    'FROZEN_HORIZON_PRO': 'A1FROZEN HORIZON PRO',
-    'FROZEN_MAGIC_PRO': 'A1FROZEN MAGIC PRO',
-    'FROZEN_VISION_V2': 'A1FROZEN VISION V2',
-    'AX120_DIGITAL': 'A1AX120 DIGITAL',
-    'AK120_DIGITAL': 'A1AK120 Digital',
-    'PA120_DIGITAL': 'A1PA120 DIGITAL',
-    'RK120_DIGITAL': 'A1RK120 DIGITAL',
-    'AS120_VISION': 'A1AS120 VISION',
-    'BA120_VISION': 'A1BA120 VISION',
-    'RP130_VISION': 'A1RP130 VISION',
-    'CORE_VISION': 'A1CORE VISION',
-    'ELITE_VISION': 'A1ELITE VISION',
-    'GRAND_VISION': 'A1GRAND VISION',
-    'HYPER_VISION': 'A1HYPER VISION',
-    'Mjolnir_VISION': 'A1Mjolnir VISION',
-    'Mjolnir_VISION_PRO': 'A1Mjolnir VISION PRO',
-    'Stream_Vision': 'A1Stream Vision',
-    'KVMALEDC6': 'A1KVMALEDC6',
-    'LC1': 'A1LC1',
-    'LC2': 'A1LC2',
-    'LC2JD': 'A1LC2JD',
-    'LC3': 'A1LC3',
-    'LC5': 'A1LC5',
-    'LF8': 'A1LF8',
-    'LF10': 'A1LF10',
-    'LF11': 'A1LF11',
-    'LF12': 'A1LF12',
-    'LF13': 'A1LF13',
-    'LF14': 'A1LF14',
-    'LF15': 'A1LF15',
-    'LF16': 'A1LF16',
-    'LF18': 'A1LF18',
-    'LF19': 'A1LF19',
-    'LM16SE': 'A1LM16SE',
-    'LM22': 'A1LM22',
-    'LM24': 'A1LM24',
-    'LM26': 'A1LM26',
-    'LM27': 'A1LM27',
-}
-
-
 def _get_device_images(device_info: dict) -> tuple[str | None, str | None]:
-    """Get normal and active image names for a device.
-
-    Returns:
-        (normal_image_name, active_image_name) or (None, None)
-
-    For HID devices with the generic default button_image (A1CZTV), returns
-    (None, None) so the text name is shown instead of the misleading default
-    image.  After the HID handshake resolves the actual product, the button
-    image is updated via PM_TO_BUTTON_IMAGE.
-    """
-    button_image = device_info.get('button_image', '')
-    protocol = device_info.get('protocol', 'scsi')
-
-    # For HID devices, skip the generic A1CZTV default — show text name
-    # until the handshake identifies the actual product.
-    if protocol == 'hid' and button_image == 'A1CZTV':
-        log.debug("_get_device_images: HID default A1CZTV, showing text until handshake")
-        return None, None
-
-    # Try button_image field first (from DetectedDevice)
-    if button_image:
-        if Assets.exists(button_image):
-            log.debug("_get_device_images: found %s (exact)", button_image)
-            return button_image, f"{button_image}a"
-
-        spaced = button_image.replace('_', ' ')
-        if Assets.exists(spaced):
-            log.debug("_get_device_images: found %s (spaced)", spaced)
-            return spaced, f"{spaced}a"
-
-        underscored = button_image.replace(' ', '_')
-        if Assets.exists(underscored):
-            log.debug("_get_device_images: found %s (underscored)", underscored)
-            return underscored, f"{underscored}a"
-
-        log.debug("_get_device_images: button_image=%r not found in assets", button_image)
-
-    # Try model field
-    model = device_info.get('model', '')
-    if model in DEVICE_IMAGE_MAP:
-        base = DEVICE_IMAGE_MAP[model]
-        if Assets.exists(base):
-            log.debug("_get_device_images: found %s via model=%s", base, model)
-            return base, f"{base}a"
-
-    # Try name field as fallback
-    name = device_info.get('name', '')
-    for model_key, img_base in DEVICE_IMAGE_MAP.items():
-        if model_key.lower() in name.lower():
-            if Assets.exists(img_base):
-                log.debug("_get_device_images: found %s via name match %s", img_base, model_key)
-                return img_base, f"{img_base}a"
-
-    # Default to CZTV for non-HID devices
-    if protocol != 'hid' and Assets.exists('A1CZTV'):
-        log.debug("_get_device_images: falling back to A1CZTV")
-        return 'A1CZTV', 'A1CZTVa'
-
-    return None, None
+    """The device's symbol in the gui's assets: ``(normal, active)`` or
+    ``(None, None)`` -- the rule is shared (``presentation.device_symbols``)."""
+    log.debug("_get_device_images: %s", device_info.get('name'))
+    return device_symbols(device_info, Assets.exists)
 
 
 # ── Panel description ────────────────────────────────────────────────

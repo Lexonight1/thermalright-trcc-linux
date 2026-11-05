@@ -1,15 +1,20 @@
-"""hudgui's window: the chrome bar on top, the live panel preview as its body,
-and one menu panel at a time dropping down over it -- on a glass background.
+"""hudgui's window: a thin chrome bar above the game, and one menu panel at a
+time dropping down from it.
 
-His design (2026-11-05): a redesign of the gui, whose live preview is what
-makes it usable, in a HUD look.  Frameless -- the chrome bar is the top edge.
-The glass is a picture (``assets/glass.png``, ``dev/tools/gen_hud_glass.py``),
+His design (2026-11-05): "so gamers can have a thin bar above their gaming".
+At rest the window IS the bar: frameless, always on top, across the top of the
+primary screen.  A click on a menu item grows it and drops that item's panel
+down; a second click pulls it back up to the bar.  The glass under a dropped
+panel is a picture (``assets/glass.png``, ``dev/tools/gen_hud_glass.py``),
 not real transparency, so it needs no compositor.
 
-Everything it shows comes from the App over the Command bus, like every UI:
-the preview is the shared ``ui.qt_preview.PreviewSurface``, the readout comes
-from ``SensorsUpdated``.  Closing it closes this window only -- the App, and
-the panels, keep going.
+Devices drops down the found devices as their symbols; a picked one opens
+its side panel (``devices.py``).  Everything shown comes from the App over the
+Command bus, like every UI: the live preview is the shared
+``ui.qt_preview.PreviewSurface`` (which renders only while it is on screen --
+so at rest, under a game, hudgui renders nothing), the readout comes from
+``SensorsUpdated``.  Closing it closes this window
+only -- the App, and the panels, keep going.
 """
 from __future__ import annotations
 
@@ -17,17 +22,24 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QCloseEvent, QKeyEvent, QPainter, QPaintEvent, QPixmap, QResizeEvent
-from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import (
+    QCloseEvent,
+    QGuiApplication,
+    QKeyEvent,
+    QPainter,
+    QPaintEvent,
+    QPixmap,
+    QResizeEvent,
+)
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
-from ...core.commands import ListDevices
 from ...core.logs import per_frame
 from ..bus_bridge import BusBridge
 from ..device_selection import DeviceSelection
-from ..qt_assets import Assets
-from ..qt_preview import FRAME_EDGE, PreviewSurface
+from ..qt_preview import FRAME_EDGE
 from .chrome import CHROME_HEIGHT, ChromeBar
+from .devices import DevicesView
 from .dropdown import DropPanel
 
 if TYPE_CHECKING:
@@ -37,84 +49,86 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
-#: The glass behind everything.
+#: The glass under a dropped-down panel.
 GLASS = Path(__file__).parent / "assets" / "glass.png"
-#: The window's first size.
-START_SIZE = (1180, 780)
-#: A dropped-down panel's share of the body's height.
-DROP_SHARE = 0.72
+#: A dropped-down panel's height: a device panel's tab bar, the preview's
+#: bezel, and the frame around them.
+DROP_HEIGHT = FRAME_EDGE + 120
 
 
 class HudWindow(QWidget):
-    """The hudgui window."""
+    """The hudgui window: the thin bar, and a panel that drops from it."""
 
     def __init__(self, app: CommandBus) -> None:
-        super().__init__(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        super().__init__(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         log.info("HudWindow: building")
         self.setWindowTitle("TRCC")
-        self.resize(*START_SIZE)
         self._app = app
         self._bus = BusBridge(app.events)
         self._selection = DeviceSelection(self)
         self._glass = QPixmap(str(GLASS))
         self._glass_scaled = QPixmap()
-        #: The menu item whose panel is down, or None.
+        #: The menu item whose panel is down, or None -- just the bar.
         self.active: str | None = None
+        #: Each item's panel, made on its first click and kept after.
+        self._panels: dict[str, QWidget] = {}
 
-        column = QVBoxLayout(self)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
         self.bar = ChromeBar(self)
-        column.addWidget(self.bar)
-        self._body = QWidget(self)
-        body = QVBoxLayout(self._body)
-        body.setContentsMargins(0, 24, 0, 24)
-        self.preview = PreviewSurface(app, self._bus, self._selection, Assets.pixmap,
-                                      self._body)
-        self.preview.setFixedWidth(FRAME_EDGE + 16)
-        body.addWidget(self.preview, alignment=Qt.AlignmentFlag.AlignHCenter)
-        column.addWidget(self._body, stretch=1)
-        self.drop = DropPanel(self._body)
+        self.drop = DropPanel(self)
 
         self.bar.menu_clicked.connect(self._on_menu)
         self.bar.minimise_clicked.connect(self.showMinimized)
         self.bar.close_clicked.connect(self.close)
+        self.drop.closed.connect(self._to_bar)
         self._bus.sensors_updated.connect(self._on_sensors,
                                           type=Qt.ConnectionType.QueuedConnection)
-        self._bus.frames_resumed.connect(self.preview.refresh)
-        self._bus.follow_previews(self.preview)
-        self._show_first_lcd()
+        self._to_bar()
 
-    def _show_first_lcd(self) -> None:
-        """Preview the first attached LCD -- the Devices panel will choose."""
-        lcds = [d.key for d in self._app.dispatch(ListDevices()).devices
-                if d.kind.lower().endswith("lcd")]
-        log.info("HudWindow._show_first_lcd: %s", lcds or "none attached")
-        if lcds:
-            self._selection.set_key(lcds[0])
-        else:
-            self.preview.set_placeholder("No LCD attached -- plug one in.")
+    def _screen_top(self) -> QRect:
+        """The primary screen's usable area -- the bar lies along its top."""
+        screen = QGuiApplication.primaryScreen()
+        area = screen.availableGeometry() if screen is not None else QRect(0, 0, 1280, 800)
+        log.debug("HudWindow._screen_top: %s", area)
+        return area
+
+    def _to_bar(self) -> None:
+        """Rest as just the bar, across the top of the primary screen."""
+        area = self._screen_top()
+        log.info("HudWindow._to_bar: %dx%d at (%d, %d)", area.width(), CHROME_HEIGHT,
+                 area.x(), area.y())
+        self.setGeometry(area.x(), area.y(), area.width(), CHROME_HEIGHT)
+        self.bar.setGeometry(0, 0, area.width(), CHROME_HEIGHT)
+
+    def panel(self, item: str) -> QWidget:
+        """*item*'s panel -- made on its first click, then the same one."""
+        if item not in self._panels:
+            log.info("HudWindow.panel: making %s's", item)
+            if item == "Devices":
+                devices = DevicesView(self._app, self._bus, self._selection)
+                self._bus.frames_resumed.connect(devices.panel.preview.refresh)
+                self._bus.follow_previews(devices.panel.preview)
+                self._panels[item] = devices
+            else:
+                self._panels[item] = _placeholder(item)
+        return self._panels[item]
 
     # ── The menu: a toggle group ───────────────────────────────────────
 
     def _on_menu(self, item: str) -> None:
-        """A click on *item*: its panel drops down, clearing the last one --
-        or, a second click on the same item, pulls it back up."""
+        """A click on *item*: the window grows and its panel drops down,
+        clearing the last one -- or, a second click on the same item, the
+        panel pulls up and the window goes back to the bar."""
         log.info("HudWindow._on_menu: %s (down: %s)", item, self.active)
         if item == self.active:
             self.active = None
             self.drop.pull_up()
         else:
             self.active = item
-            self.drop.set_content(_placeholder(item))
-            self.drop.drop(item, 0, self._body.width(), self._drop_height())
+            self.drop.set_content(self.panel(item))
+            self.resize(self.width(), CHROME_HEIGHT + DROP_HEIGHT)
+            self.drop.drop(item, CHROME_HEIGHT, self.width(), DROP_HEIGHT)
         self.bar.set_active(self.active)
-
-    def _drop_height(self) -> int:
-        """How tall a dropped-down panel is: most of the body."""
-        height = int(self._body.height() * DROP_SHARE)
-        log.debug("HudWindow._drop_height: %d", height)
-        return height
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Esc pulls the open panel up."""
@@ -135,18 +149,19 @@ class HudWindow(QWidget):
     # ── The glass, and the window's life ───────────────────────────────
 
     def resizeEvent(self, event: QResizeEvent) -> None:
-        """Rescale the glass once per size, and keep a dropped panel full width."""
+        """Rescale the glass once per size; the bar spans the width."""
         log.debug("HudWindow.resizeEvent: %s", event.size().toTuple())
         super().resizeEvent(event)
+        self.bar.setGeometry(0, 0, self.width(), CHROME_HEIGHT)
         self._glass_scaled = self._glass.scaled(
             self.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
             Qt.TransformationMode.SmoothTransformation)
-        if self.active is not None:
-            self.drop.setGeometry(0, 0, self._body.width(), self._drop_height())
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        """The glass, under everything below the bar."""
+        """The glass, under a dropped-down panel."""
         frame_log.debug("HudWindow.paintEvent")
+        if self.height() <= CHROME_HEIGHT:
+            return
         painter = QPainter(self)
         painter.drawPixmap(0, CHROME_HEIGHT, self._glass_scaled,
                            0, CHROME_HEIGHT, self.width(), self.height() - CHROME_HEIGHT)

@@ -6,16 +6,19 @@ it -- drawn in greyscale chrome around a clear body, so the preview and the
 glass show through.  The body carries a light tint, enough to keep the
 panel's own text readable over a moving picture.
 
-Its contents come from the window (``set_content``); this class is only the
-frame and the motion: it slides down (``drop``) and back up (``pull_up``).
+Its contents come from the window, one item's panel at a time
+(``set_content``) -- kept, not deleted, when another item shows, so a
+device's panel and its preview come back as they were.  This class is the
+frame and the motion: it slides down (``drop``) and back up (``pull_up``),
+then says so (``closed``).
 """
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, QRectF, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPaintEvent
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from ...core.logs import per_frame
 
@@ -43,6 +46,9 @@ def _chrome(rect: QRectF) -> QLinearGradient:
 class DropPanel(QWidget):
     """One menu item's panel, sliding down from under the bar."""
 
+    #: It has finished pulling up and left the screen.
+    closed = Signal()
+
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         log.info("DropPanel: built")
@@ -52,10 +58,11 @@ class DropPanel(QWidget):
         self._slide.setDuration(SLIDE_MS)
         self._slide.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._slide.finished.connect(self._slid)
-        self._layout = QVBoxLayout(self)
+        self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(*_INSET)
+        self._layout.setSpacing(18)
         self._content: QWidget = QLabel("", self)
-        self._layout.addWidget(self._content)
+        self._layout.addWidget(self._content, stretch=1)
         self.hide()
 
     @property
@@ -65,13 +72,18 @@ class DropPanel(QWidget):
         return self._title
 
     def set_content(self, widget: QWidget) -> None:
-        """Put *widget* inside the frame, in place of what was there."""
-        log.info("DropPanel.set_content: %s", type(widget).__name__)
+        """Show *widget* in the frame in place of the last item's panel,
+        which is hidden and kept -- its owner shows it again later."""
+        log.info("DropPanel.set_content: %s (was %s)", type(widget).__name__,
+                 type(self._content).__name__)
+        if widget is self._content:
+            return
         self._layout.removeWidget(self._content)
-        self._content.deleteLater()
+        self._content.hide()
         self._content = widget
         widget.setParent(self)
-        self._layout.addWidget(widget)
+        self._layout.addWidget(widget, stretch=1)
+        widget.show()
 
     def drop(self, title: str, top: int, width: int, height: int) -> None:
         """Slide down, *width* x *height*, from *top*, titled *title*."""
@@ -100,6 +112,7 @@ class DropPanel(QWidget):
         log.debug("DropPanel._slid: %r height=%d", self._title, self.height())
         if not self._title:
             self.hide()
+            self.closed.emit()
 
     # ── Drawn, not pictured ────────────────────────────────────────────
 
