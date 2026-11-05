@@ -65,6 +65,10 @@ from ...core.errors import TrccError
 from ...core.models import (
     CUTTER_DEFAULT_FPS,
     MEDIA,
+    OVERLAY_DEFAULT_CLOCK_SOURCE,
+    OVERLAY_DEFAULT_COLOR,
+    OVERLAY_DEFAULT_FORMAT,
+    OVERLAY_DEFAULT_SIZE,
     FitMode,
     MediaKind,
     OverlayElementType,
@@ -763,13 +767,14 @@ def overlay_add(
     text: str = typer.Option("", "--text", help="Text content (type=text)"),
     metric: str = typer.Option("", "--metric", help="Metric id (type=metric)"),
     fmt: str = typer.Option(
-        "{value}", "--format", help="Metric format string",
+        OVERLAY_DEFAULT_FORMAT, "--format", help="Metric format string",
     ),
     source: str = typer.Option(
-        "time", "--source", help="Clock source: time / weekday / date",
+        OVERLAY_DEFAULT_CLOCK_SOURCE, "--source",
+        help="Clock source: time / weekday / date",
     ),
-    color: str = typer.Option("#ffffff", "--color"),
-    size: int = typer.Option(16, "--size"),
+    color: str = typer.Option(OVERLAY_DEFAULT_COLOR, "--color"),
+    size: int = typer.Option(OVERLAY_DEFAULT_SIZE, "--size"),
     font: str = typer.Option(
         "", "--font",
         help="Font family, e.g. 'Microsoft YaHei' (list them with `trcc system list-fonts`); empty keeps the theme default",

@@ -983,6 +983,12 @@ OVERLAY_DEFAULT_FORMAT = "{value}"
 OVERLAY_DEFAULT_CLOCK_SOURCE: ClockSource = "time"
 
 
+#: How ``OverlayElement.from_dict`` converts a field by its declared type;
+#: a ``Literal`` (``type``, ``source``) arrives as it is.
+_FIELD_TYPES: Mapping[str, Callable[[Any], Any]] = MappingProxyType(
+    {"int": int, "str": str, "bool": bool})
+
+
 def element_family(data: Mapping[str, Any]) -> str:
     """The font family an overlay element declares, or "" for the default.
 
@@ -1100,24 +1106,22 @@ class OverlayElement:
         ``el_N`` schemes — #150/#203 click-to-highlight was fully broken).
         """
         log.debug("from_dict: data=%s", data)
+        # Only the keys the dict HAS, each as its field's type; a missing key
+        # takes the dataclass default.  Defaults spelled out here a second
+        # time were a copy of the field list (gated by
+        # ``test_overlay_element_fields``).
+        given: dict[str, Any] = {}
+        for f in fields(cls):
+            if f.name in data and f.name not in ("id", "font"):
+                convert = _FIELD_TYPES.get(str(f.type))
+                given[f.name] = convert(data[f.name]) if convert else data[f.name]
         return cls(
             id=str(data.get("id") or "") or new_overlay_id(),
-            type=data.get("type", "text"),
-            x=int(data.get("x", 0)),
-            y=int(data.get("y", 0)),
-            color=str(data.get("color", "#ffffff")),
-            size=int(data.get("size", 16)),
-            bold=bool(data.get("bold", False)),
-            italic=bool(data.get("italic", False)),
             # Every shape this family can arrive in, resolved in ONE place --
             # see :func:`element_family`.  Gated by
             # ``test_overlay_font_family.py``.
             font=element_family(data),
-            text=str(data.get("text", "")),
-            metric=str(data.get("metric", "")),
-            format=str(data.get("format", "{value}")),
-            show_unit=bool(data.get("show_unit", True)),
-            source=data.get("source", "time"),
+            **given,
         )
 
 
