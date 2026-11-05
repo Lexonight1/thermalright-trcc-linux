@@ -24,6 +24,7 @@ Shared terminology so everyone uses the same names.
 | **config1.dc** | Binary overlay config file — text positions, fonts, sensor bindings |
 | **Reference theme** | A theme whose manifest names its background/mask by a path relative to a data root (`web/{w}{h}/<id>`) instead of bundling the bytes — resolved user library first, then the default/cloud library (`adapters/theme/filesystem.py`) |
 | **.tr file** | Theme export/import archive format |
+| **Layer** | One thing drawn on a panel's upright canvas, over what is below it — the background, the mask, the text/metric/clock elements, the split overlay, the cast's audio bars. Every one is a child of `Layer` (`services/layers.py`): `key()` says what it shows, `draw()` puts it on the canvas. Rotation, brightness and the wire encode are NOT layers — they turn the finished picture into what the panel receives |
 
 ## GUI Components
 | Term | Meaning |
