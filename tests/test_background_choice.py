@@ -214,3 +214,162 @@ def test_the_migration_agrees_with_what_the_panel_showed(
     source = {"media": PanelSource.MEDIA, "module": PanelSource.MODULE}.get(
         choice.kind, PanelSource.BACKGROUND)
     assert source is old.display_source
+
+
+def test_a_saved_themes_symlinked_video_is_the_themes_own(tmp_path: Path) -> None:
+    """SaveTheme may drop ``Theme.mp4`` in as a symlink to the library video,
+    which resolves OUTSIDE the theme folder: it is still the theme's own."""
+    from trcc.core.models import ThemeBackground, background_choice_from_fields
+
+    library = tmp_path / "web" / "a001.mp4"
+    library.parent.mkdir()
+    library.write_bytes(b"")
+    theme = tmp_path / "themes" / "Saved"
+    theme.mkdir(parents=True)
+    (theme / "Theme.mp4").symlink_to(library)
+    assert background_choice_from_fields(
+        str(theme / "Theme.mp4"), None, None, str(theme)) == ThemeBackground()
+
+
+# ── B2: every writer records the ONE choice ───────────────────────────────
+
+
+def _picture(root: Path) -> Path:
+    picture = root / "mine.png"
+    picture.write_bytes((root / "themes" / "VideoTheme" / "00.png").read_bytes())
+    return picture
+
+
+def _clip(root: Path, name: str = "clip.mp4") -> Path:
+    clip = root / name
+    clip.write_bytes(b"decoded by the faked load_video")
+    return clip
+
+
+def _choice(app: App) -> Any:
+    return app.settings.for_device(_KEY).background
+
+
+def test_a_picked_picture_is_the_choice(app: App, tmp_path: Path) -> None:
+    from trcc.core.commands import SetBackground
+    from trcc.core.models import PictureBackground
+
+    _video_theme(app, tmp_path)
+    picture = _picture(tmp_path)
+    assert app.dispatch(SetBackground(key=_KEY, path=picture)).ok
+    assert _choice(app) == PictureBackground(str(picture))
+
+
+def test_a_picked_video_is_the_choice(app: App, tmp_path: Path) -> None:
+    from trcc.core.commands import PlayVideo
+    from trcc.core.models import VideoBackground
+
+    _video_theme(app, tmp_path)
+    clip = _clip(tmp_path)
+    assert app.dispatch(PlayVideo(key=_KEY, path=clip)).ok
+    assert _choice(app) == VideoBackground(str(clip))
+
+
+def test_the_media_player_is_the_choice_not_its_file(app: App, tmp_path: Path) -> None:
+    from trcc.core.commands import SetMediaPlayer
+    from trcc.core.models import MediaPlayerBackground
+
+    _video_theme(app, tmp_path)
+    song = _clip(tmp_path, "song.mp4")
+    assert app.dispatch(SetMediaPlayer(key=_KEY, uri=str(song))).ok
+    assert _choice(app) == MediaPlayerBackground(str(song))
+
+
+def test_a_module_is_the_choice(app: App, tmp_path: Path) -> None:
+    from trcc.core.models import ModuleBackground
+
+    _video_theme(app, tmp_path)
+    app.show_source("visualizer", _KEY, _Waiting(), 30.0)
+    assert _choice(app) == ModuleBackground("visualizer")
+
+
+@pytest.mark.parametrize(("keep_choice", "kind"), [(True, "module"), (False, "theme")])
+def test_a_module_switched_off_keeps_the_choice_ended_does_not(
+    app: App, tmp_path: Path, keep_choice: bool, kind: str,
+) -> None:
+    """Off (``keep_choice``) the theme's own video plays again -- and chooses
+    nothing, so the module comes back with its module (bug #3)."""
+    _video_theme(app, tmp_path)
+    app.show_source("visualizer", _KEY, _Waiting(), 30.0)
+    app.end_source(_KEY, keep_choice=keep_choice)
+    assert _choice(app).kind == kind
+
+
+def test_a_video_theme_reloaded_keeps_the_choice(app: App, tmp_path: Path) -> None:
+    """A restart's reload plays the theme's own video -- which chooses
+    nothing (bugs #1 and #2, the writing half)."""
+    from trcc.core.models import ModuleBackground
+
+    _video_theme(app, tmp_path)
+    app.show_source("visualizer", _KEY, _Waiting(), 30.0)
+    assert app.dispatch(LoadTheme(key=_KEY, path=tmp_path / "themes" / "VideoTheme",
+                                  reset_overrides=False)).ok
+    assert _choice(app) == ModuleBackground("visualizer")
+
+
+@pytest.mark.parametrize(("picked", "kind"), [(True, "theme"), (False, "module")])
+def test_only_a_picked_theme_ends_the_choice(
+    app: App, tmp_path: Path, picked: bool, kind: str,
+) -> None:
+    _video_theme(app, tmp_path)
+    app.show_source("visualizer", _KEY, _Waiting(), 30.0)
+    assert app.dispatch(LoadTheme(key=_KEY, path=tmp_path / "themes" / "VideoTheme",
+                                  picked=picked)).ok
+    assert _choice(app).kind == kind
+
+
+@pytest.mark.parametrize(("keep_override", "kind"), [(False, "theme"), (True, "picture")])
+def test_a_stop_ends_a_picked_file_a_teardown_keeps_it(
+    app: App, tmp_path: Path, keep_override: bool, kind: str,
+) -> None:
+    from trcc.core.commands import SetBackground
+
+    _video_theme(app, tmp_path)
+    assert app.dispatch(SetBackground(key=_KEY, path=_picture(tmp_path))).ok
+    app.dispatch(StopVideo(key=_KEY, keep_override=keep_override))
+    assert _choice(app).kind == kind
+
+
+def test_the_choice_is_saved_with_its_kind(app: App, tmp_path: Path) -> None:
+    """``asdict`` alone saves a choice as its bare fields -- which kind it
+    was is lost, and every one reads back as the theme's own."""
+    from trcc.core.models import ModuleBackground
+    from trcc.services.settings import Settings
+
+    _video_theme(app, tmp_path)
+    app.show_source("visualizer", _KEY, _Waiting(), 30.0)
+    reread = Settings(app.platform.paths())
+    assert reread.for_device(_KEY).background == ModuleBackground("visualizer")
+
+
+@pytest.mark.parametrize(("old", "kind"), [
+    ({"module_source": "visualizer"}, "module"),
+    ({"background_path": "THEME/Theme.mp4"}, "theme"),
+    ({"background_path": "/u/mine.png"}, "picture"),
+    ({}, "theme"),
+])
+def test_a_v7_config_folds_into_one_choice(
+    tmp_path: Path, old: dict[str, str], kind: str,
+) -> None:
+    """The real file, read by the real Settings -- the theme folder is the
+    panel's ``current_theme``."""
+    import json
+
+    from trcc.services.settings import Settings, config_path
+
+    from .conftest import FakePaths
+
+    paths = FakePaths(tmp_path)
+    theme = str(tmp_path / "themes" / "T")
+    device = {"current_theme": theme,
+              **{k: v.replace("THEME", theme) for k, v in old.items()}}
+    path = config_path(paths)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": 7, "devices": {_KEY: device}}),
+                    encoding="utf-8")
+    assert Settings(paths).for_device(_KEY).background.kind == kind

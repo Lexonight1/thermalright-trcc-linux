@@ -53,11 +53,14 @@ from ..models import (
     ClockSource,
     FitMode,
     HandshakeResult,
+    MediaPlayerBackground,
     OverlayElement,
     OverlayElementType,
     PanelSource,
+    PictureBackground,
     RawFrame,
     ThemeDir,
+    VideoBackground,
     Wire,
     element_fields,
     new_overlay_id,
@@ -1343,6 +1346,12 @@ class PlayVideo(Command[VideoResult]):
     frame size is taken from ``device.profile.resolution`` (or
     ``info.native_resolution`` pre-handshake) so frames are pre-scaled
     for the wire.
+
+    Dispatched, the video is the panel's background CHOICE
+    (``VideoBackground``).  A theme playing its OWN video calls :meth:`play`,
+    which chooses nothing: that video was stored as the user's pick, and a
+    restart then replaced the module, media player or picture they had
+    chosen (tests/test_background_choice.py).
     """
     USES_DEVICE: ClassVar[bool] = True
     key: str
@@ -1350,7 +1359,16 @@ class PlayVideo(Command[VideoResult]):
     fps: int = 15
 
     def execute(self, app: App) -> VideoResult:
-        log.info("PlayVideo.execute: key=%s path=%s fps=%d",
+        log.info("PlayVideo.execute: key=%s path=%s -- the user's choice",
+                 self.key, self.path)
+        played = self.play(app)
+        if played.ok:
+            app.settings.set_background(self.key, VideoBackground(str(self.path)))
+        return played
+
+    def play(self, app: App) -> VideoResult:
+        """Show the video on the panel, choosing nothing."""
+        log.info("PlayVideo.play: key=%s path=%s fps=%d",
                  self.key, self.path, self.fps)
         if MEDIA.kind_of(self.path) is not MediaKind.ANIMATED:
             log.warning(
@@ -1553,6 +1571,9 @@ class StopVideo(Command[VideoResult]):
             )
             app.settings.set_background_path(self.key, None)
             app.settings.set_media_player_uri(self.key, None)
+        if not self.keep_override:
+            app.settings.end_background(self.key, PictureBackground,
+                                        VideoBackground, MediaPlayerBackground)
         elif had_override:
             log.info(
                 "StopVideo: keeping background_path override for %s "
@@ -1982,7 +2003,7 @@ def _theme_background_returns(app: App, key: str) -> None:
              theme.name if theme is not None else None,
              video.name if video is not None else None)
     if video is not None:
-        app.dispatch(PlayVideo(key=key, path=video))
+        PlayVideo(key=key, path=video).play(app)   # the theme's own: no choice
     _publish_background(app, key)
 
 
@@ -2013,6 +2034,7 @@ def _stream_failed(app: App, key: str) -> None:
     log.info("_stream_failed: %s", key)
     _end_quietly(PanelSource.MEDIA, app, key)
     app.settings.set_media_player_uri(key, None)
+    app.settings.end_background(key, MediaPlayerBackground)
     _publish_background(app, key)
 
 
@@ -2247,9 +2269,10 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
                 ok=False, key=self.key, uri=uri,
                 message=f"media-player source does not exist: {uri}",
             )
-        play = app.dispatch(PlayVideo(key=self.key, path=local))
+        play = PlayVideo(key=self.key, path=local).play(app)
         if play.ok:
             app.settings.set_media_player_uri(self.key, uri)
+            app.settings.set_background(self.key, MediaPlayerBackground(uri))
             _publish_background(app, self.key)
         return MediaPlayerResult(
             ok=play.ok, key=self.key, uri=uri, playing=play.ok,
@@ -2284,6 +2307,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
         assert profile is not None
         app.dispatch(StopVideo(key=self.key))
         app.settings.set_media_player_uri(self.key, uri)
+        app.settings.set_background(self.key, MediaPlayerBackground(uri))
         app.media.open_stream(self.key, uri, profile.resolution,
                               round(1 / STREAM_TICK_S))
         app.add_task(SourceDriver(app, self.key, PanelSource.MEDIA, STREAM_TICK_S))
@@ -2381,6 +2405,7 @@ class SetBackground(Command[BackgroundResult]):
             # render reads the new value.
             StopVideo(key=self.key).execute(app)
             app.settings.set_background_path(self.key, str(self.path))
+            app.settings.set_background(self.key, PictureBackground(str(self.path)))
             _invalidate_scene(app, self.key)
             app.events.publish(
                 BackgroundChanged(key=self.key, path=str(self.path)),

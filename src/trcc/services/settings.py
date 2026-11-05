@@ -43,6 +43,7 @@ from ..core.models import (
     RECENT_COLOR_DEFAULT,
     RECENT_COLOR_SLOTS,
     TIME_FORMATS,
+    BackgroundChoice,
     BackgroundMode,
     DeviceSettings,
     FitMode,
@@ -51,6 +52,8 @@ from ..core.models import (
     OrientationState,
     OverlayElement,
     TempUnit,
+    ThemeBackground,
+    background_choice_from_fields,
 )
 from ..core.ports import Paths
 
@@ -170,12 +173,16 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 #                         ``openrgb_*``, ``ram_effects``, ``rgb_lights`` and
 #                         ``aura_argb_leds`` move, under the same names, into
 #                         its own section.  ``_migrate_app`` moves them.
+#   8                     a panel's background is ONE choice, ``background``
+#                         (``BackgroundChoice``), not four nullable fields;
+#                         ``_fold_background`` derives it from them.  They are
+#                         still written beside it until the readers move.
 #
 # Every config written before the bump carries ``[]`` for the majority of
 # users who never edited an overlay, so reading one at face value under v2
 # would blank their overlay.  ``_migrate`` reinterprets those as ``None``,
 # which is the state ``LoadTheme``'s restore branch then seeds from the theme.
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 #: The module the pre-6 visual fields belong to -- data, not an import.
 _VISUALIZER = "visualizer"
@@ -704,6 +711,29 @@ class Settings:
                 self._save()
         log.info("rename_theme_path: %s -> %s (%d reference(s))", old, new, changed)
         return changed
+
+    def set_background(self, key: str, choice: BackgroundChoice) -> None:
+        """The user chose *choice* for *key*'s background -- the one writer.
+        Whatever was chosen before is replaced."""
+        with self._display_write(key) as dev:
+            log.info("set_background: key=%s %s -> %s", key, dev.background,
+                     choice)
+            dev.background = choice
+            self._save()
+
+    def end_background(self, key: str,
+                       *kinds: type[BackgroundChoice]) -> None:
+        """A choice of one of *kinds* ended: *key*'s background is the
+        theme's own again.  Any other choice stands."""
+        with self._display_write(key) as dev:
+            if not isinstance(dev.background, kinds):
+                log.debug("end_background: %s keeps %s (ends only %s)", key,
+                          dev.background, [k.kind for k in kinds])
+                return
+            log.info("end_background: %s %s -> the theme's", key,
+                     dev.background)
+            dev.background = ThemeBackground()
+            self._save()
 
     def set_pending_background(self, key: str, ref: str | None) -> None:
         """A theme's module background *ref* waiting for its module to come
@@ -1270,7 +1300,7 @@ class Settings:
         payload = {
             "schema": _SCHEMA_VERSION,
             "app": asdict(self._app),
-            "devices": {k: asdict(v) for k, v in self._devices.items()},
+            "devices": {k: _device_json(v) for k, v in self._devices.items()},
             "led_devices": {k: asdict(v) for k, v in self._led_devices.items()},
         }
         tmp = path.with_suffix(".json.tmp")
@@ -1337,6 +1367,16 @@ def resolve_config_path(paths: Paths) -> Path:
 # =========================================================================
 
 
+def _device_json(dev: DeviceSettings) -> dict[str, Any]:
+    """One device's saved form.  ``asdict`` flattens the background choice
+    to its bare fields and loses which kind it is, so it is saved as its own
+    ``to_json``."""
+    saved = asdict(dev)
+    saved["background"] = dev.background.to_json()
+    log.debug("_device_json: background %s", saved["background"])
+    return saved
+
+
 def _json_default(obj: Any) -> Any:
     """Coerce tuples → lists (JSON has no tuple type)."""
     log.debug("_json_default: obj=%s", obj)
@@ -1387,7 +1427,25 @@ def _migrate_device(
         _fold_clock_formats(out, key)
     if schema < 6:
         _fold_visual(out, key)
+    if schema < 8:
+        _fold_background(out, key)
     return out
+
+
+def _fold_background(data: dict[str, Any], key: str) -> None:
+    """v7 -> v8: the panel's ONE background choice, from the fields that
+    held it -- what the panel showed before the upgrade, it shows after."""
+    def text(name: str) -> str | None:
+        value = data.get(name)
+        found = value if isinstance(value, str) and value else None
+        log.debug("_fold_background: %s %s = %r", key, name, found)
+        return found
+
+    choice = background_choice_from_fields(
+        text("background_path"), text("media_player_uri"),
+        text("module_source"), text("current_theme"))
+    data["background"] = choice.to_json()
+    log.info("_fold_background: %s -> %s", key, choice)
 
 
 def _fold_visual(data: dict[str, Any], key: str) -> None:
@@ -1646,6 +1704,7 @@ _FROM_JSON: dict[str, Callable[[Any], Any]] = {
     "entered_with": _orientation_state,
     "orientation_slots": _orientation_slots,
     "module_settings": _sections,
+    "background": BackgroundChoice.from_json,
 }
 
 

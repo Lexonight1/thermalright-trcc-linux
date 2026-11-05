@@ -72,7 +72,10 @@ def test_a_settings_file_from_before_keeps_what_follows(tmp_path: Path) -> None:
         RgbFollowMode.RAM, FollowMapping.SINGLE, FollowColors.SMOOTH,
         ("i2c-3/0x19",), {1: 8}, "pc.lan")
     app.close()
-    assert json.loads((tmp_path / "trcc.json").read_text())["schema"] == 7
+    from trcc.services.settings import _SCHEMA_VERSION
+
+    # Written back at the CURRENT schema, whichever that is now.
+    assert json.loads((tmp_path / "trcc.json").read_text())["schema"] == _SCHEMA_VERSION
 
 
 def test_the_panels_pictures_are_watched_only_while_a_device_leads(

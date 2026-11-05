@@ -35,7 +35,9 @@ from ..models import (
     ZT_MAX_DURATION_MS,
     Capability,
     FitMode,
+    ModuleBackground,
     PanelSource,
+    ThemeBackground,
     ThemeDir,
     VideoExportRequest,
 )
@@ -303,6 +305,12 @@ class LoadTheme(Command[ThemeResult]):
                 "in place, not stopping it first",
                 theme.name, video_path.name,
             )
+        # A picked theme ends the panel's background choice: its own
+        # background takes the panel -- or the media player, module or cast
+        # it carries, each choosing itself below.  One TRCC shows by itself
+        # (``picked=False``) leaves the choice alone.
+        if self.reset_overrides and self.picked:
+            app.settings.set_background(self.key, ThemeBackground())
         # A module's background (an audio visual) is a background like a
         # picture or a video: a theme picked without one ends the one drawing
         # -- its driver ends itself within a tick -- and a restart does not
@@ -598,6 +606,7 @@ class LoadTheme(Command[ThemeResult]):
                 log.info("LoadTheme: %s — ending the module background that "
                          "was drawing", theme.name)
                 app.settings.set_module_source(self.key, None)
+                app.settings.end_background(self.key, ModuleBackground)
                 _publish_background(app, self.key)
 
         # Video-backed themes (Theme.{mp4,mov,webm,zt}) go through the
@@ -612,7 +621,8 @@ class LoadTheme(Command[ThemeResult]):
                 "LoadTheme: %s has bundled video %s — dispatching PlayVideo",
                 theme.name, video_path.name,
             )
-            play = app.dispatch(PlayVideo(key=self.key, path=video_path))
+            # The theme's own video: it plays, and chooses nothing.
+            play = PlayVideo(key=self.key, path=video_path).play(app)
             if not play.ok:
                 return self._loaded(
                 theme, theme_path_str,

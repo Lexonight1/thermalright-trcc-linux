@@ -871,13 +871,20 @@ def background_choice_from_fields(
     migration, in ``display_source``'s own order (media, module, picture or
     video, the theme).  A ``background_path`` inside the panel's own theme
     folder is that theme's own video, which the old model stored as if the
-    user had picked it: it is the theme's background, not a choice."""
+    user had picked it: it is the theme's background, not a choice.  Its
+    FOLDER is what is tested: a saved theme's ``Theme.mp4`` may be a symlink
+    to the library video (SaveTheme), which resolves outside the theme.
+
+    One case it cannot see: a saved pointer theme whose video is a library
+    ref (``web/...``) stored its resolved library path, outside the folder.
+    That migrates as a video choice of the same file -- the same picture,
+    until the user picks another theme."""
     if media_player_uri:
         found: BackgroundChoice = MediaPlayerBackground(media_player_uri)
     elif module_source:
         found = ModuleBackground(module_source)
     elif background_path and not (
-            theme_dir and is_under(Path(background_path), Path(theme_dir))):
+            theme_dir and is_under(Path(background_path).parent, Path(theme_dir))):
         found = (VideoBackground(background_path)
                  if MEDIA.kind_of(Path(background_path)) is MediaKind.ANIMATED
                  else PictureBackground(background_path))
@@ -915,6 +922,11 @@ class DeviceSettings:
     # Set by LoadCloudTheme, cleared by LoadTheme (picking a local
     # theme reverts to its own background).  Survives app restart.
     background_path: str | None = None
+    # What the user chose to fill the panel's background -- ONE value
+    # (``BackgroundChoice``), saved as ``{"kind": ...}``.  Written beside
+    # ``background_path`` / ``media_player_uri`` / ``module_source`` while
+    # the readers move over to it; a theme's own video never writes it.
+    background: BackgroundChoice = ThemeBackground()
     # Active screencast region (x, y, w, h, audio) — the display source when the
     # screencast toggle is on.  ``None`` = not screencasting.  Persisted like
     # ``background_path`` so SaveTheme can bake it into a theme's ``screencast``

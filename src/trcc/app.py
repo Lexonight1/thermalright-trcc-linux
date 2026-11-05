@@ -65,6 +65,7 @@ from .core.models import (
     DeviceInfo,
     DeviceQuirks,
     HardwareMetrics,
+    ModuleBackground,
     PanelPicture,
     PanelSource,
     Preferences,
@@ -629,6 +630,7 @@ class App(CommandBus, ModuleServices):
                  module, fps)
         self.dispatch(StopVideo(key=key))
         self.settings.set_module_source(key, module)
+        self.settings.set_background(key, ModuleBackground(module))
         self.media.open_live(key, PanelSource.MODULE, source)
         self.add_task(SourceDriver(self, key, PanelSource.MODULE, 1.0 / fps))
         _publish_background(self, key)
@@ -644,6 +646,7 @@ class App(CommandBus, ModuleServices):
         self.remove_task(task_key(key, PanelSource.MODULE))
         if not keep_choice:
             self.settings.set_module_source(key, None)
+            self.settings.end_background(key, ModuleBackground)
         _theme_background_returns(self, key)
 
     def source(self, key: str) -> FrameSource | None:
