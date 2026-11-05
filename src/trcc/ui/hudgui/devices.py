@@ -20,13 +20,21 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ...core.commands import DeviceState, ListDevices
 from ..presentation.device_symbols import device_symbols
 from ..qt_assets import Assets
 from ..qt_preview import FRAME_EDGE, PreviewSurface
 from .chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, TabBar
+from .themes import ThemeGrid
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
@@ -134,19 +142,24 @@ class DevicePanel(QWidget):
         self.preview = PreviewSurface(app, bus, selection, Assets.pixmap, self)
         self.preview.setFixedWidth(FRAME_EDGE + 16)
         row.addWidget(self.preview, alignment=Qt.AlignmentFlag.AlignTop)
-        #: The chosen tab's area -- its contents come next.
-        self.area = QLabel("", self)
-        self.area.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.area.setStyleSheet("color: #dfe5ea; font-size: 12pt;")
+        #: Each tab's area, by name: Local Themes is built, the rest are
+        #: placeholders until theirs are.
+        self.area = QStackedWidget(self)
+        self.pages: dict[str, QWidget] = {}
+        for name in (*DEVICE_TABS, DEVICE_SETTINGS_TAB):
+            page = (ThemeGrid(app, bus, selection) if name == "Local Themes"
+                    else _coming(name))
+            self.pages[name] = page
+            self.area.addWidget(page)
         row.addWidget(self.area, stretch=1)
         column.addLayout(row)
         self.tabs.tab_chosen.connect(self._on_tab)
         self._on_tab(self.tabs.current)
 
     def _on_tab(self, name: str) -> None:
-        """Show *name*'s area (a placeholder until its contents are built)."""
+        """Show *name*'s area."""
         log.info("DevicePanel._on_tab: %s", name)
-        self.area.setText(f"{name} -- coming next.")
+        self.area.setCurrentWidget(self.pages[name])
 
 
 class DevicesView(QWidget):
@@ -177,3 +190,12 @@ class DevicesView(QWidget):
         log.info("DevicesView._on_picked: %s", key)
         self._selection.set_key(key)
         self.panel.show()
+
+
+def _coming(name: str) -> QLabel:
+    """A tab whose contents are not built yet."""
+    log.debug("_coming: %s", name)
+    label = QLabel(f"{name} -- coming next.")
+    label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+    label.setStyleSheet("color: #dfe5ea; font-size: 12pt;")
+    return label

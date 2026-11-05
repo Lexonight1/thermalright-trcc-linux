@@ -108,3 +108,62 @@ def test_the_bar_reads_out_the_cpu_and_gpu_temperature(window: Any) -> None:
                                       metrics=HardwareMetrics(cpu_temp=122.0,
                                                               gpu_temp=140.0)))
     assert window.bar.readout.text() == "CPU 122°F   GPU 140°F"
+
+
+# ── Local Themes ─────────────────────────────────────────────────────────
+
+
+def _themes(app: App, *names: str) -> list[Path]:
+    """Installed 320x320 themes, each a picture of its own."""
+    from PySide6.QtGui import QColor, QImage
+
+    folder = app.platform.paths().theme_dir(320, 320)
+    made = []
+    for index, name in enumerate(names):
+        theme = folder / name
+        theme.mkdir(parents=True)
+        (theme / "trcc.json").write_text(
+            '{"name": "%s", "width": 320, "height": 320, "elements": []}' % name,
+            encoding="utf-8")
+        img = QImage(320, 320, QImage.Format.Format_RGB888)
+        img.fill(QColor(40 * index, 80, 160))
+        assert img.save(str(theme / "00.png"))
+        made.append(theme)
+    return made
+
+
+def _local_themes(window: Any, qtbot: Any) -> Any:
+    window.bar.buttons["Devices"].click()
+    devices = window.panel("Devices")
+    devices.menu.buttons[_KEY].click()
+    qtbot.waitUntil(devices.panel.isVisible)
+    return devices.panel.pages["Local Themes"]
+
+
+def test_local_themes_lists_the_devices_themes_and_a_click_loads_one(
+        window: Any, qtbot: Any) -> None:
+    """The gui's way: one click loads it onto the panel, and it lights.
+    MUTATION CHECK: drop the ``LoadTheme`` dispatch in ``ThemeGrid._on_tile``."""
+    from trcc.core.commands import LcdSnapshot
+
+    one, two, three = _themes(window._app, "One", "Two", "Three")
+    grid = _local_themes(window, qtbot)
+    grid.refresh()
+    assert {p.name for p in grid.tiles} >= {"One", "Two", "Three"}
+    grid.tiles[two.resolve()].click()
+    shown = window._app.dispatch(LcdSnapshot(key=_KEY)).current_theme
+    assert shown is not None and Path(shown).resolve() == two.resolve()
+    assert [p.name for p, t in grid.tiles.items() if t.isChecked()] == ["Two"]
+
+
+def test_the_light_follows_a_theme_loaded_from_another_ui(
+        window: Any, qtbot: Any) -> None:
+    """The light is the App's, never this window's last click.  MUTATION
+    CHECK: drop the ``theme_loaded`` connection in ``ThemeGrid.__init__``."""
+    from trcc.core.commands import LoadTheme
+
+    one, two = _themes(window._app, "One", "Two")
+    grid = _local_themes(window, qtbot)
+    grid.refresh()
+    assert window._app.dispatch(LoadTheme(key=_KEY, path=one)).ok   # e.g. the CLI
+    qtbot.waitUntil(lambda: grid.tiles[one.resolve()].isChecked(), timeout=2000)
