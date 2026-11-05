@@ -228,7 +228,7 @@ class LoadTheme(Command[ThemeResult]):
         log.info("LoadTheme: %s's background switch is %s -- mode %s -> %s",
                  theme.name, "on" if shown else "off", mode, wanted)
         if wanted != mode:
-            SetBackgroundMode(key=self.key, mode=wanted).execute(app)
+            app.dispatch(SetBackgroundMode(key=self.key, mode=wanted))
 
     def _loaded(
         self, theme: Theme, path: str, *, ok: bool, message: str,
