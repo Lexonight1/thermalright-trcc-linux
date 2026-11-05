@@ -250,3 +250,29 @@ def test_the_user_service_needs_the_device_group(
             "cannot reach them",
             "sudo usermod -aG trcc alice, then log out and back in (or run "
             "`trcc system setup`)")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-only check")
+def test_a_rule_opening_every_disk_to_every_user_is_reported(tmp_path: Path) -> None:
+    """Only the rule with no device in it and a world-writable mode: a
+    rule for one device, a 0660 one, a comment and TRCC's own pass.
+    MUTATION CHECK: drop the ``_ONE_DEVICE`` test."""
+    from trcc.adapters.system._udev import build_udev_rules
+
+    etc, lib = tmp_path / "etc", tmp_path / "lib"
+    etc.mkdir()
+    lib.mkdir()
+    (etc / "99-old.rules").write_text('SUBSYSTEM=="scsi_generic", MODE="0666"\n')
+    (etc / "50-one.rules").write_text(
+        '# SUBSYSTEM=="scsi_generic", MODE="0666"\n'
+        'SUBSYSTEM=="scsi_generic", ATTRS{idVendor}=="0402", MODE="0666"\n'
+        'SUBSYSTEM=="scsi_generic", MODE="0660", GROUP="disk"\n')
+    (lib / "70-trcc-lcd.rules").write_text(build_udev_rules())
+
+    result = health.check_world_open_scsi_linux([etc, lib])
+    assert (result.name, result.severity, result.message) == (
+        "udev-raw-scsi", "WARN",
+        "a udev rule lets every user on this computer send raw SCSI commands "
+        f"to every disk: {etc / '99-old.rules'}:1")
+    (etc / "99-old.rules").unlink()
+    assert health.check_world_open_scsi_linux([etc, lib]).severity == "OK"

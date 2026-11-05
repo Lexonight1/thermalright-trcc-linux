@@ -398,6 +398,54 @@ def check_module_devices(modules: Sequence[ModuleInfo]) -> HealthCheckResult:
     )
 
 
+#: A udev MODE that lets every user write: the "others" digit has the write bit.
+_OTHERS_WRITE = re.compile(r'MODE\s*=\s*"0?[0-7][0-7][2367]"')
+#: What scopes a rule to one device; without one it matches every node of its kind.
+_ONE_DEVICE = re.compile(r'(ATTRS?|ENV)\{(idVendor|ID_VENDOR_ID)\}|KERNELS?\s*==')
+
+
+def check_world_open_scsi_linux(dirs: Sequence[Path] | None = None) -> HealthCheckResult:
+    """No udev rule lets every user send raw SCSI commands to every disk.
+
+    A ``SUBSYSTEM=="scsi_generic"`` rule with a world-writable MODE and no
+    device in it opens ``/dev/sg*`` -- every disk on the machine -- to every
+    program of every user.  Found on the maintainer's box 2026-11-04 (a
+    39-byte ``99-trcc.rules`` from before this project), which nothing here
+    could see: the checks above look only for TRCC's own files.  TRCC needs
+    none of it -- ``70-trcc-lcd.rules`` gives the coolers to the seat and the
+    ``trcc`` group.
+    """
+    log.info("check_world_open_scsi_linux: called")
+    if sys.platform != "linux":
+        return HealthCheckResult(name="udev-raw-scsi", severity="OK",
+                                 message="Not applicable on this OS")
+    from ..system._udev import RULES_DIRS
+
+    found: list[str] = []
+    for directory in dirs if dirs is not None else RULES_DIRS:
+        for path in sorted(directory.glob("*.rules")):
+            try:
+                lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            found += [f"{path}:{n}" for n, line in enumerate(lines, 1)
+                      if not line.lstrip().startswith("#")
+                      and 'SUBSYSTEM=="scsi_generic"' in line
+                      and _OTHERS_WRITE.search(line) and not _ONE_DEVICE.search(line)]
+    log.info("check_world_open_scsi_linux: %s", found or "none")
+    if not found:
+        return HealthCheckResult(name="udev-raw-scsi", severity="OK",
+                                 message="no udev rule opens every disk to every user")
+    return HealthCheckResult(
+        name="udev-raw-scsi", severity="WARN",
+        message=("a udev rule lets every user on this computer send raw SCSI "
+                 f"commands to every disk: {', '.join(found)}"),
+        fix_hint=("remove that line (or the file, if nothing else in it is "
+                  "yours), then: sudo udevadm control --reload -- TRCC does not "
+                  "need it"),
+    )
+
+
 def check_udev_rules_linux() -> HealthCheckResult:
     """Linux-only: look for the installed rule in every directory udev reads."""
     log.info("check_udev_rules_linux: called")
@@ -701,6 +749,7 @@ def run_health_checks(
         check_ffmpeg_present(platform),
         check_qt_importable(),
         check_udev_rules_linux(),
+        check_world_open_scsi_linux(),
         check_module_devices(modules),
         check_device_group_linux(),
         check_fan_chip_linux(platform),
