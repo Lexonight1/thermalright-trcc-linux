@@ -22,6 +22,7 @@ from ..models import (
     Kind,
     OverlayElement,
     ThemeDir,
+    element_fields,
     oriented_resolution,
     parse_device_key,
 )
@@ -603,12 +604,7 @@ def resolve_overlay_layout(app: App, key: str) -> OverlayLayoutResult:
 def _element_to_entry(e: OverlayElement) -> OverlayElementEntry:
     """Flat OverlayElementEntry view for Result types."""
     log.debug("_element_to_entry: id=%s type=%s", e.id, e.type)
-    return OverlayElementEntry(
-        id=e.id, type=e.type, x=e.x, y=e.y, color=e.color, size=e.size,
-        font=e.font, bold=e.bold, italic=e.italic, text=e.text,
-        metric=e.metric, format=e.format, show_unit=e.show_unit,
-        source=e.source,
-    )
+    return OverlayElementEntry(id=e.id, **element_fields(e))
 
 
 def _theme_directories(app: App, key: str) -> ThemeDirectories | None:

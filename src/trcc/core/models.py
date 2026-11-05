@@ -976,7 +976,9 @@ ClockSource = Literal["time", "weekday", "date"]
 # the API request bodies.  The DEFAULTS are single-sourced here so those
 # copies cannot drift: a default that differed between the Command and the
 # domain object would silently split a DC-parsed element from an API-added
-# one, with nothing to catch it.
+# one, with nothing to catch it.  The NAMES are gated the same way: every
+# copy is checked against ``OverlayElement`` by
+# ``tests/test_overlay_element_fields.py``.
 OVERLAY_DEFAULT_COLOR = "#ffffff"
 OVERLAY_DEFAULT_SIZE = 16
 OVERLAY_DEFAULT_FORMAT = "{value}"
