@@ -369,3 +369,61 @@ def test_letting_the_panel_go_stops_its_box(tmp_path: Path) -> None:
     app.stop_sources(key)
     assert (source.closed, app.media.inset(key)) == (1, None)
     assert app.settings.for_device(key).inset == InsetChoice("viz")
+
+
+def test_set_inset_moves_a_background_module_into_the_box(tmp_path: Path) -> None:
+    """The module that IS the panel's background moves into the box -- it
+    never runs twice -- and the theme's background returns under it.  The
+    snapshot every UI reads says so; ClearInset forgets it."""
+    from trcc.core.commands import ClearInset, LcdSnapshot, SetInset
+    from trcc.core.models import ModuleBackground, ThemeBackground
+
+    app, device, _ = _boxed(tmp_path, _Alternates())
+    key = device.info.key
+    app.settings.for_device(key).inset = None
+    app.media.close_inset(key)
+    app.modules = cast(Any, _Modules())
+    app.settings.set_background(key, ModuleBackground("viz"))
+    result = app.dispatch(SetInset(key=key, module="viz", corner="top-left",
+                                   size="large"))
+    assert result.ok, result.message
+    s = app.settings.for_device(key)
+    assert s.background == ThemeBackground()
+    snap = app.dispatch(LcdSnapshot(key=key))
+    assert (snap.inset_module, snap.inset_corner, snap.inset_size) == (
+        "viz", "top-left", "large")
+    assert app.dispatch(ClearInset(key=key)).ok
+    assert app.dispatch(LcdSnapshot(key=key)).inset_module == ""
+
+
+@pytest.mark.parametrize(("module", "corner", "size", "says"), [
+    ("nope", "top-left", "small", "no module nope is installed"),
+    ("lights", "top-left", "small", "Lights draws no picture to put in a box"),
+    ("viz", "middle", "small", "a box goes in a corner"),
+])
+def test_set_inset_refuses_what_cannot_be_a_box(tmp_path: Path, module: str,
+                                                corner: str, size: str,
+                                                says: str) -> None:
+    from trcc.core.commands import SetInset
+
+    app, device, _ = _boxed(tmp_path, _Alternates())
+    app.modules = cast(Any, _Modules())
+    result = app.dispatch(SetInset(key=device.info.key, module=module,
+                                   corner=corner, size=size))
+    assert not result.ok and result.message.startswith(says), result.message
+
+
+class _Modules:
+    """Two installed modules: ``viz`` draws pictures, ``lights`` does not."""
+
+    def __contains__(self, key: str) -> bool:
+        return key in ("viz", "lights")
+
+    def manifest(self, key: str) -> Any:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(title=key.capitalize(), capabilities=(
+            ("background",) if key == "viz" else ("lights",)))
+
+    def close(self) -> None:
+        """``App.close`` ends the module runner."""

@@ -53,6 +53,9 @@ from ..models import (
     ClockSource,
     FitMode,
     HandshakeResult,
+    InsetChoice,
+    InsetCorner,
+    InsetSize,
     MediaPlayerBackground,
     ModuleBackground,
     OverlayElement,
@@ -2096,6 +2099,85 @@ class ClearModuleSource(Command[Result]):
         return Result(ok=True, message=f"{title} ended on {self.key}")
 
 
+@dataclass(frozen=True, slots=True)
+class SetInset(Command[Result]):
+    """Put *module*'s picture in a box over panel *key*'s theme (#328): the
+    theme stays -- its background, mask and metrics -- and the box sits in
+    *corner* at *size* (``InsetCorner`` / ``InsetSize`` values).
+
+    The module draws what it would draw as the background, unchanged: the
+    App answers its host calls for the box.  Already the panel's background,
+    it MOVES into the box rather than running twice; a box already open is
+    closed first, so the module draws again at the new size.  Works while
+    the module is off: the box waits for it, as a background choice does.
+    """
+    USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
+    key: str
+    module: str
+    corner: str = InsetCorner.BOTTOM_RIGHT.value
+    size: str = InsetSize.MEDIUM.value
+
+    def execute(self, app: App) -> Result:
+        log.info("SetInset: %s <- %s %s %s", self.key, self.module, self.corner,
+                 self.size)
+        try:
+            choice = InsetChoice(self.module, InsetCorner(self.corner),
+                                 InsetSize(self.size))
+        except ValueError:
+            return Result(ok=False, message=(
+                f"a box goes in a corner ({', '.join(c.value for c in InsetCorner)}) "
+                f"at a size ({', '.join(z.value for z in InsetSize)})"))
+        if self.module not in app.modules:
+            log.warning("SetInset: %s is not installed", self.module)
+            return Result(ok=False, message=f"no module {self.module} is installed")
+        if "background" not in app.modules.manifest(self.module).capabilities:
+            log.warning("SetInset: %s draws no pictures", self.module)
+            return Result(ok=False, message=(
+                f"{_module_title(app, self.module)} draws no picture to put in a box"))
+        s = app.settings.for_device(self.key)
+        if s.chosen_module == self.module:
+            log.info("SetInset: %s moves from %s's background into the box",
+                     self.module, self.key)
+            app.end_source(self.key)
+        if s.inset is not None:
+            app.end_source(self.key, keep_choice=True, module=s.inset.module)
+        app.settings.set_inset(self.key, choice)
+        app.resume_box(self.key)
+        _publish_background(app, self.key)
+        title = _module_title(app, self.module)
+        if app.media.inset(self.key) is not None:
+            message = f"{title} in a {choice.size.value} box, {choice.corner.value}"
+        elif app.background_kind_of(self.module) is None:
+            message = f"{title} is off -- it draws in the box when switched on"
+        else:
+            message = (f"{title} has nothing chosen to draw on {self.key} yet -- "
+                       "choose it in its page, and it goes in the box")
+        log.info("SetInset: %s", message)
+        return Result(ok=True, message=message)
+
+
+@dataclass(frozen=True, slots=True)
+class ClearInset(Command[Result]):
+    """Panel *key* has no box any more: the module's picture stops, and the
+    choice is forgotten.  The theme under it was never touched."""
+    USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
+    key: str
+
+    def execute(self, app: App) -> Result:
+        inset = app.settings.for_device(self.key).inset
+        log.info("ClearInset: %s (%s)", self.key, inset)
+        if inset is None:
+            return Result(ok=True, message=f"{self.key} has no box")
+        if app.media.inset(self.key) is not None:
+            app.end_source(self.key, module=inset.module)   # clears the choice
+        else:
+            app.settings.set_inset(self.key, None)
+        _publish_background(app, self.key)
+        return Result(ok=True, message=f"the box is gone from {self.key}")
+
+
 def _module_title(app: App, module: str | None) -> str:
     """*module*'s title for the user -- its key if it is not installed, ""
     for none."""
@@ -3663,6 +3745,10 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             screencast_region=s.screencast_region,
             display_source=s.display_source.value,
             module_title=_module_title(app, s.chosen_module),
+            inset_module=s.inset.module if s.inset else "",
+            inset_title=_module_title(app, s.inset.module if s.inset else None),
+            inset_corner=s.inset.corner.value if s.inset else "",
+            inset_size=s.inset.size.value if s.inset else "",
             media_player_uri=s.chosen_media,
             screencast_rect=screencast_box(app, self.key),
             screencast_hide_border=s.screencast_hide_border,

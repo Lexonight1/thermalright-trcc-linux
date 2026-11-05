@@ -874,6 +874,25 @@ class App(CommandBus, ModuleServices):
         log.info("resume_background: %s resumes %s", key, chosen)
         kind.resume(key)
 
+    def resume_box(self, key: str, module: str | None = None) -> None:
+        """Panel *key*'s box over its theme, drawing again -- unless it has
+        none, it already draws, or its module is off.  *module* limits it to
+        one module's."""
+        inset = self.settings.for_device(key).inset
+        if inset is None or (module is not None and inset.module != module):
+            log.debug("resume_box: %s has no box (for %s)", key, module)
+            return
+        if self.media.inset(key) is not None:
+            log.debug("resume_box: %s's box already draws", key)
+            return
+        kind = self.background_kind_of(inset.module)
+        if kind is None:
+            log.info("resume_box: %s's box waits for %s (off or not installed)",
+                     key, inset.module)
+            return
+        log.info("resume_box: %s's box resumes %s", key, inset.module)
+        kind.resume(key)
+
     def sound_input(self) -> SoundInput:
         frame_log.debug("App.sound_input")
         return self.platform.sound_input()

@@ -1610,6 +1610,9 @@ class ModuleInfo:
     #: Who wrote it, as its ``module.json`` says -- for one installed from the
     #: index, the name TRCC reviewed (the installer refuses any other).
     author: str = ""
+    #: It may draw a panel's picture -- its background, or a box over the
+    #: theme (``SetInset``): its manifest declares ``background``.
+    draws_pictures: bool = False
 
 
 @dataclass(frozen=True, slots=True)

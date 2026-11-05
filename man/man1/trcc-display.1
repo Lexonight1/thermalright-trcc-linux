@@ -97,6 +97,25 @@ Dwell time per frame in deciseconds (10 = 1.0 s, max 25 = 2.5 s)
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
+.SS clear\-inset
+.PP
+\fBtrcc display clear\-inset\fR \fIKEY\fR
+.PP
+Take the box away; the theme under it is untouched.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
 .SS color
 .PP
 \fBtrcc display color\fR \fIKEY\fR \fIHEX_COLOR\fR
@@ -890,6 +909,34 @@ Fit mode: 'width' (letterbox), 'height' (pillarbox), 'stretch'
 .PP
 Options:
 .RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS set\-inset
+.PP
+\fBtrcc display set\-inset\fR \fIKEY\fR \fIMODULE\fR [\fIOPTIONS\fR]
+.PP
+Put a module's picture in a box over the panel's theme.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBMODULE\fR
+The module whose picture goes in the box
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-corner \fICORNER\fR\fR
+Corner: top\-left, top\-right, bottom\-left, bottom\-right
+.TP
+\fB\-\-size \fISIZE\fR\fR
+Size: small, medium, large
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

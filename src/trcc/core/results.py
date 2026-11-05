@@ -853,6 +853,13 @@ class LcdSnapshotResult(Result):
     #: The module drawing the background, by its title -- "" unless
     #: ``display_source`` is ``"module"``.
     module_title: str = ""
+    #: The module in a box over the theme (``SetInset``) -- its key and its
+    #: title, the corner and the size, as ``InsetCorner`` / ``InsetSize``
+    #: name them; all "" when the panel has no box.
+    inset_module: str = ""
+    inset_title: str = ""
+    inset_corner: str = ""
+    inset_size: str = ""
     #: What the media player plays -- a local file or a web URL -- or None.
     media_player_uri: str | None = None
     #: The device's screencast region on screen, cast or not (the theme's, or

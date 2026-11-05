@@ -633,7 +633,8 @@ class ModuleRunner:
                           enabled=key in self._on, problem=problem, locked=locked,
                           icon=bool(manifest.icon), guide=manifest.guide,
                           origin=spec.origin, allowed=not spec.refused,
-                          version=manifest.version, author=manifest.author)
+                          version=manifest.version, author=manifest.author,
+                          draws_pictures="background" in manifest.capabilities)
 
     def icon(self, key: str) -> tuple[bytes, str] | None:
         """Module *key*'s symbol and its media type, or None: no such module,

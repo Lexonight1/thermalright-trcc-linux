@@ -14,11 +14,14 @@ from ...core.models import (
     DEFAULT_REFRESH_INTERVAL_S,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
+    MODULE_KEY,
     OVERLAY_DEFAULT_CLOCK_SOURCE,
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     FitMode,
+    InsetCorner,
+    InsetSize,
 )
 from ...core.results import ConnectionIssuesResult, ConnectResult
 
@@ -435,6 +438,15 @@ class ColorRequest(BaseModel):
 
 class FitModeRequest(BaseModel):
     mode: str = Field(..., pattern="^(width|height|stretch)$")
+
+
+class InsetRequest(BaseModel):
+    """A module's picture in a box over the theme (``SetInset``)."""
+    module: str = Field(..., pattern=f"^{MODULE_KEY.pattern}$")
+    corner: str = Field(InsetCorner.BOTTOM_RIGHT.value,
+                        pattern="^(" + "|".join(c.value for c in InsetCorner) + ")$")
+    size: str = Field(InsetSize.MEDIUM.value,
+                      pattern="^(" + "|".join(z.value for z in InsetSize) + ")$")
 
 
 class OverlayRequest(BaseModel):

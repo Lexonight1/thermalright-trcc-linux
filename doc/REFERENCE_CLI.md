@@ -478,6 +478,18 @@ trcc display boot-anim [OPTIONS] KEY FRAMES_DIR
 |---|---|
 | `--delay`, `-d` `DELAY_DS` | Dwell time per frame in deciseconds (10 = 1.0 s, max 25 = 2.5 s) |
 
+### `trcc display clear-inset`
+
+Take the box away; the theme under it is untouched.
+
+```bash
+trcc display clear-inset KEY
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+
 ### `trcc display color`
 
 Display a single solid color on the LCD. Smallest path that exercises the full wire chain (handshake-derived profile + DisplayService encoder + Device.send). Useful diagnostic for confirming a device class works end-to-end on real hardware.
@@ -953,6 +965,24 @@ trcc display set-fit-mode KEY MODE
 |---|---|
 | `KEY` | Device key, e.g. 0402:3922 |
 | `MODE` | Fit mode: 'width' (letterbox), 'height' (pillarbox), 'stretch' |
+
+### `trcc display set-inset`
+
+Put a module's picture in a box over the panel's theme.
+
+```bash
+trcc display set-inset [OPTIONS] KEY MODULE
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `MODULE` | The module whose picture goes in the box |
+
+| Option | Description |
+|---|---|
+| `--corner` `CORNER` | Corner: top-left, top-right, bottom-left, bottom-right |
+| `--size` `SIZE` | Size: small, medium, large |
 
 ### `trcc display set-orientation`
 

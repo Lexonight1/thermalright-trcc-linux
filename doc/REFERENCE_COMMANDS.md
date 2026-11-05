@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**174 total: 124 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**176 total: 126 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -86,6 +86,16 @@ One tick of a panel's live picture -- its screencast, its web stream or a module
 |---|---|---|
 | `key` | `str` | yes |
 | `kind` | `PanelSource` | yes |
+
+### `ClearInset`
+
+Panel *key* has no box any more: the module's picture stops, and the choice is forgotten.  The theme under it was never touched.
+
+*Command* → `Result`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
 
 ### `ClearModuleSource`
 
@@ -433,6 +443,19 @@ Switch game mode and/or set its CPU threshold -- the C#'s ``buttonGame`` / ``tex
 | `key` | `str` | yes |
 | `enabled` | `bool | None` | no |
 | `threshold` | `int | None` | no |
+
+### `SetInset`
+
+Put *module*'s picture in a box over panel *key*'s theme (#328): the theme stays -- its background, mask and metrics -- and the box sits in *corner* at *size* (``InsetCorner`` / ``InsetSize`` values).
+
+*Command* → `Result`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `module` | `str` | yes |
+| `corner` | `str` | no |
+| `size` | `str` | no |
 
 ### `SetMaskPosition`
 

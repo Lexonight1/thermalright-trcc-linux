@@ -42,16 +42,19 @@ from PySide6.QtWidgets import (
 
 from ....core._colors import parse_hex
 from ....core.commands import (
+    ClearInset,
     Command,
     ConfigureSlideshow,
     ControlCenterSnapshot,
     EnableOverlay,
     LcdSnapshot,
     ListLanguages,
+    ListModules,
     SetBackgroundMode,
     SetDateFormat,
     SetFitMode,
     SetGameMode,
+    SetInset,
     SetLanguage,
     SetOverlayBackground,
     SetRefreshInterval,
@@ -61,8 +64,13 @@ from ....core.commands import (
     SetTimeFormat,
 )
 from ....core.events import Event
-from ....core.models import MAX_REFRESH_INTERVAL_S, MIN_REFRESH_INTERVAL_S
-from ....core.results import Result
+from ....core.models import (
+    MAX_REFRESH_INTERVAL_S,
+    MIN_REFRESH_INTERVAL_S,
+    InsetCorner,
+    InsetSize,
+)
+from ....core.results import LcdSnapshotResult, Result
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -144,6 +152,18 @@ class ConfigurationPanel(BasePanel):
         bg_form.addRow("Mode:", self._bg_mode)
         bg_form.addRow("Color (when mode = Solid):", bg_color_row)
 
+        # ── A module's picture in a box over the theme (#328) ──
+        inset_box = QGroupBox("Module picture in a box", self)
+        inset_form = QFormLayout(inset_box)
+        self._inset_module = QComboBox(inset_box)      # filled from the App
+        self._inset_corner = _combo(inset_box, tuple(
+            (c.value, c.value.replace("-", " ").capitalize()) for c in InsetCorner))
+        self._inset_size = _combo(inset_box, tuple(
+            (z.value, z.value.capitalize()) for z in InsetSize))
+        inset_form.addRow("Module:", self._inset_module)
+        inset_form.addRow("Corner:", self._inset_corner)
+        inset_form.addRow("Size:", self._inset_size)
+
         # ── Slideshow group ──
         sl_box = QGroupBox("Slideshow", self)
         sl_form = QFormLayout(sl_box)
@@ -203,6 +223,7 @@ class ConfigurationPanel(BasePanel):
         root.addLayout(key_form)
         root.addWidget(display_box)
         root.addWidget(bg_box)
+        root.addWidget(inset_box)
         root.addWidget(sl_box, stretch=1)
         root.addWidget(game_box)
         root.addWidget(app_box)
@@ -239,6 +260,8 @@ class ConfigurationPanel(BasePanel):
         self._language.activated.connect(self._send_language)
         self._refresh.valueChanged.connect(self._send_refresh)
         self._game.activated.connect(self._send_game_enabled)
+        for combo in (self._inset_module, self._inset_corner, self._inset_size):
+            combo.activated.connect(self._send_inset)
         self._game_threshold.valueChanged.connect(self._send_game_threshold)
         self._date.activated.connect(self._send_date)
         if (line_edit := self._date.lineEdit()) is not None:
@@ -251,6 +274,18 @@ class ConfigurationPanel(BasePanel):
         key = self._key()
         if key is not None:
             self._send(command(key=key, **{field: combo.currentData()}))
+
+    def _send_inset(self, _index: int) -> None:
+        """The box as the three combos now say -- or none, for Off."""
+        key, module = self._key(), self._inset_module.currentData()
+        log.info("_send_inset: %s module=%r corner=%s size=%s", key, module,
+                 self._inset_corner.currentData(), self._inset_size.currentData())
+        if key is None:
+            return
+        self._send(SetInset(key=key, module=module,
+                            corner=self._inset_corner.currentData(),
+                            size=self._inset_size.currentData())
+                   if module else ClearInset(key=key))
 
     def _send_temp_unit(self, _index: int) -> None:
         log.info("_send_temp_unit: %s", self._temp_unit.currentData())
@@ -382,10 +417,30 @@ class ConfigurationPanel(BasePanel):
         self._bg_color_label.setText(self._bg_color)
         self._show_slideshow(snap.slideshow_enabled, snap.slideshow_interval_s,
                              snap.slideshow_themes)
+        self._show_inset(snap)
         self._select_combo_by_data(self._game, snap.game_enabled)
         self._game_threshold.blockSignals(True)
         self._game_threshold.setValue(snap.game_threshold)
         self._game_threshold.blockSignals(False)
+
+    def _show_inset(self, snap: LcdSnapshotResult) -> None:
+        """The box row: Off, then every module that draws pictures -- and the
+        chosen one even if it is no longer here, so the row never lies."""
+        modules = self.dispatch(ListModules())
+        self._inset_module.clear()                 # emits no ``activated``
+        self._inset_module.addItem("Off", userData="")
+        for module in modules.modules:
+            if module.draws_pictures:
+                self._inset_module.addItem(module.title, userData=module.key)
+        if snap.inset_module and self._inset_module.findData(snap.inset_module) < 0:
+            self._inset_module.addItem(snap.inset_title or snap.inset_module,
+                                       userData=snap.inset_module)
+        log.debug("_show_inset: %r %s %s of %d choice(s)", snap.inset_module,
+                  snap.inset_corner, snap.inset_size, self._inset_module.count())
+        self._select_combo_by_data(self._inset_module, snap.inset_module)
+        if snap.inset_module:
+            self._select_combo_by_data(self._inset_corner, snap.inset_corner)
+            self._select_combo_by_data(self._inset_size, snap.inset_size)
 
     def _show_slideshow(self, enabled: bool, interval_s: float,
                         themes: Sequence[str]) -> None:

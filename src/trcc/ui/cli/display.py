@@ -12,6 +12,7 @@ from trcc.core.commands import (
     AddOverlayElement,
     ApplyMask,
     BuildPreview,
+    ClearInset,
     ConfigureSlideshow,
     ConnectDevice,
     ControlCenterSnapshot,
@@ -39,6 +40,7 @@ from trcc.core.commands import (
     SetBrightness,
     SetFitMode,
     SetGameMode,
+    SetInset,
     SetMaskPosition,
     SetMaskVisible,
     SetMediaPlayer,
@@ -69,6 +71,8 @@ from ...core.models import (
     OVERLAY_DEFAULT_FORMAT,
     OVERLAY_DEFAULT_SIZE,
     FitMode,
+    InsetCorner,
+    InsetSize,
     MediaKind,
     OverlayElementType,
 )
@@ -161,6 +165,31 @@ def set_fit_mode(
     """Set how the background fits the canvas."""
     log.info("cli display set-fit-mode: key=%s mode=%s", key, mode)
     dispatch_echo(SetFitMode(key=key, mode=mode.lower()))
+
+
+@app.command("set-inset")
+def set_inset(
+    key: DeviceKey,
+    module: str = typer.Argument(..., help="The module whose picture goes in the box"),
+    corner: str = typer.Option(
+        InsetCorner.BOTTOM_RIGHT.value,
+        help="Corner: " + ", ".join(c.value for c in InsetCorner)),
+    size: str = typer.Option(
+        InsetSize.MEDIUM.value,
+        help="Size: " + ", ".join(z.value for z in InsetSize)),
+) -> None:
+    """Put a module's picture in a box over the panel's theme."""
+    log.info("cli display set-inset: key=%s module=%s corner=%s size=%s",
+             key, module, corner, size)
+    dispatch_echo(SetInset(key=key, module=module, corner=corner.lower(),
+                           size=size.lower()))
+
+
+@app.command("clear-inset")
+def clear_inset(key: DeviceKey) -> None:
+    """Take the box away; the theme under it is untouched."""
+    log.info("cli display clear-inset: key=%s", key)
+    dispatch_echo(ClearInset(key=key))
 
 
 @app.command("overlay")

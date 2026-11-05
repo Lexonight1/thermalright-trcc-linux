@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**160 endpoints.**
+**162 endpoints.**
 
 ## Running it
 
@@ -47,6 +47,8 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/display/export-video` | `VideoExportResult` | Encode a clip into a loose ``Theme.zt`` sized for the device's panel. |
 | `POST /devices/{key}/display/fit-mode` | `FitModeResult` | — |
 | `POST /devices/{key}/display/game` | `GameModeResult` | Switch game mode and/or set its CPU threshold. |
+| `DELETE /devices/{key}/display/inset` | `Result` | Take the box away; the theme under it is untouched. |
+| `POST /devices/{key}/display/inset` | `Result` | Put a module's picture in a box over the panel's theme. |
 | `POST /devices/{key}/display/keepalive` | `KeepaliveResult` | Run a keepalive burst (resend the last frame N times). |
 | `POST /devices/{key}/display/load-video` | `ThemeResult` | Stage a video as a one-file theme and apply it to the device. |
 | `POST /devices/{key}/display/mask` | `MaskApplyResult` | Apply a user-supplied mask. |

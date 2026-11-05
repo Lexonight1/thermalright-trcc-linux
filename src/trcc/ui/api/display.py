@@ -22,6 +22,7 @@ from trcc.core.commands import (
     AddOverlayElement,
     ApplyMask,
     BuildPreview,
+    ClearInset,
     ConfigureSlideshow,
     DeleteOverlayElement,
     DeviceCanvas,
@@ -49,6 +50,7 @@ from trcc.core.commands import (
     SetBrightness,
     SetFitMode,
     SetGameMode,
+    SetInset,
     SetMaskPosition,
     SetMaskVisible,
     SetMediaPlayer,
@@ -92,6 +94,7 @@ from trcc.core.results import (
     OverlayResult,
     PauseVideoResult,
     RenderResult,
+    Result,
     ScreencastResult,
     SeekVideoResult,
     SendResult,
@@ -123,6 +126,7 @@ from .schemas import (
     ExportVideoRequest,
     FitModeRequest,
     GameModeRequest,
+    InsetRequest,
     KeepaliveRequest,
     LoadVideoRequest,
     MaskApplyRequest,
@@ -251,6 +255,26 @@ def set_fit_mode(key: str, body: FitModeRequest,
     result = request.app.state.trcc.dispatch(
         SetFitMode(key=key, mode=body.mode),
     )
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/inset")
+def set_inset(key: str, body: InsetRequest, request: Request) -> Result:
+    """Put a module's picture in a box over the panel's theme."""
+    log.info("api POST /devices/{key}/display/inset: key=%s module=%s corner=%s "
+             "size=%s", key, body.module, body.corner, body.size)
+    result = request.app.state.trcc.dispatch(
+        SetInset(key=key, module=body.module, corner=body.corner, size=body.size))
+    http_error_if_failed(result)
+    return result
+
+
+@router.delete("/inset")
+def clear_inset(key: str, request: Request) -> Result:
+    """Take the box away; the theme under it is untouched."""
+    log.info("api DELETE /devices/{key}/display/inset: key=%s", key)
+    result = request.app.state.trcc.dispatch(ClearInset(key=key))
     http_error_if_failed(result)
     return result
 
