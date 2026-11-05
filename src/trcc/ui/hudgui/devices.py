@@ -34,6 +34,7 @@ from ..presentation.device_symbols import device_symbols
 from ..qt_assets import Assets
 from ..qt_preview import FRAME_EDGE, PreviewSurface
 from .chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, TabBar
+from .sources import DeviceControls, SourcesPanel
 from .themes import CloudBackgrounds, CloudMasks, LocalThemes
 
 if TYPE_CHECKING:
@@ -139,14 +140,24 @@ class DevicePanel(QWidget):
         column.addWidget(self.tabs)
         row = QHBoxLayout()
         row.setSpacing(16)
+        # The preview, and under it brightness and rotation -- as the gui
+        # has them, on every tab (his call).
+        under = QVBoxLayout()
+        under.setSpacing(8)
         self.preview = PreviewSurface(app, bus, selection, Assets.pixmap, self)
         self.preview.setFixedWidth(FRAME_EDGE + 16)
-        row.addWidget(self.preview, alignment=Qt.AlignmentFlag.AlignTop)
-        #: Each tab's area, by name -- Settings a placeholder until it is built.
+        self.controls = DeviceControls(app, bus, selection, self)
+        self.controls.setFixedWidth(FRAME_EDGE + 16)
+        under.addWidget(self.preview)
+        under.addWidget(self.controls)
+        under.addStretch(1)
+        row.addLayout(under)
+        #: Each tab's area, by name.
         self.area = QStackedWidget(self)
         self.pages: dict[str, QWidget] = {}
         grids = {"Local Themes": LocalThemes, "Cloud Masks": CloudMasks,
-                 "Cloud Backgrounds": CloudBackgrounds}
+                 "Cloud Backgrounds": CloudBackgrounds,
+                 DEVICE_SETTINGS_TAB: SourcesPanel}
         for name in (*DEVICE_TABS, DEVICE_SETTINGS_TAB):
             grid = grids.get(name)
             page = grid(app, bus, selection) if grid is not None else _coming(name)

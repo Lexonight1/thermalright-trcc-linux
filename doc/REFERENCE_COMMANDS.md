@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**176 total: 126 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**177 total: 127 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -549,6 +549,17 @@ Set the Dynamic Island style for widescreen panels.
 |---|---|---|
 | `key` | `str` | yes |
 | `mode` | `int` | yes |
+
+### `ShowBackground`
+
+The background switch, as the C#'s: on draws one, off draws none.
+
+*Command* → `Result`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `shown` | `bool` | yes |
 
 ### `SleepDevice`
 

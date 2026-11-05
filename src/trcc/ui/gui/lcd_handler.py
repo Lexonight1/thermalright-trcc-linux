@@ -41,11 +41,9 @@ from trcc.core.commands import (
     ResolveOverlay,
     ResolveThemeDirectories,
     SaveTheme,
-    SetBackgroundMode,
     SetBrightness,
     SetFitMode,
     SetMaskPosition,
-    SetMediaPlayer,
     SetOrientation,
     ToggleVideo,
     UploadCustomMask,
@@ -1023,28 +1021,6 @@ class LCDHandler(BaseHandler):
             self._show_overlay_layout()
 
     # ── Background / Screencast Toggles ────────────────────────────
-
-    def on_background_toggle(self, enabled: bool) -> None:
-        """The background switch, as the C#'s: on draws one, off draws none.
-
-        On also closes the media player (the C#'s ``ClosePlayer``); the window
-        ends a cast before calling this.  A theme's or a user's background
-        VIDEO is the background and keeps playing -- this used to ``StopVideo``
-        it.  The switch itself shows what the App then holds (``follow_app``).
-        """
-        ds = self._lcd_settings()
-        self.log.info("on_background_toggle: enabled=%s device=%s source=%s mode=%s",
-                      enabled, self._device_key, ds.display_source,
-                      ds.background_mode)
-        if not enabled:
-            self._app.dispatch(SetBackgroundMode(key=self._device_key,
-                                                 mode="transparent"))
-            return
-        if ds.display_source == "media":
-            self._app.dispatch(SetMediaPlayer(key=self._device_key, uri=""))
-        if ds.background_mode == "transparent":
-            self._app.dispatch(SetBackgroundMode(key=self._device_key,
-                                                 mode="theme"))
 
     # ── Slideshow / Carousel ───────────────────────────────────────
 

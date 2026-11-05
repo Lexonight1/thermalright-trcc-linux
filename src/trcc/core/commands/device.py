@@ -3141,6 +3141,39 @@ class SetBackgroundMode(Command[BackgroundModeResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class ShowBackground(Command[Result]):
+    """The background switch, as the C#'s: on draws one, off draws none.
+
+    One Command, so every UI's switch does the same: it was the gui's own
+    code (``lcd_handler.on_background_toggle`` plus its window ending a
+    cast), and hudgui would have been its second copy.  Off sets the mode to
+    ``transparent``.  On ends a cast, closes the media player (the C#'s
+    ``ClosePlayer``) and brings a switched-off background back.  A theme's or
+    a user's background VIDEO is the background and keeps playing.
+    """
+    USES_DEVICE: ClassVar[bool] = True
+    REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
+    key: str
+    shown: bool
+
+    def execute(self, app: App) -> Result:
+        s = app.settings.for_device(self.key)
+        log.info("ShowBackground: %s shown=%s (source %s, mode %s, casting %s)",
+                 self.key, self.shown, s.display_source.value, s.background_mode,
+                 s.screencast_region is not None)
+        if not self.shown:
+            done = app.dispatch(SetBackgroundMode(key=self.key, mode="transparent"))
+            return Result(ok=done.ok, message=done.message)
+        if s.screencast_region is not None:
+            app.dispatch(StopScreencast(key=self.key))
+        if s.display_source is PanelSource.MEDIA:
+            app.dispatch(SetMediaPlayer(key=self.key, uri=""))
+        if s.background_mode == "transparent":
+            app.dispatch(SetBackgroundMode(key=self.key, mode="theme"))
+        return Result(ok=True, message=f"background on for {self.key}")
+
+
+@dataclass(frozen=True, slots=True)
 class SetOverlayBackground(Command[OverlayBackgroundResult]):
     """Set the solid color used when background_mode='color'."""
     REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND

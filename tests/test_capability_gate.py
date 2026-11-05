@@ -70,6 +70,7 @@ def _commands(key: str, tmp: Path) -> list[Command[Any]]:
         PlayVisual(key=key, visual="trcc-pipes"),
         C.ClearModuleSource(key=key, module="visualizer"),
         C.SetInset(key=key, module="visualizer"),
+        C.ShowBackground(key=key, shown=True),
         C.ClearInset(key=key),
         SetVisualSettings(key=key, settings={"fire": 1.0}),
     ]

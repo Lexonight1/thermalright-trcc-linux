@@ -220,3 +220,50 @@ def test_the_snapshot_says_which_background_file_the_user_chose(window: Any) -> 
     assert app.dispatch(LcdSnapshot(key=_KEY)).background_file is None
     app.settings.set_background(_KEY, VideoBackground("/data/web/320320/a017.mp4"))
     assert app.dispatch(LcdSnapshot(key=_KEY)).background_file == "/data/web/320320/a017.mp4"
+
+
+# ── The device Settings tab, and the controls under the preview ──────────
+
+
+def test_the_settings_switches_change_the_app_and_show_what_it_holds(
+        window: Any, qtbot: Any) -> None:
+    """Each switch is a Command; each shows the App's state afterwards."""
+    from trcc.core.commands import LcdSnapshot
+
+    snap = lambda: window._app.dispatch(LcdSnapshot(key=_KEY))  # noqa: E731
+    page = _tab(window, qtbot, "Settings")
+    assert page.mask_switch.isChecked() == snap().mask_visible
+    page.mask_switch.click()
+    assert snap().mask_visible is page.mask_switch.isChecked() is False
+    page.background_switch.click()                      # off
+    assert (snap().background_mode, page.background_switch.isChecked()) == (
+        "transparent", False)
+    page.background_switch.click()                      # on again
+    assert (snap().background_mode, page.background_switch.isChecked()) == ("theme", True)
+
+
+def test_brightness_and_rotation_sit_under_the_preview(window: Any, qtbot: Any) -> None:
+    from trcc.core.commands import LcdSnapshot
+
+    _tab(window, qtbot, "Local Themes")
+    controls = window.panel("Devices").panel.controls
+    controls.brightness.setValue(40)
+    controls.brightness.sliderReleased.emit()
+    controls.rotate.click()
+    snap = window._app.dispatch(LcdSnapshot(key=_KEY))
+    assert (snap.brightness, snap.orientation) == (40, 90)
+
+
+def test_show_background_on_ends_the_media_player_and_restores_the_mode(
+        window: Any) -> None:
+    """The one switch every UI sends.  MUTATION CHECK: drop the media
+    player's stop in ``ShowBackground``."""
+    from trcc.core.commands import LcdSnapshot, SetBackgroundMode, ShowBackground
+    from trcc.core.models import MediaPlayerBackground
+
+    app = window._app
+    app.settings.set_background(_KEY, MediaPlayerBackground("https://example.test/a.m3u8"))
+    app.dispatch(SetBackgroundMode(key=_KEY, mode="transparent"))
+    assert app.dispatch(ShowBackground(key=_KEY, shown=True)).ok
+    snap = app.dispatch(LcdSnapshot(key=_KEY))
+    assert (snap.display_source, snap.background_mode) == ("background", "theme")

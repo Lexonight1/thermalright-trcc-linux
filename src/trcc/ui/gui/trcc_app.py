@@ -66,6 +66,7 @@ from ...core.commands import (
     SetRefreshInterval,
     SetScreencastRegion,
     SetTempUnit,
+    ShowBackground,
     StartScreencast,
     StopScreencast,
 )
@@ -2161,12 +2162,9 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if not h:
             return
-        if enabled and self._cast_region(h.device_key) is not None:
-            # User flipped to the theme-bg panel while a screencast was
-            # running — tear it down through the bus so daemon/CLI/API
-            # observers see the same transition the GUI just made.
-            self._app.dispatch(StopScreencast(key=h.device_key))
-        h.on_background_toggle(enabled)
+        # One Command, every UI's: ends a cast, closes the media player, puts
+        # a switched-off background back -- or switches it off.
+        self._app.dispatch(ShowBackground(key=h.device_key, shown=enabled))
 
     def _on_screencast_toggle(self, enabled: bool) -> None:
         log.info("_on_screencast_toggle: enabled=%s", enabled)
