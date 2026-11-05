@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.models import (
     FitMode,
@@ -157,7 +158,7 @@ def display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
         themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=settings,
-        media=MediaService(), backgrounds=BackgroundSlot(),
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(),
         paths=paths,
     )
 
@@ -729,7 +730,7 @@ def _display_real(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService
         renderer=renderer, themes=FileContentStore(),
         overlay=OverlayService(renderer),          # REAL overlay → records draw_text
         settings=Settings(FakePaths(tmp_home)),
-        media=MediaService(), backgrounds=BackgroundSlot(),
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(),
         paths=FakePaths(tmp_home),
     )
 
@@ -849,7 +850,7 @@ def test_composing_without_a_mask_does_not_look_one_up_twice(
     themes = _CountingThemes()
     display = DisplayService(
         renderer=renderer, themes=themes, overlay=_StubOverlay(renderer),
-        settings=settings, media=MediaService(), backgrounds=BackgroundSlot(), paths=paths,
+        settings=settings, media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(), paths=paths,
     )
 
     theme_dir = tmp_home / "PlainTheme"

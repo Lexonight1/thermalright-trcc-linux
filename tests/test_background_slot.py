@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.render.qt import QtRenderer
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.models import FitMode, Kind, ProductInfo, Theme, Wire
@@ -97,7 +98,7 @@ def display(tmp_home: Path) -> DisplayService:
     return DisplayService(
         renderer=renderer, themes=FileContentStore(paths),
         overlay=OverlayService(renderer), settings=Settings(paths),
-        media=MediaService(), backgrounds=BackgroundSlot(), paths=paths,
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(), paths=paths,
     )
 
 

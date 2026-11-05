@@ -38,6 +38,7 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.core.geometry import plan_orientation
 from trcc.core.models import Kind, ProductInfo, Wire
 from trcc.core.protocol import FBL_PROFILES, get_profile
@@ -77,7 +78,7 @@ def _display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
     return DisplayService(
         renderer=renderer, themes=FileContentStore(),
         overlay=_StubOverlay(renderer), settings=Settings(paths),
-        media=MediaService(), backgrounds=BackgroundSlot(), paths=paths,
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(), paths=paths,
     )
 
 

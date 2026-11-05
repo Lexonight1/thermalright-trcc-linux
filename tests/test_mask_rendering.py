@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.models import Kind, OverlayElement, ProductInfo, Theme, Wire
 from trcc.core.ports import Renderer
@@ -134,7 +135,7 @@ def display(
         themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=settings,
-        media=MediaService(), backgrounds=BackgroundSlot(),
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(),
         paths=FakePaths(tmp_home),
     )
 
@@ -346,7 +347,7 @@ def _display_real(
         themes=FileContentStore(),
         overlay=OverlayService(renderer),
         settings=settings,
-        media=MediaService(), backgrounds=BackgroundSlot(),
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(),
         paths=FakePaths(tmp_home),
     )
 

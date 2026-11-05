@@ -19,7 +19,6 @@ dispatches ``ExportVideoClip``; progress arrives back through
 from __future__ import annotations
 
 import logging
-import subprocess
 from functools import partial
 from pathlib import Path
 
@@ -36,7 +35,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QLabel, QProgressBar, QWidget
 
-from ...core import toolchain
 from ...core.logs import per_frame
 from ...core.models import (
     CUTTER_DEFAULT_FPS,
@@ -44,10 +42,10 @@ from ...core.models import (
     VideoExportRequest,
     panel_asset_dims,
 )
-from ...core.models import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 from ...core.models import (
     ZT_MAX_DURATION_MS as MAX_DURATION_MS,
 )
+from ...core.results import VideoDurationResult
 from ..presentation.clip_preview import ClipPreview
 from .assets import Assets
 from .base import make_icon_button
@@ -135,8 +133,6 @@ class UCVideoCut(QWidget):
 
         # State
         self._video_path = None
-        self._total_frames = 0
-        self._fps = 30.0
         self._duration_ms = 0
         self._target_w = 0
         self._target_h = 0
@@ -364,64 +360,19 @@ class UCVideoCut(QWidget):
     # Video loading and preview
     # =========================================================================
 
-    def load_video(self, path):
-        """Load a video file for trimming."""
+    def load_video(self, path, probe: VideoDurationResult) -> None:
+        """Load a video file for trimming -- *probe* is the App's answer
+        (``ProbeVideoDuration``): its length and its size."""
+        log.info("load_video: %s probed ok=%s %d ms %dx%d", path, probe.ok,
+                 probe.duration_ms, probe.width, probe.height)
         self._video_path = str(path)
-
-        # Get metadata with ffprobe
-        try:
-            result = subprocess.run([
-                toolchain.executable('ffprobe'), '-v', 'error', '-select_streams', 'v:0',
-                '-show_entries', 'stream=r_frame_rate,nb_frames',
-                '-show_entries', 'format=duration',
-                '-of', 'csv=p=0',
-                self._video_path,
-            ], capture_output=True, text=True, timeout=10, creationflags=_NO_WINDOW)
-            if result.returncode != 0:
-                self._lbl_info.setText("Failed to open video")
-                self._lbl_info.setVisible(True)
-                return
-
-            lines = result.stdout.strip().split('\n')
-            # First line: r_frame_rate,nb_frames  (stream)
-            # Second line: duration  (format)
-            if lines:
-                parts = lines[0].split(',')
-                if parts:
-                    fps_parts = parts[0].split('/')
-                    if len(fps_parts) == 2 and fps_parts[1].strip() not in ('0', ''):
-                        self._fps = float(fps_parts[0]) / float(fps_parts[1])
-                    elif fps_parts[0].strip():
-                        self._fps = float(fps_parts[0])
-                if len(parts) >= 2:
-                    try:
-                        self._total_frames = int(parts[1])
-                    except (ValueError, IndexError):
-                        self._total_frames = 0
-
-            # Get duration from format line (more reliable than nb_frames)
-            duration_s = 0.0
-            if len(lines) >= 2:
-                try:
-                    duration_s = float(lines[1].strip())
-                except (ValueError, IndexError):
-                    pass
-
-            if duration_s > 0:
-                self._duration_ms = duration_s * 1000
-            elif self._total_frames > 0 and self._fps > 0:
-                self._duration_ms = (self._total_frames / self._fps) * 1000
-            else:
-                self._lbl_info.setText("Cannot determine video duration")
-                self._lbl_info.setVisible(True)
-                return
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
-            log.debug("uc_video_cut: ffprobe duration probe failed: %s", e)
-            self._lbl_info.setText("FFmpeg not available")
+        if not probe.ok or probe.duration_ms <= 0:
+            self._lbl_info.setText(probe.message or "Cannot determine video duration")
             self._lbl_info.setVisible(True)
             return
+        self._duration_ms = probe.duration_ms
 
-        self._clip.load(Path(self._video_path))
+        self._clip.load(Path(self._video_path), (probe.width, probe.height))
 
         # Reset handles
         self._start_x = TIMELINE_X

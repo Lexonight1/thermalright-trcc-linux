@@ -39,6 +39,7 @@ from ..core.models import (
     ThemeDir,
     VideoExportRequest,
 )
+from ..core.ports import VideoTool
 
 log = logging.getLogger(__name__)
 
@@ -60,8 +61,10 @@ class VideoExporter:
     """ffmpeg-driven ``Theme.zt`` encoder."""
 
     def __init__(self, install_hint: Callable[[str], str]
-                 = toolchain.generic_install_hint) -> None:
+                 = toolchain.generic_install_hint, *, video_tool: VideoTool) -> None:
         self._install_hint = install_hint
+        #: What a source is probed with (``VideoTool``) -- injected, never run here.
+        self._tool = video_tool
         if not toolchain.present("ffmpeg"):
             log.warning("VideoExporter: exports will fail — %s",
                         toolchain.missing("ffmpeg", install_hint("ffmpeg")))
@@ -161,7 +164,7 @@ class VideoExporter:
     ) -> None:
         log.debug("_run_ffmpeg: req=%s frames_dir=%s", req, frames_dir)
         progress(5, "Extracting frames…")
-        vf, size_args = _composite_filters(req)
+        vf, size_args = _composite_filters(req, self._tool.probe(req.source).size or (0, 0))
 
         cmd: list[str] = [
             toolchain.executable("ffmpeg"),
@@ -248,15 +251,15 @@ class VideoExporter:
 
 
 def _composite_filters(
-    req: VideoExportRequest, source_wh: tuple[int, int] | None = None,
+    req: VideoExportRequest, source_wh: tuple[int, int],
 ) -> tuple[list[str], list[str]]:
     """ffmpeg ``-vf`` filters (and any ``-s``) that compose *req* as the panel
     shows it: rotate, then scale/crop/pad onto the panel canvas.
 
     ONE chain for the export and the trimmer's preview, so what the preview
     shows is what the export encodes.  A panel size of 0 (unknown) composes
-    nothing beyond the rotation.  *source_wh* is the probed size, when the
-    caller already has it; otherwise it is probed here.
+    nothing beyond the rotation.  *source_wh* is the source's probed size
+    (``VideoTool.probe``; ``(0, 0)`` unknown -- the panel is then filled).
     """
     log.debug("_composite_filters: %s rotation=%d fit=%s -> %dx%d",
               req.source.name, req.rotation, req.fit_mode, req.target_w,
@@ -279,8 +282,6 @@ def _composite_filters(
     if req.target_w <= 0 or req.target_h <= 0:
         log.debug("_composite_filters: panel size unknown — rotation only")
         return vf, []
-    if source_wh is None:
-        source_wh = probe_dimensions(req.source)
     if req.rotation in (90, 270):
         source_wh = (source_wh[1], source_wh[0])
     panel = (req.target_w, req.target_h)
@@ -350,76 +351,3 @@ def _discard(temp_dir: Path) -> None:
     """Remove an export's working directory and everything in it."""
     log.debug("_discard: %s", temp_dir)
     shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-def probe_dimensions(source: Path) -> tuple[int, int]:
-    """Best-effort ``(width, height)`` probe via ffprobe; ``(0, 0)`` if unavailable.
-
-    Needed to preserve the source's aspect: the fit rect is derived from the
-    SOURCE shape, so without this the exporter cannot know whether a clip is
-    16:9 or square and can only fill the panel — which stretches.
-    """
-    log.info("probe_dimensions: source=%s", source)
-    if not toolchain.present("ffprobe"):
-        log.warning("probe_dimensions: no ffprobe — aspect cannot be preserved")
-        return (0, 0)
-    cmd = [
-        toolchain.executable("ffprobe"), "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height",
-        "-of", "csv=p=0",
-        str(source),
-    ]
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, timeout=10, check=False,
-            creationflags=SUBPROCESS_NO_WINDOW,
-        )
-    except (OSError, subprocess.TimeoutExpired) as e:
-        log.warning("probe_dimensions: ffprobe failed on %s (%s)", source, e)
-        return (0, 0)
-    if result.returncode != 0:
-        log.warning("probe_dimensions: ffprobe returned %d for %s",
-                    result.returncode, source)
-        return (0, 0)
-    try:
-        w, h = (int(v) for v in result.stdout.decode().strip().split(",")[:2])
-    except ValueError:
-        log.warning("probe_dimensions: unparseable ffprobe output %r",
-                    result.stdout[:80])
-        return (0, 0)
-    log.info("probe_dimensions: %s is %dx%d", source, w, h)
-    return (w, h)
-
-
-def probe_duration_ms(source: Path) -> int:
-    """Best-effort duration probe via ffprobe; ``0`` if unavailable.
-
-    Used by the CLI/GUI to default ``end_ms`` to the full clip.  Caller
-    is expected to fall back to a sane default if the probe returns 0
-    (e.g. "5 seconds from the start").
-    """
-    log.info("probe_duration_ms: source=%s", source)
-    if not toolchain.present("ffprobe"):
-        return 0
-    cmd = [
-        toolchain.executable("ffprobe"), "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "csv=p=0",
-        str(source),
-    ]
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, timeout=10, check=False,
-            creationflags=SUBPROCESS_NO_WINDOW,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return 0
-    if result.returncode != 0:
-        return 0
-    out = result.stdout.decode().strip()
-    try:
-        seconds = float(out)
-    except ValueError:
-        return 0
-    return max(0, int(seconds * 1000))

@@ -17,6 +17,7 @@ with the divergence otherwise.
 """
 from __future__ import annotations
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 import sys
 import tempfile
 from pathlib import Path
@@ -103,7 +104,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
         renderer = QtRenderer()
-        media = MediaService()
+        media = MediaService(video_tool=FfmpegTool())
         themes = FileContentStore()
         overlay = OverlayService(renderer)
         settings = Settings(FakePaths(base))

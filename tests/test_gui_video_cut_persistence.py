@@ -236,3 +236,29 @@ def test_qtgui_sends_a_real_fit_mode(qtbot) -> None:
         dialog._on_export_clicked()
         sent_fit = [c for c in sent if isinstance(c, ExportVideoClip)][-1].fit_mode
         assert type(sent_fit) is FitMode and sent_fit is mode
+
+
+def test_the_trimmer_takes_the_apps_probe(qtbot, tmp_path) -> None:
+    """The window dispatches ``ProbeVideoDuration`` and hands the panel the
+    answer: its length sets the timeline, its size the preview's composite.
+    The panel ran ffprobe itself until 2026-11-05 -- a window starting a
+    program, which under a daemon may not even see the file.
+
+    MUTATION CHECK: ignore ``probe.width`` / ``probe.height`` -- the preview
+    composes from (0, 0)."""
+    from trcc.core.results import VideoDurationResult
+    from trcc.ui.gui.uc_video_cut import UCVideoCut
+
+    panel = UCVideoCut()
+    qtbot.addWidget(panel)
+    clip = tmp_path / "clip.mp4"
+    panel.load_video(clip, VideoDurationResult(ok=True, path=str(clip),
+                                               duration_ms=2458, width=320, height=320))
+    assert (panel._duration_ms, panel._end_ms, panel._clip._source_wh) == (
+        2458, 2458, (320, 320))
+
+    failed = UCVideoCut()
+    qtbot.addWidget(failed)
+    failed.load_video(clip, VideoDurationResult(ok=False, path=str(clip),
+                                                message="Could not read the duration"))
+    assert (failed._duration_ms, failed._lbl_info.text()) == (0, "Could not read the duration")

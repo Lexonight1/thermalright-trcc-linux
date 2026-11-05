@@ -18,6 +18,8 @@ from typing import Any
 import pytest
 
 from trcc.core.errors import ThemeError
+from trcc.core.models import VideoProbe
+from trcc.core.ports import VideoTool
 from trcc.services import media as media_module
 from trcc.services.media import MediaService, Playback, _JpegFrames
 
@@ -90,13 +92,20 @@ class _GatedFfmpeg:
         return _Proc()
 
 
+class _TwoSeconds(VideoTool):
+    """A probe that reads every file as 2 s long -- 30 frames at 15 fps --
+    injected, where this file patched a module function before the port."""
+
+    def probe(self, path: Path) -> VideoProbe:
+        return VideoProbe(duration_s=2.0)
+
+
 @pytest.fixture
 def clip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A video file, ffmpeg and ffprobe present, a 30-frame duration probed."""
+    """A video file, ffmpeg and ffprobe present (the probe is ``_TwoSeconds``)."""
     path = tmp_path / "clip.mp4"
     path.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
-    monkeypatch.setattr(media_module, "_probe_video_duration", lambda p: 2.0)   # 2 s @ 15 fps
     return path
 
 
@@ -161,7 +170,7 @@ def test_load_video_returns_on_the_first_frames_and_the_rest_follows(
     release(), and the fixture's 5 s gate times the read out."""
     ffmpeg = _ffmpeg(monkeypatch, _GatedFfmpeg(
         first=[_jpeg(1), _jpeg(2)], rest=[_jpeg(3), _jpeg(4), _jpeg(5)]))
-    media = MediaService()
+    media = MediaService(video_tool=_TwoSeconds())
     pb = media.load_video("k", clip, size=(8, 8), fps=15)
     assert (len(pb.frames), pb.complete, pb.frame_count) == (2, False, 30)
     ffmpeg.release()
@@ -177,7 +186,7 @@ def test_a_video_that_gives_no_frame_fails_as_before(
                                                stderr=b"Invalid data found\n"))
     ffmpeg.release()
     with pytest.raises(ThemeError, match="ffmpeg decode failed: ffmpeg exit 1: Invalid data"):
-        MediaService().load_video("k", clip, size=(8, 8), fps=15)
+        MediaService(video_tool=_TwoSeconds()).load_video("k", clip, size=(8, 8), fps=15)
 
 
 def test_a_decode_that_fails_partway_keeps_its_frames_and_says_so_once(
@@ -189,7 +198,7 @@ def test_a_decode_that_fails_partway_keeps_its_frames_and_says_so_once(
     ffmpeg = _ffmpeg(monkeypatch, _GatedFfmpeg(
         first=[_jpeg(1), _jpeg(2)], rest=[_jpeg(3)], code=1, stderr=b"corrupt packet\n"))
     heard: list[str] = []
-    media = MediaService()
+    media = MediaService(video_tool=_TwoSeconds())
     pb = media.load_video("k", clip, size=(8, 8), fps=15, on_error=heard.append)
     ffmpeg.release()
     media._decodes["k"].wait_done(5)
@@ -205,7 +214,7 @@ def test_a_new_video_cancels_the_old_decode_and_unload_cancels_its_own(
 
     MUTATION CHECK: drop the cancel in _replace_decode -- terminated == 0."""
     old = _ffmpeg(monkeypatch, _GatedFfmpeg(first=[_jpeg(1), _jpeg(2)], rest=[_jpeg(3)]))
-    media = MediaService()
+    media = MediaService(video_tool=_TwoSeconds())
     media.load_video("k", clip, size=(8, 8), fps=15)
     new = _ffmpeg(monkeypatch, _GatedFfmpeg(first=[_jpeg(4), _jpeg(5)], rest=[_jpeg(6)]))
     media.load_video("k", clip, size=(8, 8), fps=15)
@@ -221,7 +230,7 @@ def test_a_load_that_fails_leaves_the_playing_video_decoding(
 
     MUTATION CHECK: cancel at the start of load_video -- the old one dies."""
     old = _ffmpeg(monkeypatch, _GatedFfmpeg(first=[_jpeg(1), _jpeg(2)], rest=[_jpeg(3)]))
-    media = MediaService()
+    media = MediaService(video_tool=_TwoSeconds())
     pb = media.load_video("k", clip, size=(8, 8), fps=15)
     broken = _ffmpeg(monkeypatch, _GatedFfmpeg(first=[], rest=[], code=1))
     broken.release()

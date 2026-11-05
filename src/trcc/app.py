@@ -21,6 +21,7 @@ from . import modules as module_folders
 from .__version__ import __version__
 from .adapters import modules as module_catalog
 from .adapters.device import DEVICES
+from .adapters.media.ffmpeg import FfmpegTool
 from .adapters.repo.github_releases import GitHubReleases
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
@@ -100,6 +101,7 @@ from .core.ports import (
     TlsIdentity,
     Transport,
     VideoExportRunner,
+    VideoTool,
 )
 from .core.protocol import background_variant, mask_variant, theme_variant
 from .core.registry import find_product
@@ -164,6 +166,7 @@ class App(CommandBus, ModuleServices):
                  data_install_runner: DataInstallRunner | None = None,
                  video_export_runner: VideoExportRunner | None = None,
                  modules: Mapping[str, type[Module] | ModuleSpec] | None = None,
+                 video_tool: VideoTool | None = None,
                  ) -> None:
         log.debug("__init__: platform=%s renderer=%s", platform, renderer)
         self.platform = platform
@@ -180,7 +183,10 @@ class App(CommandBus, ModuleServices):
         self._events = EventBus()
         self.settings = Settings(platform.paths())
         self.themes = FileContentStore(platform.paths())
-        self.media = MediaService(install_hint=platform.software_install_hint)
+        #: What video work is handed to -- the ffmpeg programs unless injected.
+        self.video_tool: VideoTool = video_tool or FfmpegTool()
+        self.media = MediaService(install_hint=platform.software_install_hint,
+                                  video_tool=self.video_tool)
         # The current background per device.  Here rather than on
         # DisplayService because ``_wire_display`` rebuilds that service
         # whenever a renderer is attached, and a background that vanished on
@@ -274,7 +280,8 @@ class App(CommandBus, ModuleServices):
             )
             video_export_runner = ThreadVideoExportRunner(
                 self.events, self.themes,
-                install_hint=platform.software_install_hint)
+                install_hint=platform.software_install_hint,
+                video_tool=self.video_tool)
         self.video_export_runner: VideoExportRunner = video_export_runner
         # Per-device slideshow cursor — tick-driven, no background thread.
         self.slideshow = SlideshowService()

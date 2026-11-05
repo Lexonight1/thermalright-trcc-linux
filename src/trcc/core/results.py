@@ -272,6 +272,10 @@ class VideoDurationResult(Result):
     """
     path: str = ""
     duration_ms: int = 0
+    #: The source's own size, from the same probe -- what a trimmer's preview
+    #: composes by.  0 when unknown.
+    width: int = 0
+    height: int = 0
 
 
 @dataclass(frozen=True, slots=True)

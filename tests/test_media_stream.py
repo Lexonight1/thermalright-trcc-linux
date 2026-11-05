@@ -24,6 +24,7 @@ import pytest
 
 from tests.conftest import show_a_theme
 from tests.mock_platform import MockPlatform
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import (
@@ -564,7 +565,7 @@ def test_a_panel_has_one_live_picture_and_a_new_one_ends_the_last() -> None:
     closes the stream, whoever asked."""
     from trcc.services.media import MediaService
 
-    media = MediaService()
+    media = MediaService(video_tool=FfmpegTool())
     stream, visual = _FakeReader("rtsp://cam/live", (8, 8), 16), _FakeReader("v", (8, 8), 16)
     media.open_live(_KEY, PanelSource.MEDIA, stream)
     media.open_live(_KEY, PanelSource.MODULE, visual)
@@ -581,7 +582,7 @@ def test_one_kind_never_reaches_or_ends_another_kinds_picture() -> None:
     picture is closed by the stream's tick."""
     from trcc.services.media import MediaService
 
-    media = MediaService()
+    media = MediaService(video_tool=FfmpegTool())
     visual = _FakeReader("visual", (8, 8), 16)
     media.open_live(_KEY, PanelSource.MODULE, visual)
     assert media.live(_KEY, PanelSource.MEDIA) is None

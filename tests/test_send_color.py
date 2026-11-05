@@ -18,6 +18,7 @@ from typing import Any, NoReturn
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, DisconnectDevice, SendColor
@@ -127,7 +128,7 @@ def display(renderer: RecordingRenderer, tmp_home: Path) -> DisplayService:
         themes=FileContentStore(),
         overlay=_StubOverlay(renderer),
         settings=Settings(FakePaths(tmp_home)),
-        media=MediaService(), backgrounds=BackgroundSlot(),
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(),
         paths=FakePaths(tmp_home),
     )
 

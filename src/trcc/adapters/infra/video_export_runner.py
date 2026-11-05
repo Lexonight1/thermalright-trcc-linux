@@ -18,7 +18,8 @@ from pathlib import Path
 from ...core import toolchain
 from ...core.events import EventBus, VideoExportFinished, VideoExportProgress
 from ...core.models import VideoExportRequest
-from ...core.ports import ContentStore, VideoExportRunner
+from ...core.ports import ContentStore, VideoExportRunner, VideoTool
+from ..media.ffmpeg import FfmpegTool
 from ._worker import QueueWorker
 
 log = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ def _export_and_publish(
     events: EventBus, library: ContentStore, token: str,
     request: VideoExportRequest,
     install_hint: Callable[[str], str] = toolchain.generic_install_hint,
+    video_tool: VideoTool | None = None,
 ) -> bool:
     """Encode one clip and announce the outcome.  Never raises.
 
@@ -100,7 +102,8 @@ def _export_and_publish(
     # should not pay for that probe.
     from ...services.video_export import VideoExporter, VideoExportError
     try:
-        path = _keep_in_library(library, VideoExporter(install_hint).export_zt(
+        path = _keep_in_library(library, VideoExporter(
+                install_hint, video_tool=video_tool or FfmpegTool()).export_zt(
             request, _ProgressPublisher(events, token),
         ), request)
     except VideoExportError as e:
@@ -136,12 +139,14 @@ class ThreadVideoExportRunner(VideoExportRunner):
         *,
         join_timeout: float = 2.0,
         install_hint: Callable[[str], str] = toolchain.generic_install_hint,
+        video_tool: VideoTool | None = None,
     ) -> None:
         log.info("ThreadVideoExportRunner.__init__: join_timeout=%.1fs",
                  join_timeout)
         self._events = events
         self._library = library
         self._install_hint = install_hint
+        self._tool = video_tool or FfmpegTool()
         self._worker: QueueWorker[_Job] = QueueWorker(
             "trcc-video-export", self._export,
             stall_hint="mid-encode", join_timeout=join_timeout,
@@ -155,7 +160,7 @@ class ThreadVideoExportRunner(VideoExportRunner):
         """Unpack one queued job for the worker — the seam it calls back on."""
         log.debug("_export: token=%s source=%s", job[0], job[1].source)
         _export_and_publish(self._events, self._library, *job,
-                            install_hint=self._install_hint)
+                            install_hint=self._install_hint, video_tool=self._tool)
 
     def shutdown(self) -> None:
         log.info("shutdown: stopping video-export worker")
@@ -167,16 +172,18 @@ class SyncVideoExportRunner(VideoExportRunner):
 
     def __init__(self, events: EventBus, library: ContentStore, *,
                  install_hint: Callable[[str], str]
-                 = toolchain.generic_install_hint) -> None:
+                 = toolchain.generic_install_hint,
+                 video_tool: VideoTool | None = None) -> None:
         log.info("SyncVideoExportRunner.__init__")
         self._events = events
         self._library = library
         self._install_hint = install_hint
+        self._tool = video_tool or FfmpegTool()
 
     def submit(self, token: str, request: VideoExportRequest) -> None:
         log.info("submit: token=%s source=%s (inline)", token, request.source)
         _export_and_publish(self._events, self._library, token, request,
-                            install_hint=self._install_hint)
+                            install_hint=self._install_hint, video_tool=self._tool)
 
     def shutdown(self) -> None:
         log.info("shutdown: nothing to stop (inline runner)")

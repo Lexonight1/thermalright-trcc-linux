@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-90 ports.
+91 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -26,6 +26,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SignatureChecker`](#signaturechecker) | 1 | 0 | 1 |
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
+| [`VideoTool`](#videotool) | 1 | 0 | 1 |
 | [`_QtUI`](#_qtui) | 1 | 4 | 2 |
 | [`BackgroundLayer`](#backgroundlayer) | 2 | 1 | 4 |
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
@@ -338,6 +339,20 @@ run() -> int
 **You inherit (11):** `announce` · `bring_up` · `compose` · `dispatch` · `events` · `on_app_gone` · `preflight` · `remote` · `start` · `stop` · `teardown`
 
 **Implementations (5):** `ApiUI` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
+
+## VideoTool
+
+`core/ports.py`
+
+The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe; then decode, stream, export and the trimmer's preview.
+
+**You implement (1):**
+
+```python
+probe(path: 'Path') -> VideoProbe
+```
+
+**Implementations (1):** `FfmpegTool`
 
 ## _QtUI
 

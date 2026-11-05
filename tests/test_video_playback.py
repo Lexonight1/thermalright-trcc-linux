@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.app import App
 from trcc.core.commands import (
@@ -597,7 +598,7 @@ def test_display_resolves_background_from_playback_when_present(
 ) -> None:
     """A loaded playback overrides the theme's background."""
     renderer = _RecordingRenderer()
-    media = MediaService()
+    media = MediaService(video_tool=FfmpegTool())
     media._playbacks[_KEY] = Playback(
         frames=[_encoded_frame(0xFF000000)],
         fps=15,
@@ -637,7 +638,7 @@ def test_display_resolves_background_from_playback_when_present(
 def test_display_falls_back_to_theme_when_no_playback(tmp_home: Path) -> None:
     """When MediaService has no Playback for the device, theme background loads."""
     renderer = _RecordingRenderer()
-    media = MediaService()   # empty — no playbacks
+    media = MediaService(video_tool=FfmpegTool())   # empty — no playbacks
     display = DisplayService(
         renderer=renderer,
         themes=FileContentStore(),
@@ -744,10 +745,9 @@ def test_a_4k_user_video_decodes_at_the_largest_size_a_fit_mode_draws(
     clip = tmp_home / "clip.mp4"
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     monkeypatch.setattr("trcc.core.toolchain.present", lambda tool: True)
-    monkeypatch.setattr("trcc.services.media._probe_video_size", lambda path: (3840, 2160))
     ffmpeg = _FakeFfmpeg(_encoded_frame(0xFF102030, 16, 16))
     monkeypatch.setattr("trcc.services.media.subprocess.Popen", ffmpeg)
-    VideoDecoder(clip, size=None, fit_within=fit_within).decode()
+    VideoDecoder(clip, size=None, fit_within=fit_within, native=(3840, 2160)).decode()   # a 4K source
     (cmd,) = ffmpeg.commands
     assert (cmd[cmd.index("-s"):cmd.index("-s") + 2] if "-s" in cmd else []) == rescale
 
@@ -779,7 +779,7 @@ def _video_display(tmp_home: Path, n_frames: int):
     from trcc.adapters.render.qt import QtRenderer
 
     renderer = QtRenderer()
-    media = MediaService()
+    media = MediaService(video_tool=FfmpegTool())
     media._playbacks[_KEY] = Playback(
         frames=[
             _encoded_frame(0xFF404040 + 0x00404040 * (i % 3))
@@ -992,7 +992,7 @@ def test_rendered_surface_exposes_sent_frame_for_preview(
     from trcc.adapters.render.qt import QtRenderer
 
     renderer = QtRenderer()
-    media = MediaService()
+    media = MediaService(video_tool=FfmpegTool())
     media._playbacks[_KEY] = Playback(
         frames=[_encoded_frame(0xFF5A5A5A)],
         fps=15,
@@ -1043,7 +1043,7 @@ def test_the_background_is_the_frame_without_its_overlay_text(
     from trcc.adapters.render.qt import QtRenderer
 
     renderer = QtRenderer()
-    media = MediaService()
+    media = MediaService(video_tool=FfmpegTool())
     media._playbacks[_KEY] = Playback(frames=[_encoded_frame(0xFF5A5A5A)],
                                       fps=15)
     display = DisplayService(

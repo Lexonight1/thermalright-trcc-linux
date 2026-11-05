@@ -2106,6 +2106,32 @@ RECENT_COLOR_DEFAULT: tuple[int, int, int] = (192, 192, 192)
 
 
 @dataclass(frozen=True, slots=True)
+class VideoProbe:
+    """What a video file is, as ONE probe reads it (``VideoTool.probe``).
+    Zero / None where the tool could not tell: no ffprobe, an unreadable file,
+    or a container that does not record it."""
+    duration_s: float | None = None
+    width: int = 0
+    height: int = 0
+    fps: float = 0.0
+    frames: int = 0
+
+    @property
+    def size(self) -> tuple[int, int] | None:
+        """``(width, height)``, None when unknown."""
+        found = (self.width, self.height) if self.width > 0 and self.height > 0 else None
+        frame_log.debug("VideoProbe.size: %s", found)
+        return found
+
+    @property
+    def duration_ms(self) -> int:
+        """The length in whole milliseconds, 0 when unknown."""
+        found = int(self.duration_s * 1000) if self.duration_s else 0
+        frame_log.debug("VideoProbe.duration_ms: %d", found)
+        return found
+
+
+@dataclass(frozen=True, slots=True)
 class VideoExportRequest:
     """What to encode into a ``Theme.zt`` — a DTO, not a service type.
 

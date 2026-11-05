@@ -28,7 +28,7 @@ from pathlib import Path
 
 from ...core.logs import per_frame
 from ...core.models import SUBPROCESS_NO_WINDOW, VideoExportRequest
-from ...services.video_export import preview_command, probe_dimensions
+from ...services.video_export import preview_command
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -73,10 +73,11 @@ class ClipPreview:
         frame_log.debug("ClipPreview.active: %s", self._dir is not None)
         return self._dir is not None
 
-    def load(self, source: Path) -> None:
-        """A new clip: stop the old one and probe this one's size ONCE."""
+    def load(self, source: Path, size: tuple[int, int]) -> None:
+        """A new clip, *size* as the App probed it (``ProbeVideoDuration``):
+        stop the old one.  It probed the file itself -- ffprobe run by a window."""
         self.stop()
-        self._source_wh = probe_dimensions(source)
+        self._source_wh = size
         log.info("ClipPreview.load: %s is %dx%d", source.name, *self._source_wh)
 
     def play(self, req: VideoExportRequest, box: tuple[int, int]) -> None:

@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.core.geometry import plan_orientation
 from trcc.core.models import Kind, ProductInfo, RawFrame, Theme, Wire
 from trcc.core.protocol import get_profile
@@ -56,7 +57,7 @@ def _display(tmp_home: Path) -> DisplayService:
     return DisplayService(
         renderer=renderer, themes=FileContentStore(),
         overlay=OverlayService(renderer), settings=Settings(paths),
-        media=MediaService(), backgrounds=BackgroundSlot(), paths=paths,
+        media=MediaService(video_tool=FfmpegTool()), backgrounds=BackgroundSlot(), paths=paths,
     )
 
 

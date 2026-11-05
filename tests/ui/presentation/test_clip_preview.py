@@ -62,7 +62,7 @@ def _looped(frames: list[bytes]) -> bool:
 @needs_ffmpeg
 def test_play_decodes_the_range_once_at_the_chosen_rate(clip: Path) -> None:
     preview = ClipPreview()
-    preview.load(clip)
+    preview.load(clip, (320, 240))       # the App's probe of the 320x240 clip
     started = time.monotonic()
     preview.play(_req(clip, 0, 1000, fps=15), BOX)
     assert time.monotonic() - started < 0.05, "play() must not wait for ffmpeg"
@@ -79,7 +79,7 @@ def test_play_decodes_the_range_once_at_the_chosen_rate(clip: Path) -> None:
 @needs_ffmpeg
 def test_a_still_is_one_frame_then_the_preview_is_idle(clip: Path) -> None:
     preview = ClipPreview()
-    preview.load(clip)
+    preview.load(clip, (320, 240))       # the App's probe of the 320x240 clip
     preview.still(_req(clip, 500, 501), BOX)
     frames = _drain(preview, lambda _f: not preview.active)
     assert len(frames) == 1
@@ -94,7 +94,7 @@ def test_the_preview_is_composed_as_export_encodes_it(clip: Path) -> None:
     from PySide6.QtGui import QImage
 
     preview = ClipPreview()
-    preview.load(clip)
+    preview.load(clip, (320, 240))       # the App's probe of the 320x240 clip
     preview.still(_req(clip, 0, 1, fit_mode=FitMode.WIDTH), BOX)
     (jpeg,) = _drain(preview, lambda _f: not preview.active)
     img = QImage.fromData(jpeg)
@@ -106,7 +106,7 @@ def test_the_preview_is_composed_as_export_encodes_it(clip: Path) -> None:
 @needs_ffmpeg
 def test_stop_kills_ffmpeg_and_removes_its_files(clip: Path) -> None:
     preview = ClipPreview()
-    preview.load(clip)
+    preview.load(clip, (320, 240))       # the App's probe of the 320x240 clip
     preview.play(_req(clip, 0, 2000, fps=24), BOX)
     proc, folder = preview._proc, preview._dir
     assert proc is not None and folder is not None
@@ -162,7 +162,7 @@ def test_a_drag_lands_on_the_newest_still_only(clip: Path) -> None:
     from PySide6.QtGui import QImage
 
     preview = ClipPreview()
-    preview.load(clip)
+    preview.load(clip, (320, 240))       # the App's probe of the 320x240 clip
     started: list[int] = []
     original = preview._start
 

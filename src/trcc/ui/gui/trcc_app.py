@@ -50,6 +50,7 @@ from ...core.commands import (
     ListGpus,
     ListLanguages,
     ListModules,
+    ProbeVideoDuration,
     RecentColors,
     RememberColor,
     SetBackground,
@@ -2241,7 +2242,9 @@ class TRCCApp(QMainWindow):
         if path and h:
             w, hw = h.lcd_size
             self.uc_video_cut.set_resolution(w, hw)
-            self.uc_video_cut.load_video(path)
+            # The App probes it, as qtgui's trimmer asks -- a window ran ffprobe.
+            self.uc_video_cut.load_video(
+                path, self._app.dispatch(ProbeVideoDuration(path=Path(path))))
             self._show_cutter('video')
 
     def _on_media_player_load_clicked(self) -> None:

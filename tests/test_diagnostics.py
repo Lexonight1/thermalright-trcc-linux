@@ -44,6 +44,7 @@ from trcc.adapters.infra.logging import (
     tail_log,
     tail_log_actions,
 )
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.core.logs import PER_FRAME_ROOT, TRACE, levels_for, per_frame, trace
 
 # =========================================================================
@@ -2100,7 +2101,7 @@ def _frame_path_rates(tmp_path: Path, *, starve_cache: bool,
 
     renderer = QtRenderer()
     paths = FakePaths(tmp_path)
-    media = MediaService()
+    media = MediaService(video_tool=FfmpegTool())
     key = "0402:3922"
     if starve_cache:
         media._playbacks[key] = Playback(

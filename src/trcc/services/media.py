@@ -29,8 +29,8 @@ from ..core import toolchain
 from ..core.errors import ThemeError
 from ..core.geometry import largest_fit_size
 from ..core.logs import per_frame
-from ..core.models import ZT_MAGIC, PanelSource
-from ..core.ports import FrameSource
+from ..core.models import ZT_MAGIC, PanelSource, VideoProbe
+from ..core.ports import FrameSource, VideoTool
 from .media_stream import StreamReader, _drain
 
 log = logging.getLogger(__name__)
@@ -70,8 +70,12 @@ class VideoDecoder:
                  duration_s: float | None = None,
                  install_hint: Callable[[str], str] = toolchain.generic_install_hint,
                  fit_within: tuple[int, int] | None = None,
+                 native: tuple[int, int] | None = None,
                  ) -> None:
         self._install_hint = install_hint
+        #: The source's own size, as ``VideoTool.probe`` read it -- what a
+        #: native decode (``size=None``) chunks the raw pipe by.
+        self.native = native
         # With ``size=None``: the canvas the fit modes draw on.  The native
         # frame is scaled down to the largest any of them needs
         # (``geometry.largest_fit_size``) -- never up, aspect kept.
@@ -131,7 +135,7 @@ class VideoDecoder:
 
         native: tuple[int, int] | None = None
         if self.size is None:
-            native = _probe_video_size(self.path)
+            native = self.native
             if native is None:
                 # ffprobe failed (missing / unreadable / unknown codec).
                 # Without dims we can't chunk the raw pipe — fail loudly
@@ -381,69 +385,14 @@ _FIRST_FRAMES = 2
 _FIRST_FRAMES_TIMEOUT_S = 20.0
 
 
-def _expected_frames(path: Path, fps: int, duration_s: float | None) -> int:
+def _expected_frames(probe: VideoProbe, fps: int, duration_s: float | None) -> int:
     """How many frames the decode should yield: duration x fps, 0 if unknown."""
-    duration = _probe_video_duration(path)
+    duration = probe.duration_s
     if duration is not None and duration_s:
         duration = min(duration, duration_s)
     expected = round(duration * fps) if duration else 0
-    log.debug("_expected_frames: %s -> %d", path.name, expected)
+    log.debug("_expected_frames: %s -> %d", probe, expected)
     return expected
-
-
-def _probe_video_duration(path: Path) -> float | None:
-    """The container's duration in seconds, or None when ffprobe cannot say --
-    the estimate a progress bar shows while the rest still decodes (#264)."""
-    if not toolchain.present("ffprobe"):
-        log.info("_probe_video_duration: no ffprobe -- length grows as it decodes")
-        return None
-    cmd = [toolchain.executable("ffprobe"), "-v", "error",
-           "-show_entries", "format=duration", "-of", "csv=p=0", str(path)]
-    try:
-        out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=10)
-        duration = float(out.decode("utf-8", errors="replace").strip())
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError,
-            ValueError) as e:
-        log.info("_probe_video_duration: %s has none (%s)", path.name, e)
-        return None
-    log.debug("_probe_video_duration: %s -> %.2f s", path.name, duration)
-    return duration if duration > 0 else None
-
-
-def _probe_video_size(path: Path) -> tuple[int, int] | None:
-    """Return the video's native ``(width, height)`` or ``None`` on failure.
-
-    Lets :class:`VideoDecoder` skip ffmpeg's ``-s`` flag (native decode)
-    while still knowing how to chunk the raw RGB24 pipe output.  Same
-    pattern as ``services/video_export._probe_video_duration``.
-    """
-    log.debug("_probe_video_size: path=%s", path)
-    if not toolchain.present("ffprobe"):
-        log.warning("_probe_video_size: ffprobe not on PATH")
-        return None
-    cmd = [
-        toolchain.executable("ffprobe"), "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height",
-        "-of", "csv=p=0:s=x",
-        str(path),
-    ]
-    try:
-        out = subprocess.check_output(
-            cmd, stderr=subprocess.DEVNULL, timeout=10,
-        ).decode("utf-8", errors="replace").strip()
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
-            FileNotFoundError, OSError) as e:
-        log.warning("_probe_video_size: ffprobe failed for %s: %s",
-                    path.name, e)
-        return None
-    try:
-        w_s, h_s = out.split("x", 1)
-        return int(w_s), int(h_s)
-    except (ValueError, AttributeError):
-        log.warning("_probe_video_size: bad ffprobe output %r for %s",
-                    out, path.name)
-        return None
 
 
 # =========================================================================
@@ -713,9 +662,11 @@ class MediaService:
     stream_reader: type[StreamReader] = StreamReader
 
     def __init__(self, install_hint: Callable[[str], str]
-                 = toolchain.generic_install_hint) -> None:
+                 = toolchain.generic_install_hint, *, video_tool: VideoTool) -> None:
         log.debug("__init__")
         self._install_hint = install_hint
+        #: What a video is probed with (``VideoTool``) -- injected, never run here.
+        self._tool = video_tool
         self._playbacks: dict[str, Playback] = {}
         #: Each panel's ONE live picture -- a module's, a web stream's -- and
         #: whose it is.  One slot, so opening one ends the last: the sources
@@ -783,16 +734,18 @@ class MediaService:
             log.info("load_video: .zt decoded — %d frames @ %d fps",
                      len(zt.frames), effective_fps)
         else:
+            probe = self._tool.probe(path)     # ONE read: its size and its length
             decoder = VideoDecoder(
                 path=path, size=size, fps=fps,
                 rotation_degrees=rotation_degrees,
                 duration_s=duration_s,
                 install_hint=self._install_hint,
                 fit_within=fit_within if size is None else None,
+                native=probe.size,
             )
             playback = Playback(frames=[], fps=fps, is_user_content=size is None,
                                 complete=False,
-                                expected_frames=_expected_frames(path, fps, duration_s))
+                                expected_frames=_expected_frames(probe, fps, duration_s))
             decode = decoder.start(playback, on_error)
             got = decode.wait_for(_FIRST_FRAMES, _FIRST_FRAMES_TIMEOUT_S)
             if not got:

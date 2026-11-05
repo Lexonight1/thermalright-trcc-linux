@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.app import App
 from trcc.core.commands import Command
 from trcc.core.led_models import LED_STYLES
@@ -1594,7 +1595,7 @@ def test_video_exporter_rejects_missing_source(tmp_path) -> None:
         target_w=480, target_h=480, rotation=0,
     )
     with pytest.raises(VideoExportError, match="not found"):
-        VideoExporter().export_zt(request)
+        VideoExporter(video_tool=FfmpegTool()).export_zt(request)
 
 
 def test_video_exporter_rejects_bad_range(tmp_path) -> None:
@@ -1612,7 +1613,7 @@ def test_video_exporter_rejects_bad_range(tmp_path) -> None:
         target_w=480, target_h=480, rotation=0,
     )
     with pytest.raises(VideoExportError, match="Invalid clip range"):
-        VideoExporter().export_zt(request)
+        VideoExporter(video_tool=FfmpegTool()).export_zt(request)
 
 
 def test_video_exporter_rejects_bad_rotation(tmp_path) -> None:
@@ -1630,7 +1631,7 @@ def test_video_exporter_rejects_bad_rotation(tmp_path) -> None:
         target_w=480, target_h=480, rotation=45,
     )
     with pytest.raises(VideoExportError, match="Rotation must"):
-        VideoExporter().export_zt(request)
+        VideoExporter(video_tool=FfmpegTool()).export_zt(request)
 
 
 def test_load_video_command_rejects_missing_file(gui_app: App) -> None:

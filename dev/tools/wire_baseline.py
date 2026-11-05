@@ -58,6 +58,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.theme.filesystem import FileContentStore
 from trcc.core.models import Kind, ProductInfo, Theme, Wire
 from trcc.core.ports import Paths
@@ -147,7 +148,7 @@ class _FixedMedia(MediaService):
     """
 
     def __init__(self, playbacks: dict[str, Playback]) -> None:
-        super().__init__()
+        super().__init__(video_tool=FfmpegTool())
         log.debug("_FixedMedia: %d preloaded playback(s)", len(playbacks))
         self._fixed = playbacks
 

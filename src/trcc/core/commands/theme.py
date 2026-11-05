@@ -782,12 +782,10 @@ def _composed_resolution(
     return resolution
 
 
-def _clip_end_ms(source: Path, start_ms: int) -> int:
+def _clip_end_ms(app: App, source: Path, start_ms: int) -> int:
     """Where a clip of *source* from *start_ms* ends when no end was given:
-    the file's own end, or 10 s on when ffprobe cannot say."""
-    from ...services.video_export import probe_duration_ms
-
-    probed = probe_duration_ms(source)
+    the file's own end, or 10 s on when the probe cannot say."""
+    probed = app.video_tool.probe(source).duration_ms
     if probed > 0:
         log.debug("_clip_end_ms: %s ends at %d ms", source.name, probed)
         return probed
@@ -819,7 +817,7 @@ def _tr_background(app: App, key: str, archive_path: Path,
 
     from ...services.video_export import VideoExporter, VideoExportError
 
-    duration = _clip_end_ms(background, 0)
+    duration = _clip_end_ms(app, background, 0)
     if duration > ZT_MAX_DURATION_MS:
         log.warning("_tr_background: %s runs %d ms -- a Theme.zt holds "
                     "%d, the rest is cut", background, duration,
@@ -830,7 +828,8 @@ def _tr_background(app: App, key: str, archive_path: Path,
              "fit %s) for %s", background, w, h,
              min(duration, ZT_MAX_DURATION_MS), fit, archive_path.name)
     try:
-        with VideoExporter(app.platform.software_install_hint).baked(
+        with VideoExporter(app.platform.software_install_hint,
+                           video_tool=app.video_tool).baked(
                 VideoExportRequest(source=background, start_ms=0,
                                    end_ms=min(duration, ZT_MAX_DURATION_MS),
                                    target_w=w, target_h=h, fit_mode=fit),
@@ -2553,7 +2552,6 @@ class ProbeVideoDuration(Query[VideoDurationResult]):
     path: Path
 
     def execute(self, app: App) -> VideoDurationResult:
-        del app
         log.info("ProbeVideoDuration.execute: path=%s", self.path)
         if not self.path.is_file():
             log.warning("ProbeVideoDuration.execute: %s is not a file",
@@ -2562,8 +2560,8 @@ class ProbeVideoDuration(Query[VideoDurationResult]):
                 ok=False, path=str(self.path), duration_ms=0,
                 message=f"Video file not found: {self.path}",
             )
-        from ...services.video_export import probe_duration_ms
-        duration = probe_duration_ms(self.path)
+        probe = app.video_tool.probe(self.path)
+        duration = probe.duration_ms
         if duration <= 0:
             log.warning("ProbeVideoDuration.execute: %s probed as 0 ms "
                         "(ffprobe absent, or the file will not decode)",
@@ -2578,6 +2576,7 @@ class ProbeVideoDuration(Query[VideoDurationResult]):
                  duration)
         return VideoDurationResult(
             ok=True, path=str(self.path), duration_ms=duration,
+            width=probe.width, height=probe.height,
             message=f"{duration / 1000:.1f}s",
         )
 
@@ -2830,9 +2829,10 @@ class LoadVideo(Command[ThemeResult]):
                     unit.install(self.path, ThemeDir.video(self.path.suffix))
                 else:
                     end_ms = (self.end_ms if self.end_ms is not None
-                              else _clip_end_ms(self.path, self.start_ms))
+                              else _clip_end_ms(app, self.path, self.start_ms))
                     produced = VideoExporter(
                         app.platform.software_install_hint,
+                        video_tool=app.video_tool,
                     ).export_zt(VideoExportRequest(
                         source=self.path,
                         start_ms=self.start_ms,

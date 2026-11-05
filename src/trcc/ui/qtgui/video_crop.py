@@ -298,7 +298,7 @@ class VideoCropDialog(QDialog):
             log.warning("load_video: %s — %s", path, probe.message)
             self._info.setText(f"{path.name}: {probe.message}")
             return False
-        self._clip.load(path)
+        self._clip.load(path, (probe.width, probe.height))
         self._target_label.setText(f"Source: {path.name}")
         self._duration_label.setText(_format_ms(self._duration_ms))
         self._timeline.set_range(self._duration_ms)

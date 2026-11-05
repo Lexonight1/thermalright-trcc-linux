@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.core import toolchain
 from trcc.core.errors import ThemeError
 from trcc.services.media import MediaService
@@ -61,7 +62,7 @@ def test_a_video_without_ffmpeg_names_the_platforms_hint(
     _no_ffmpeg(monkeypatch)
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"\0")
-    media = MediaService(install_hint=lambda tool: f"this OS: get {tool}")
+    media = MediaService(install_hint=lambda tool: f"this OS: get {tool}", video_tool=FfmpegTool())
 
     with pytest.raises(ThemeError, match="this OS: get ffmpeg"):
         media.load_video("k", clip, size=(320, 320))
@@ -72,7 +73,7 @@ def test_an_export_without_ffmpeg_names_the_platforms_hint(
 ) -> None:
     from trcc.core.models import VideoExportRequest
     _no_ffmpeg(monkeypatch)
-    exporter = VideoExporter(lambda tool: f"this OS: get {tool}")
+    exporter = VideoExporter(lambda tool: f"this OS: get {tool}", video_tool=FfmpegTool())
 
     with pytest.raises(VideoExportError, match="this OS: get ffmpeg"):
         exporter.export_zt(VideoExportRequest(
@@ -109,6 +110,6 @@ def test_a_zt_plays_without_ffmpeg(
         + b"".join(struct.pack("<i", 42 * (i + 1)) for i in range(len(frames)))
         + b"".join(struct.pack("<i", len(f)) + f for f in frames))
 
-    playback = MediaService().load_video("k", zt, size=(320, 320))
+    playback = MediaService(video_tool=FfmpegTool()).load_video("k", zt, size=(320, 320))
 
     assert playback.frames == frames

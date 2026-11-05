@@ -65,6 +65,7 @@ if TYPE_CHECKING:
         SensorReading,
         Theme,
         UsbPowerState,
+        VideoProbe,
         WebPreviewInfo,
         Wire,
     )
@@ -1940,6 +1941,24 @@ class ContentStore(ABC):
         """Move the theme *theme_dir* into the folder *into*, never over
         another: a taken name becomes "Name (2)", "Name (3)" ...  Returns
         where it is now, resolved; ``OSError`` and it stays where it was."""
+
+
+# =========================================================================
+# VideoTool — the work a video needs done (ffmpeg / ffprobe today)
+# =========================================================================
+
+
+class VideoTool(ABC):
+    """The tool TRCC hands video work to: today the ``ffmpeg`` and
+    ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App
+    as the renderer is.  Services ask it; none runs a program itself.  It grows
+    one capability per increment of the port: probe; then decode, stream,
+    export and the trimmer's preview."""
+
+    @abstractmethod
+    def probe(self, path: Path) -> VideoProbe:
+        """What *path* is -- its length, size, frame rate and frame count --
+        from ONE read.  What the tool cannot tell is zero / None."""
 
 
 # =========================================================================
