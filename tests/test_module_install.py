@@ -144,11 +144,13 @@ class Shop:
     def list(self, version: str, *, author: str = "author", min_trcc: str = "9.0.0",
              capabilities: tuple[str, ...] = ("events",), hosts: tuple[str, ...] = (),
              devices: tuple[str, ...] = (), bundle: bytes | None = None, listed_capabilities: tuple[str, ...] | None = None,
-             listed_author: str | None = None) -> bytes:
-        """Publish *version* in a new index; the bundle served at its URL."""
+             listed_author: str | None = None, key: str = KEY) -> bytes:
+        """Publish *version* of module *key* in a new index; the bundle served
+        at its URL.  Another *key* lists a second module beside the greeter --
+        for what "Get modules" shows, which reads the index alone."""
         data = (bundle if bundle is not None
                 else self.bundle(version, capabilities, hosts, devices, min_trcc))
-        url = f"https://github.test/greeter-{version}.zip"
+        url = f"https://github.test/{key}-{version}.zip"
         self.web.files[url] = data
         listed = listed_capabilities if listed_capabilities is not None else capabilities
         listed_author = AUTHOR if listed_author is None else listed_author
@@ -157,11 +159,11 @@ class Shop:
                  "devices": list(devices),
                  "author_key": self.raw(author), "title": "Greeter",
                  "summary": "Says hello.", "author": listed_author,
-                 "author_sig": tool.author_sign(data, KEY, version, self.key(author))}
+                 "author_sig": tool.author_sign(data, key, version, self.key(author))}
         # Listed afresh: whether a new author key may replace the old is the
         # app's to judge, on the machine that installed the old one.
-        self.signed["modules"].pop(KEY, None)
-        self.signed = tool.add(self.signed, KEY, data, entry, self.trust)
+        self.signed["modules"].pop(key, None)
+        self.signed = tool.add(self.signed, key, data, entry, self.trust)
         self._publish()
         return data
 
@@ -249,6 +251,19 @@ def test_a_built_in_module_the_index_lists_reads_as_installed(
     shop.list("1")
     (listed,) = cli_app.dispatch(BrowseModules()).modules
     assert (listed.key, listed.status) == (KEY, "installed")
+
+
+def test_what_there_is_to_install_is_listed_above_what_is_installed(
+        cli_app: App, shop: Shop, monkeypatch: pytest.MonkeyPatch) -> None:
+    """His order (2026-11-05): the modules not installed first, the installed
+    ones under them -- whatever their names say.  MUTATION CHECK: sort by key
+    alone again."""
+    monkeypatch.setattr(cli_app.module_installer, "_built_in",
+                        lambda key: key == "aaa")              # installed, sorts first by name
+    shop.list("1")                                             # greeter: not installed
+    shop.list("1", key="aaa")
+    listed = cli_app.dispatch(BrowseModules()).modules
+    assert [(m.key, m.status) for m in listed] == [(KEY, "available"), ("aaa", "installed")]
 
 
 def test_no_index_is_a_refusal_with_a_reason(cli_app: App, shop: Shop) -> None:

@@ -169,8 +169,11 @@ class ModuleInstaller:
         log.info("ModuleInstaller.browse")
         with self._lock:
             index = self.index(now)
-        found = tuple(self._available(index, r)
-                      for _, r in sorted(index.releases.items()))
+        # What there is to do first -- Install, Update -- then the rest
+        # (installed, taken back), each by key: every UI lists it this way.
+        found = tuple(sorted(
+            (self._available(index, r) for r in index.releases.values()),
+            key=lambda m: (m.status not in ("available", "update"), m.key)))
         log.info("ModuleInstaller.browse: %s", {m.key: m.status for m in found})
         return found
 
