@@ -59,6 +59,7 @@ from ..models import (
     RawFrame,
     ThemeDir,
     Wire,
+    element_fields,
     new_overlay_id,
     oriented_resolution,
     parse_device_key,
@@ -3152,15 +3153,8 @@ class AddOverlayElement(Command[OverlayElementResult]):
                 ok=False, key=self.key, element=None,
                 message=f"Overlay element id {eid!r} already exists",
             )
-        element = OverlayElement(
-            id=eid, type=self.type,
-            x=self.x, y=self.y, color=self.color, size=self.size,
-            font=self.font, bold=self.bold, italic=self.italic,
-            text=self.text,
-            metric=self.metric, format=self.format,
-            show_unit=self.show_unit,
-            source=source,
-        )
+        element = OverlayElement(**{**element_fields(self),
+                                    "id": eid, "source": source})
         app.settings.add_user_overlay_element(self.key, element)
         _invalidate_scene(app, self.key)
         app.events.publish(OverlayChanged(key=self.key, enabled=True))
@@ -3200,12 +3194,7 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
             )
         try:
             element = app.settings.update_user_overlay_element(
-                self.key, self.element_id,
-                x=self.x, y=self.y, color=self.color, size=self.size,
-                font=self.font, bold=self.bold, italic=self.italic,
-                text=self.text,
-                metric=self.metric, format=self.format,
-                show_unit=self.show_unit, source=self.source,
+                self.key, self.element_id, **element_fields(self),
             )
         except KeyError as e:
             return OverlayElementResult(

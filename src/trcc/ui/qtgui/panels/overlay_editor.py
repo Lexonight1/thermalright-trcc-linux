@@ -49,7 +49,7 @@ from ....core.commands import (
     ResolveOverlay,
     UpdateOverlayElement,
 )
-from ....core.models import ClockSource, OverlayElementType
+from ....core.models import OVERLAY_DEFAULT_FORMAT, ClockSource, OverlayElementType
 from ..base import BasePanel
 from ..device_picker import DevicePickerWidget
 
@@ -537,7 +537,7 @@ class _ElementDialog(QDialog):
             "italic":  bool(self._italic.currentData()),
             "text":    self._text.text(),
             "metric":  self._metric.text().strip(),
-            "format":  self._format.text() or "{value}",
+            "format":  self._format.text() or OVERLAY_DEFAULT_FORMAT,
             "show_unit": bool(self._show_unit.isChecked()),
             "source":  self._source.currentData(),
         }

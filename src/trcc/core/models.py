@@ -1030,6 +1030,21 @@ def new_overlay_id() -> str:
     return element_id
 
 
+def element_fields(source: object) -> dict[str, Any]:
+    """Every ``OverlayElement`` field *source* carries, by name, except ``id``.
+
+    For a Command that holds an element's fields flat (``AddOverlayElement``,
+    ``UpdateOverlayElement``): its own extras (``key``, ``element_id``) are not
+    element fields and are left out, and a field it lacks (an Update has no
+    ``type``) is simply absent.  The names come from the dataclass, so a field
+    added there reaches every caller without a line changed.
+    """
+    found = {f.name: getattr(source, f.name) for f in fields(OverlayElement)
+             if f.name != "id" and hasattr(source, f.name)}
+    log.debug("element_fields: %s -> %s", type(source).__name__, sorted(found))
+    return found
+
+
 @dataclass
 class OverlayElement:
     """One user-edited overlay element.
