@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QSlider, QVBoxLayout
 
 from ...core.logs import per_frame
 from ..presentation.lcd_panel import lcd_panel_for
+from ..presentation.preview_geometry import widget_to_lcd
 from ..presentation.video_clock import playback_clock
 from .assets import Assets
 from .base import BasePanel, ImageLabel, SkinButton, set_background_pixmap
@@ -169,12 +170,10 @@ class UCPreview(BasePanel):
         Against the label's CURRENT size: docked it is the bezel's LCD area,
         popped it is the pop-out's, and a drag must land on the same pixel.
         """
-        pw, ph = self.preview_label._width, self.preview_label._height
-        if pw <= 0 or ph <= 0:
-            return (0, 0)
-        lx = int(wx * self._lcd_width / pw)
-        ly = int(wy * self._lcd_height / ph)
-        return (max(0, min(lx, self._lcd_width)), max(0, min(ly, self._lcd_height)))
+        log.debug("_widget_to_lcd: (%d, %d)", wx, wy)
+        return widget_to_lcd((wx, wy),
+                             (self.preview_label._width, self.preview_label._height),
+                             (self._lcd_width, self._lcd_height))
 
     def _on_drag_started(self, wx: int, wy: int):
         lx, ly = self._widget_to_lcd(wx, wy)

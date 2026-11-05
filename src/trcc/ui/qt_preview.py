@@ -26,13 +26,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Literal
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QImage, QPixmap
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtGui import QFont, QImage, QMouseEvent, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ..core.commands import BuildPreview
 from ..core.logs import per_frame
 from .presentation.lcd_panel import lcd_panel_for
+from .presentation.preview_geometry import widget_to_lcd
 from .qt_periodic import PeriodicUpdater
 from .qt_shown import TicksWhileShown
 
@@ -65,6 +66,12 @@ class PreviewSurface(TicksWhileShown, QWidget):
     #: not the scaled pixmap.  The state readout used to report the pixmap's
     #: size under the label "Render size", so a 1600x720 panel read "480x216".
     rendered = Signal(int, int)
+    #: The picture was pressed, dragged across, let go -- in the PANEL's own
+    #: pixels, so a skin can move an overlay element by hand.  A skin that
+    #: does not edit on its preview just does not listen.
+    pressed = Signal(int, int)
+    dragged = Signal(int, int)
+    released = Signal()
 
     #: "" until a Result proves the live surface cannot reach this process,
     #: then "png" for the life of the widget.  An observation, not a configured
@@ -99,6 +106,9 @@ class PreviewSurface(TicksWhileShown, QWidget):
         self._frame.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label = QLabel(self._frame)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.installEventFilter(self)
+        #: The panel's own size, from the last render -- what a press maps to.
+        self._lcd: tuple[int, int] = (0, 0)
         self._panel: tuple[int, int] | None = None
         self._apply_panel((320, 320))    # the model's own fallback panel
         layout = QVBoxLayout(self)
@@ -168,6 +178,7 @@ class PreviewSurface(TicksWhileShown, QWidget):
             return
         self._label.setPixmap(pixmap)
         self._label.setText("")
+        self._lcd = (surface.width(), surface.height())
         self.rendered.emit(surface.width(), surface.height())
 
     # ── Render ─────────────────────────────────────────────────────────
@@ -205,7 +216,26 @@ class PreviewSurface(TicksWhileShown, QWidget):
             return
         self._label.setPixmap(pixmap)
         self._label.setText("")
+        self._lcd = (preview.width, preview.height)
         self.rendered.emit(preview.width, preview.height)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """A press, a drag, a release on the picture -- told in the panel's
+        own pixels (``widget_to_lcd``); the picture is left as it was."""
+        kind = event.type()
+        if watched is self._label and isinstance(event, QMouseEvent):
+            at = widget_to_lcd(event.position().toPoint().toTuple(),
+                               (self._label.width(), self._label.height()), self._lcd)
+            if kind == QEvent.Type.MouseButtonPress:
+                log.debug("PreviewSurface: pressed at %s", at)
+                self.pressed.emit(*at)
+            elif kind == QEvent.Type.MouseMove and event.buttons():
+                frame_log.debug("PreviewSurface: dragged to %s", at)
+                self.dragged.emit(*at)
+            elif kind == QEvent.Type.MouseButtonRelease:
+                log.debug("PreviewSurface: released")
+                self.released.emit()
+        return super().eventFilter(watched, event)
 
     def set_placeholder(self, text: str) -> None:
         """Show *text* instead of an image."""

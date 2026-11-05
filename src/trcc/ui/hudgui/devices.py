@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import DeviceState, ListDevices
+from ...core.logs import per_frame
 from ..presentation.device_symbols import device_symbols
 from ..qt_assets import Assets
 from ..qt_preview import FRAME_EDGE, PreviewSurface
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
     from ..device_selection import DeviceSelection
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 #: The property a device button carries: the device it picks.
 _KEY = "hud_device_key"
@@ -169,11 +171,39 @@ class DevicePanel(QWidget):
         column.addLayout(row)
         self.tabs.tab_chosen.connect(self._on_tab)
         self._on_tab(self.tabs.current)
+        # Moving an overlay element by hand -- only while Settings is open, so
+        # browsing themes never moves one by accident.
+        self.preview.pressed.connect(self._on_pressed)
+        self.preview.dragged.connect(self._on_dragged)
+        self.preview.released.connect(self._on_released)
 
     def _on_tab(self, name: str) -> None:
         """Show *name*'s area."""
         log.info("DevicePanel._on_tab: %s", name)
         self.area.setCurrentWidget(self.pages[name])
+
+    def _editor(self) -> OverlayEditor | None:
+        """The overlay editor, while the Settings tab is the one shown."""
+        page = self.pages[DEVICE_SETTINGS_TAB]
+        found = (page.overlay if isinstance(page, SettingsPage)
+                 and self.tabs.current == DEVICE_SETTINGS_TAB else None)
+        log.debug("DevicePanel._editor: %s", found is not None)
+        return found
+
+    def _on_pressed(self, x: int, y: int) -> None:
+        log.debug("DevicePanel._on_pressed: (%d, %d)", x, y)
+        if (editor := self._editor()) is not None:
+            editor.drag.grab_at(x, y)
+
+    def _on_dragged(self, x: int, y: int) -> None:
+        frame_log.debug("DevicePanel._on_dragged: (%d, %d)", x, y)
+        if (editor := self._editor()) is not None:
+            editor.drag.drag_to(x, y)
+
+    def _on_released(self) -> None:
+        log.debug("DevicePanel._on_released")
+        if (editor := self._editor()) is not None:
+            editor.drag.let_go()
 
 
 class DevicesView(QWidget):

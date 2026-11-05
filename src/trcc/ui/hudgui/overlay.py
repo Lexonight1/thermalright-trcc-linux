@@ -14,6 +14,7 @@ the element by its id; nothing here keeps a copy of the layout to send back.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
@@ -65,6 +66,13 @@ _FIELD = "hud_overlay_field"
 _FORM_STYLE = "QLabel, QCheckBox { color: #dfe5ea; }"
 
 
+def _distance(x: int, y: int, entry: OverlayElementEntry) -> int:
+    """How far *entry* is from panel pixel (*x*, *y*), squared."""
+    found = (entry.x - x) ** 2 + (entry.y - y) ** 2
+    log.debug("_distance: %s from (%d, %d) -> %d", entry.id, x, y, found)
+    return found
+
+
 def describe(entry: OverlayElementEntry) -> str:
     """An element's line in the list: what it shows."""
     what = {"text": entry.text or "(empty text)", "metric": entry.metric or "(no reading)",
@@ -110,6 +118,8 @@ class OverlayEditor(_DeviceTab):
         row.addWidget(self.list)
         row.addLayout(self._form(), stretch=1)
         column.addLayout(row)
+        #: Moving an element by hand on the preview.
+        self.drag = PreviewDrag(self)
         self.show_state()
 
     def _form(self) -> QFormLayout:
@@ -318,6 +328,13 @@ class OverlayEditor(_DeviceTab):
         if colour := self.choose_colour(self.colour_box.text() or "#ffffff"):
             self._edit(color=colour)
 
+    def _select(self, element_id: str) -> None:
+        """Select *element_id* in the list (its form follows)."""
+        log.debug("OverlayEditor._select: %s", element_id)
+        for row in range(self.list.count()):
+            if self.list.item(row).data(Qt.ItemDataRole.UserRole) == element_id:
+                self.list.setCurrentRow(row)
+
     # ── On / off, add, delete ──────────────────────────────────────────
 
     def _on_enabled(self, on: bool) -> None:
@@ -338,10 +355,8 @@ class OverlayEditor(_DeviceTab):
         result = self._send(AddOverlayElement(key=self._selection.key, **fields))
         self.show_state()
         new = getattr(result, "element", None)
-        new_id = new.id if new is not None else ""
-        for row in range(self.list.count()):
-            if self.list.item(row).data(Qt.ItemDataRole.UserRole) == new_id:
-                self.list.setCurrentRow(row)
+        if new is not None:
+            self._select(new.id)
 
     def _on_delete(self) -> None:
         element_id = self._picked_id()
@@ -349,3 +364,53 @@ class OverlayEditor(_DeviceTab):
         if element_id:
             self._send(DeleteOverlayElement(key=self._selection.key, element_id=element_id))
             self.show_state()
+
+
+class PreviewDrag:
+    """Moving an overlay element by hand on the preview (S3) -- its own
+    concern, beside the editor whose element it moves.  The gui's way: a
+    press picks up the selected element, or the nearest; it moves as far as
+    the pointer, kept on the panel; only its place is sent while it moves,
+    and the editor shows the App's layout again when it is let go."""
+
+    def __init__(self, editor: OverlayEditor) -> None:
+        log.debug("PreviewDrag: for %s", type(editor).__name__)
+        self._editor = editor
+        #: What a press picked up: (id, press x, y, element x, y).
+        self._grabbed: tuple[str, int, int, int, int] | None = None
+
+    def grab_at(self, x: int, y: int) -> None:
+        """A press on the preview at panel pixel (*x*, *y*)."""
+        editor = self._editor
+        entry = editor._elements.get(editor._picked_id())
+        if entry is None and editor._elements:
+            entry = min(editor._elements.values(), key=partial(_distance, x, y))
+        log.info("PreviewDrag.grab_at: (%d, %d) -> %s", x, y, entry and entry.id)
+        if entry is None:
+            self._grabbed = None
+            return
+        editor._select(entry.id)
+        self._grabbed = (entry.id, x, y, entry.x, entry.y)
+
+    def drag_to(self, x: int, y: int) -> None:
+        """The pointer moved: the element moves as far, kept on the panel."""
+        if self._grabbed is None:
+            return
+        editor = self._editor
+        element_id, from_x, from_y, at_x, at_y = self._grabbed
+        new_x = max(0, min(at_x + x - from_x, editor.x_box.maximum()))
+        new_y = max(0, min(at_y + y - from_y, editor.y_box.maximum()))
+        log.debug("PreviewDrag.drag_to: %s -> (%d, %d)", element_id, new_x, new_y)
+        for box, value in ((editor.x_box, new_x), (editor.y_box, new_y)):
+            box.blockSignals(True)
+            box.setValue(value)
+            box.blockSignals(False)
+        editor._send(UpdateOverlayElement(key=editor._selection.key,
+                                          element_id=element_id, x=new_x, y=new_y))
+
+    def let_go(self) -> None:
+        """Let go: the editor shows the App's layout again."""
+        log.info("PreviewDrag.let_go: %s", self._grabbed and self._grabbed[0])
+        if self._grabbed is not None:
+            self._grabbed = None
+            self._editor.show_state()

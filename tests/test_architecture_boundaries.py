@@ -593,7 +593,7 @@ MAX_CROSS_SKIN = 4
 #: (gui, via lcd_presentation_model) was always gui-only and always hidden.
 #: The same blind spot misread the new qt_background as qtgui's alone, when
 #: both skins reach it through qt_rgb_page and qt_ram_access.
-MAX_SINGLE_SKIN_SHARED = 9     # 9 → 8 (2026-10-02): qtgui picks LED pages via led_display
+MAX_SINGLE_SKIN_SHARED = 8     # 9 → 8 (2026-10-02): qtgui picks LED pages via led_display
 
 
 def test_no_skin_reaches_into_another_skin() -> None:

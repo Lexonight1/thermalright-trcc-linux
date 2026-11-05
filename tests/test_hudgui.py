@@ -319,3 +319,69 @@ def test_the_overlay_switch_is_the_apps(window: Any, qtbot: Any) -> None:
     editor.on_switch.click()
     assert window._app.dispatch(ResolveOverlay(key=_KEY)).enabled is False
     assert editor.on_switch.isChecked() is False
+
+
+# ── Moving an element by hand on the preview (S3) ────────────────────────
+
+
+def test_widget_to_lcd_scales_and_keeps_the_point_on_the_panel() -> None:
+    from trcc.ui.presentation.preview_geometry import widget_to_lcd
+
+    assert widget_to_lcd((100, 50), (200, 100), (320, 160)) == (160, 80)
+    assert widget_to_lcd((999, -5), (200, 100), (320, 160)) == (320, 0)
+    assert widget_to_lcd((10, 10), (0, 0), (320, 160)) == (0, 0)
+
+
+def test_the_preview_reports_a_press_in_panel_pixels(window: Any, qtbot: Any) -> None:
+    """Through the real mouse, on the real picture."""
+    from PySide6.QtCore import QPoint
+
+    _tab(window, qtbot, "Settings")
+    preview = window.panel("Devices").panel.preview
+    preview._lcd = (320, 320)
+    label = preview._label
+    with qtbot.waitSignal(preview.pressed) as pressed:
+        qtbot.mousePress(label, Qt.MouseButton.LeftButton,
+                         pos=QPoint(label.width() // 2, label.height() // 2))
+    assert pressed.args == [160, 160]
+
+
+def test_dragging_on_the_preview_moves_the_element_and_keeps_it_on(
+        window: Any, qtbot: Any) -> None:
+    """The gui's way: it moves as far as the pointer, never off the panel;
+    the form shows where it ended.  MUTATION CHECK: send the pointer's own
+    position from ``drag_to`` instead of the element's moved one."""
+    page = _tab(window, qtbot, "Settings")
+    editor = page.overlay
+    _add(editor, "Text")                                   # at (20, 20), selected
+    preview = window.panel("Devices").panel.preview
+    preview.pressed.emit(30, 30)
+    preview.dragged.emit(80, 60)                           # +50, +30
+    assert _layout(window) == [("text", "Text", 70, 50)]
+    preview.dragged.emit(2000, 2000)                       # far off the panel
+    preview.released.emit()
+    _type, _what, x, y = _layout(window)[0]
+    assert (x, y) == (editor.x_box.maximum(), editor.y_box.maximum())
+    assert (editor.x_box.value(), editor.y_box.value()) == (x, y)
+
+
+def test_a_press_with_nothing_selected_picks_the_nearest(window: Any, qtbot: Any) -> None:
+    editor = _tab(window, qtbot, "Settings").overlay
+    _add(editor, "Text")
+    _add(editor, "Time")
+    editor.x_box.setValue(250)
+    editor.x_box.editingFinished.emit()                    # Time at (250, 20)
+    editor.list.clearSelection()
+    editor.list.setCurrentRow(-1)
+    window.panel("Devices").panel.preview.pressed.emit(240, 25)
+    assert editor.list.currentItem().text() == "Clock: time"
+
+
+def test_a_drag_outside_the_settings_tab_moves_nothing(window: Any, qtbot: Any) -> None:
+    editor = _tab(window, qtbot, "Settings").overlay
+    _add(editor, "Text")
+    devices = window.panel("Devices")
+    devices.panel.tabs.tabs["Local Themes"].click()
+    devices.panel.preview.pressed.emit(20, 20)
+    devices.panel.preview.dragged.emit(120, 120)
+    assert _layout(window) == [("text", "Text", 20, 20)]

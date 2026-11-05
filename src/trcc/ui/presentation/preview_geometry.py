@@ -32,3 +32,22 @@ def rotated_lcd_size(
     """
     log.debug("rotated_lcd_size: canvas_size=%s orientation=%s", canvas_size, orientation)
     return orientation in (90, 270), oriented_resolution(canvas_size, orientation)
+
+
+def widget_to_lcd(point: tuple[int, int], shown: tuple[int, int],
+                  lcd: tuple[int, int]) -> tuple[int, int]:
+    """A point on a preview *shown* at that size, in the panel's own pixels
+    (*lcd*), kept on the panel -- (0, 0) when nothing is shown.
+
+    Every preview draws the panel scaled to fit, so a press or a drag on it is
+    the same fraction across the panel.  It lived inline in the gui's preview
+    (``uc_preview._widget_to_lcd``); hudgui's drag needed the same rule.
+    """
+    (wx, wy), (pw, ph), (lw, lh) = point, shown, lcd
+    if pw <= 0 or ph <= 0:
+        log.debug("widget_to_lcd: nothing shown")
+        return (0, 0)
+    lx, ly = int(wx * lw / pw), int(wy * lh / ph)
+    found = (max(0, min(lx, lw)), max(0, min(ly, lh)))
+    log.debug("widget_to_lcd: %s on %s -> %s of %s", point, shown, found, lcd)
+    return found
