@@ -240,24 +240,27 @@ class XdgDesktopAutostart(AutostartManager):
 
 
 def launch_argv(subcommand: str, *args: str) -> list[str]:
-    """argv that launches ``trcc <subcommand> [args…]`` for THIS install.
+    """argv that launches ``trcc <subcommand> [args…]`` for THIS install:
+    the running interpreter, ``<sys.executable> -m trcc`` -- right for pipx,
+    a venv, a distro package and a source checkout alike.  A frozen build has
+    no ``-m``: its own binary takes the subcommand.
 
-    The one place that knows how to find the program.  Preference order:
-
-      1. the ``trcc`` console script, when installed and on PATH
-      2. ``<sys.executable> -m trcc <subcommand>``
-
-    The second form is robust across pipx / venv / system-python installs
-    because ``sys.executable`` is always the right interpreter.
+    Never the first ``trcc`` on PATH, which is whichever install the shell
+    happens to find.  #332: a stray ``~/.local/bin/trcc`` launcher was baked
+    into a reporter's user service.  2026-11-04, the maintainer's box: setup
+    run as ``python3.12 -m trcc`` from a shell with a 3.15 venv active wrote
+    ``ExecStart=.venv/3.15/bin/trcc daemon`` -- the service ran another
+    install on another Python.  The daemon's own spawn command
+    (``daemon._daemon_spawn_cmd``) and the Windows Run entry already named
+    the running interpreter for the same reason.
 
     Three copies of this used to exist — one per platform, each hardcoding
     ``gui`` — which is why ``--resume`` reached Linux and neither of the other
     two for a whole release cycle.
     """
-    if (exe := shutil.which("trcc")) is not None:
-        argv = [exe, subcommand, *args]
-    else:
-        argv = [sys.executable, "-m", "trcc", subcommand, *args]
+    head = ([sys.executable] if getattr(sys, "frozen", False)
+            else [sys.executable, "-m", "trcc"])
+    argv = [*head, subcommand, *args]
     log.debug("launch_argv(%s): %s", subcommand, argv)
     return argv
 
@@ -758,16 +761,13 @@ def _macos_argv(target: str = DEFAULT_AUTOSTART_TARGET) -> list[str]:
     """The LaunchAgent's argv: THIS install's program, never a PATH lookup.
 
     launchd starts an agent with a minimal PATH and Terminal starts one with
-    the shell's, so ``launch_argv``'s ``shutil.which("trcc")`` named different
-    programs in the two -- and ``refresh`` rewrote the plist on every switch
-    between them (3 of 3 alternating launches).  The running interpreter is
-    the same either way, as in ``daemon._daemon_spawn_cmd``.  A frozen app
-    has no ``-m``: its own binary takes the subcommand.  The flags are
-    ``AUTOSTART_TARGETS``' -- ``--resume`` keeps the gui in the tray (#201).
+    the shell's, so a PATH lookup named different programs in the two -- and
+    ``refresh`` rewrote the plist on every switch between them (3 of 3
+    alternating launches).  ``launch_argv`` names the running interpreter,
+    the same either way.  The flags are ``AUTOSTART_TARGETS``' --
+    ``--resume`` keeps the gui in the tray (#201).
     """
-    head = ([sys.executable] if getattr(sys, "frozen", False)
-            else [sys.executable, "-m", "trcc"])
-    argv = [*head, target, *AUTOSTART_TARGETS[target]]
+    argv = autostart_argv(target)
     log.debug("_macos_argv(%s): %s", target, argv)
     return argv
 

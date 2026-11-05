@@ -1,6 +1,7 @@
 """XdgDesktopAutostart — per-user XDG .desktop file lifecycle (Linux + BSD)."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -136,8 +137,21 @@ def test_enable_writes_the_chosen_target(tmp_home: Path, target: str) -> None:
         line for line in mgr.path.read_text(encoding="utf-8").splitlines()
         if line.startswith("Exec=")
     )
-    assert exec_line.split()[1] == target, exec_line
+    assert exec_line.removeprefix("Exec=").split()[:4] == [
+        sys.executable, "-m", "trcc", target], exec_line
     assert mgr.installed_target() == target
+
+
+def test_the_entry_runs_this_install_never_a_trcc_on_path(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stray launcher first on PATH was baked into a reporter's user
+    service (#332), and a shell's active venv into the maintainer's
+    (2026-11-04).  The running interpreter is this install, wherever the
+    shell looks.  MUTATION CHECK: prefer ``shutil.which("trcc")`` again."""
+    from trcc.adapters.system import _autostart
+
+    monkeypatch.setattr(_autostart.shutil, "which", lambda name: "/stray/bin/trcc")
+    assert _autostart.launch_argv("daemon") == [sys.executable, "-m", "trcc", "daemon"]
 
 
 def test_refresh_preserves_the_installed_target(tmp_home: Path) -> None:
