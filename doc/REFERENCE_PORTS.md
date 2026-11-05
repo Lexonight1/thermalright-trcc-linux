@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-88 ports.
+89 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -35,6 +35,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
+| [`Layer`](#layer) | 2 | 0 | 4 |
 | [`LedSource`](#ledsource) | 2 | 0 | 1 |
 | [`LightsPort`](#lightsport) | 2 | 0 | 1 |
 | [`Module`](#module) | 2 | 10 | 2 |
@@ -474,6 +475,21 @@ name() -> str
 ```
 
 **Implementations (25):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SuperIoFan` · `SuperIoTemp` · `SysctlFan` · `WindowsDisk` · `WmiVideoControllerGpu`
+
+## Layer
+
+`services/layers.py`
+
+One thing drawn on a panel's upright canvas, over what is below it.
+
+**You implement (2):**
+
+```python
+draw(canvas: 'Any', renderer: 'Renderer') -> Any
+key() -> Hashable
+```
+
+**Implementations (4):** `Mask` · `Overlay` · `Spectrum` · `Split`
 
 ## LedSource
 

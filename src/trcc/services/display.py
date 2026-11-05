@@ -54,6 +54,7 @@ from ..core.protocol import (
 from ._clock import compute_clock
 from .background import Background, BackgroundSlot
 from .bg_cache import BgMaskCache
+from .layers import Mask, Overlay, Spectrum, Split
 from .media import MediaService
 from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
@@ -353,7 +354,7 @@ class DisplayService:
         )
 
         # Compose: bg+mask below, overlay on top
-        surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        surface = Overlay(overlay_key, overlay_surface).draw(bg_surface, self._r)
 
         # Split-mode overlay (Dynamic Island) — 1600x720 widescreen only.
         # Picks an asset by (split_mode, rotation, SUB byte), as the C# does.
@@ -494,7 +495,7 @@ class DisplayService:
             background=bg_surface,
         )
 
-        surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        surface = Overlay(overlay_key, overlay_surface).draw(bg_surface, self._r)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         if post_rotate:
@@ -701,10 +702,8 @@ class DisplayService:
 
         if theme is not None:
             surface = self._composite_mask(info, s, theme, surface)
-            surface = self._r.composite(
-                surface,
-                self._scene_overlay(info, theme, (target_w, target_h), sensors),
-                position=(0, 0))
+            surface = self._scene_overlay(
+                info, theme, (target_w, target_h), sensors).draw(surface, self._r)
 
         # Audio spectrum LAST, over everything, because it is a live meter
         # rather than part of the picture — the same order the gui's tick drew
@@ -713,7 +712,7 @@ class DisplayService:
         if len(spectrum):
             frame_log.debug("build_screencast_frame: %d spectrum bands",
                             len(spectrum))
-            surface = self._r.draw_spectrum(surface, spectrum)
+            surface = Spectrum(tuple(spectrum)).draw(surface, self._r)
 
         # PREVIEW = the composite, captured BEFORE the wire rotation, which is
         # the same point and the same rule ``build_frame`` uses: the display
@@ -756,9 +755,8 @@ class DisplayService:
         size = oriented_canvas(resolved, s.orientation)
         surface = self._r.create_surface(*size, color=(0, 0, 0, 255))
         if theme is not None:
-            surface = self._r.composite(
-                surface, self._scene_overlay(info, theme, size, sensors),
-                position=(0, 0))
+            surface = self._scene_overlay(
+                info, theme, size, sensors).draw(surface, self._r)
         self._remember_preview(info.key, surface)
         surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
@@ -770,7 +768,7 @@ class DisplayService:
         theme: Theme,
         size: tuple[int, int],
         sensors: dict[str, float] | None,
-    ) -> Any:
+    ) -> Overlay:
         """The theme's text, metric and clock layer at *size*, kept in the
         device's scene so a frame source that sends many times between two
         sensor readings draws it once.
@@ -793,7 +791,7 @@ class DisplayService:
                         overlay_key=overlay_key) if scene is not None
                 else SceneCache(overlay_surface=overlay,
                                 overlay_key=overlay_key))
-        return overlay
+        return Overlay(overlay_key, overlay)
 
     def _sink(self, topic: tuple[str, str], value: object) -> logging.Logger:
         """The plain logger when *value* changed since last said, else the
@@ -1203,29 +1201,18 @@ class DisplayService:
         entirely.  Position defaults to (0, 0).
         """
         mask_source = self._resolve_mask_source(s, theme)
-        if mask_source is not None:
-            mask = self._mask_surface(info.key, mask_source)
-            mw, mh = self._r.surface_size(mask)
-            position = s.mask_position or (0, 0)
-            frame_log.debug(
-                "composite_mask %s: mask %s (%dx%d) at top-left (%d, %d) "
-                "[visible=%s]",
-                info.key, mask_source, mw, mh, position[0], position[1],
-                s.mask_visible,
-            )
-            return self._r.composite(canvas, mask, position=position)
-        # NB: no ``self._themes.mask_path(theme)`` here.  Arguments are
-        # evaluated eagerly, so naming it in a DEBUG call did real
-        # filesystem work on EVERY frame to build a string that is
-        # usually discarded — and when mask_visible is False it did the
-        # very lookup ``_resolve_mask_source`` had just decided to skip.
-        # It adds nothing either: reaching this branch with a visible
-        # mask means the theme mask resolved to None. (#264)
-        frame_log.debug(
-            "composite_mask %s: no mask composited (visible=%s, override=%r)",
-            info.key, s.mask_visible, s.mask_path,
-        )
-        return canvas
+        # NB: no ``self._themes.mask_path(theme)`` in a log here.  Arguments
+        # are evaluated eagerly, so naming it in a DEBUG call did real
+        # filesystem work on EVERY frame to build a string that is usually
+        # discarded -- and when mask_visible is False it did the very lookup
+        # ``_resolve_mask_source`` had just decided to skip. (#264)
+        frame_log.debug("composite_mask %s: %s [visible=%s, override=%r]",
+                        info.key, mask_source, s.mask_visible, s.mask_path)
+        return Mask(
+            mask_source, s.mask_position or (0, 0),
+            self._mask_surface(info.key, mask_source)
+            if mask_source is not None else None,
+        ).draw(canvas, self._r)
 
     def _mask_surface(self, key: str, source: Path) -> Any:
         """*source* decoded, kept for *key* until it names another file or
@@ -1570,13 +1557,13 @@ class DisplayService:
         clock_tuple = tuple(sorted(clock.items()))
         # User-edited elements fingerprint — flip changes whenever the user
         # adds / updates / deletes elements, so the cached overlay surface
-        # rebuilds without an explicit invalidate from each Command.
+        # rebuilds without an explicit invalidate from each Command.  EVERY
+        # field, read off the element: a hand-picked list here left out
+        # ``font`` and ``show_unit``, so a change to either reached the panel
+        # only because each Command also invalidates the scene.
         s = self._settings.for_device(info.key)
-        user_sig = tuple(
-            (e.id, e.type, e.x, e.y, e.color, e.size,
-             e.bold, e.italic, e.text, e.metric, e.format, e.source)
-            for e in (s.user_overlay_elements or ())
-        )
+        user_sig = tuple(tuple(vars(e).values())
+                         for e in (s.user_overlay_elements or ()))
         # Temp unit participates in the key so toggling °C ↔ °F via
         # SetTempUnit busts the overlay cache and the next render
         # picks up the new format-string + value-conversion path.
@@ -1627,12 +1614,7 @@ class DisplayService:
             self._split_cache[asset_name] = overlay
             log.info("split overlay %s: cached %s (style=%d sub=%d)",
                      info.key, asset_name, split_mode, sub)
-        try:
-            return self._r.composite(surface, overlay, position=(0, 0))
-        except (OSError, ValueError, RuntimeError) as e:
-            log.warning("split overlay %s: composite failed: %s: %s",
-                        info.key, type(e).__name__, e)
-            return surface
+        return Split(asset_name, overlay).draw(surface, self._r)
 
     def _load_split_asset(self, asset_name: str) -> Any | None:
         """Load a split-overlay PNG from ``ui/gui/assets/``.
