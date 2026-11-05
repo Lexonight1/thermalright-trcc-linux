@@ -1162,6 +1162,25 @@ def test_a_locked_tile_offers_unlock(qtbot: Any, tmp_home: Path) -> None:
     assert (platform.grants.granted, _notes(view)) == ({"lamp": LAMP}, [])
 
 
+def test_hudgui_unlocks_a_locked_module(qtbot: Any, tmp_home: Path) -> None:
+    """hudgui's Modules panel on the App: the locked tile's Unlock grants its
+    devices, and the tile stops saying it is locked.  MUTATION CHECK: hand
+    ``unlock`` in ``hudgui.modules`` a Command that grants nothing."""
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.hudgui.modules import modules_panel
+
+    platform = _granting(tmp_home)
+    app = App(platform=platform, modules={"lamp": _lamp(default_on=True)})
+    bridge = BusBridge(app.events)
+    view = modules_panel(app, bridge)
+    qtbot.addWidget(view)
+    qtbot.waitUntil(lambda: list(view.unlocks) == ["lamp"], timeout=3000)
+    assert _notes(view) == [NEEDS]
+    view.unlocks["lamp"].click()
+    qtbot.waitUntil(lambda: not view.unlocks, timeout=3000)
+    assert (platform.grants.granted, _notes(view)) == ({"lamp": LAMP}, [])
+
+
 def test_the_cli_unlocks(cli_runner: Any, registered: str, cli_app: App) -> None:
     """``trcc system modules unlock``: the one Command; a module that is off
     refuses."""

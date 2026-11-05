@@ -1127,3 +1127,37 @@ def test_the_cli_switches_developer_mode_and_installs_a_folder(
     at = lines.index("  [off] greeter          Greeter -- Says hello.")
     assert lines[at + 1] == ("        Version 1 · by Ada Author · Unsigned -- never "
                              "reviewed")
+
+
+def test_hudgui_gets_a_module_from_the_index_and_lists_it(
+        cli_app: App, shop: Shop, qtbot: Any) -> None:
+    """hudgui's Modules panel, end to end on the App: Get modules reads the
+    signed index, Install puts the module on (after the permission screen),
+    and Back lists it with its switch.  MUTATION CHECK: hand ``_install`` in
+    ``hudgui.modules`` a Command that installs nothing."""
+    from PySide6.QtWidgets import QPushButton
+
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.hudgui.modules import modules_panel
+
+    shop.list("1")
+    bridge = BusBridge(cli_app.events)
+    view = modules_panel(cli_app, bridge)
+    qtbot.addWidget(view)
+    asked: list[str] = []
+    view.ask = lambda question, details, confirm: asked.append(confirm) or True
+    qtbot.waitUntil(lambda: view.findChild(QPushButton, "modulesGet") is not None,
+                    timeout=3000)
+    button = view.findChild(QPushButton, "modulesGet")
+    assert button is not None
+    button.click()
+    qtbot.waitUntil(lambda: KEY in view.actions, timeout=3000)
+    view.actions[KEY].click()
+    qtbot.waitUntil(lambda: KEY in view.actions and view.actions[KEY].text() == "Installed",
+                    timeout=5000)
+    assert asked == ["Install"]
+    assert cli_app.settings.module_install(KEY) is not None
+    button = view.findChild(QPushButton, "modulesBack")
+    assert button is not None
+    button.click()
+    qtbot.waitUntil(lambda: KEY in view.switches, timeout=3000)
