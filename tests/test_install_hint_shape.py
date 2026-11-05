@@ -92,3 +92,25 @@ def test_install_hint_is_not_empty_or_padded(os_obj: Platform,
         f"{_os_id(os_obj)}.software_install_hint({tool!r}) has surrounding "
         f"whitespace: {hint!r} — the renderer supplies the indent."
     )
+
+
+@pytest.mark.parametrize("os_obj", ALL_OS, ids=_os_id)
+def test_the_full_ffmpeg_hint_is_one_line_or_none(os_obj: Platform) -> None:
+    """Rendered inside a decode error on one line, so the same rule holds --
+    and "" is allowed here: it means the usual ffmpeg decodes everything."""
+    hint = os_obj.full_ffmpeg_hint()
+    assert "\n" not in hint and "\r" not in hint and hint == hint.strip()
+
+
+def test_only_fedora_names_a_fuller_ffmpeg() -> None:
+    """Fedora's stock ffmpeg-free cannot decode HEVC (measured 2026-11-05,
+    Fedora 42 and 44); RPM Fusion's two documented steps get the full one.
+    Everywhere else the usual ffmpeg already decodes it.
+
+    MUTATION CHECK: give every family the line -- Debian's is not "" and
+    this names it."""
+    named = {_os_id(o): o.full_ffmpeg_hint() for o in ALL_OS if o.full_ffmpeg_hint()}
+    assert named == {"LinuxOS[Fedora-family]": (
+        "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/"
+        "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+        " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing")}

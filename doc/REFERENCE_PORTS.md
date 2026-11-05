@@ -95,12 +95,12 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
-| [`VideoTool`](#videotool) | 7 | 0 | 1 |
+| [`VideoTool`](#videotool) | 8 | 0 | 1 |
 | [`RgbSkin`](#rgbskin) | 9 | 0 | 2 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`Platform`](#platform) | 25 | 9 | 8 |
+| [`Platform`](#platform) | 25 | 10 | 8 |
 | [`ContentStore`](#contentstore) | 33 | 0 | 1 |
 | [`ModuleServices`](#moduleservices) | 36 | 0 | 1 |
 
@@ -1519,11 +1519,12 @@ write_debug_report(rendered: 'str', path: 'Path') -> Path
 
 The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe, decode, stream, the export's frames, the cloud tiles and the trimmer's preview.
 
-**You implement (7):**
+**You implement (8):**
 
 ```python
 decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
 extract_frames(request: 'VideoExportRequest', out_dir: 'Path') -> None
+lacks_decoders(codecs: 'tuple[str, ...]') -> tuple[str, ...]
 preview(request: 'VideoExportRequest', box: 'tuple[int, int]', source_wh: 'tuple[int, int]', still: 'bool') -> PreviewRun | None
 probe(path: 'Path') -> VideoProbe
 still(video: 'Path', png: 'Path') -> bool
@@ -1680,7 +1681,7 @@ usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | Non
 worker_thread_context() -> AbstractContextManager[None]
 ```
 
-**You inherit (9):** `adopt_session` · `hard_exit` · `module_devices` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
+**You inherit (10):** `adopt_session` · `full_ffmpeg_hint` · `hard_exit` · `module_devices` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 

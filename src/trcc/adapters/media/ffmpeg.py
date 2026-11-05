@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -40,6 +41,10 @@ frame_log = per_frame(__name__)
 PROBE_TIMEOUT_S = 10
 #: An export decodes up to ``ZT_MAX_DURATION_MS`` of video at any source size.
 EXPORT_TIMEOUT_S = 600
+#: ffmpeg's words for a codec its build leaves out -- the same in 7.1 and 8.1
+#: (Fedora 42 and 44 ffmpeg-free on an HEVC clip, measured 2026-11-05).
+_NO_DECODER = re.compile(r"no decoder found for: (\w+)")
+
 #: The cloud tiles: one frame, then a 120x120 GIF of the whole (short) video.
 STILL_TIMEOUT_S = 10
 TILE_TIMEOUT_S = 30
@@ -56,12 +61,31 @@ _CHUNK_BYTES = 1 << 18
 class FfmpegTool(VideoTool):
     """The ``ffmpeg`` and ``ffprobe`` programs, found by ``core.toolchain``.
     *install_hint* names the package that brings one, for the error a missing
-    one raises (``Platform.software_install_hint``)."""
+    one raises (``Platform.software_install_hint``); *full_ffmpeg_hint* the
+    line that swaps in a build decoding every format, for the error a missing
+    codec raises (``Platform.full_ffmpeg_hint``)."""
 
     def __init__(self, install_hint: Callable[[str], str]
-                 = toolchain.generic_install_hint) -> None:
+                 = toolchain.generic_install_hint,
+                 full_ffmpeg_hint: Callable[[], str] | None = None) -> None:
         log.debug("FfmpegTool.__init__")
         self._install_hint = install_hint
+        self._full_ffmpeg_hint = full_ffmpeg_hint
+
+    def _explain(self, stderr: str) -> str:
+        """ffmpeg's *stderr* in plain words when its build lacks the video's
+        codec -- an iPhone's HEVC on Fedora's ffmpeg-free -- with the way to
+        get one that has it; "" for any other failure."""
+        if (found := _NO_DECODER.search(stderr)) is None:
+            log.debug("FfmpegTool._explain: not a missing codec")
+            return ""
+        codec = found.group(1).upper()
+        hint = self._full_ffmpeg_hint() if self._full_ffmpeg_hint else ""
+        told = (f"this ffmpeg cannot play {codec} video -- "
+                + (f"to get one that can: {hint}" if hint
+                   else "install an ffmpeg build that includes it"))
+        log.info("FfmpegTool._explain: %s", told)
+        return told
 
     def probe(self, path: Path) -> VideoProbe:
         """One ``ffprobe`` for everything a caller needs to know about *path*."""
@@ -100,8 +124,8 @@ class FfmpegTool(VideoTool):
         ``ThemeError`` now when it cannot start at all."""
         cmd = decode_command(request, self._install_hint)
         try:
-            decode = FfmpegDecode(cmd, frames, request.path.name,
-                                  on_done=on_done, on_error=on_error)
+            decode = FfmpegDecode(cmd, frames, request.path.name, on_done=on_done,
+                                  on_error=on_error, explain=self._explain)
         except FileNotFoundError as e:
             raise ThemeError("ffmpeg not found on PATH") from e
         log.info("FfmpegTool.decode: %s decoding in the background", request.path.name)
@@ -140,9 +164,10 @@ class FfmpegTool(VideoTool):
                 f"ffmpeg timed out after {EXPORT_TIMEOUT_S}s.  Try a shorter clip.",
             ) from e
         if result.returncode != 0:
-            stderr_tail = result.stderr.decode(errors="replace")[-400:]
+            stderr = result.stderr.decode(errors="replace")
             raise VideoExportError(
-                f"ffmpeg exited {result.returncode}.  Last output:\n{stderr_tail}",
+                self._explain(stderr)
+                or f"ffmpeg exited {result.returncode}.  Last output:\n{stderr[-400:]}",
             )
 
     def still(self, video: Path, png: Path) -> bool:
@@ -170,6 +195,25 @@ class FfmpegTool(VideoTool):
              "-loop", "0", "-y", str(gif)],
             timeout=TILE_TIMEOUT_S, label=f"animated GIF for {video.name}",
         )
+
+    def lacks_decoders(self, codecs: tuple[str, ...]) -> tuple[str, ...]:
+        """Asked of ``ffmpeg -decoders``: a codec with no decoder of its own
+        name is one this build leaves out (Fedora's ffmpeg-free: hevc)."""
+        if not toolchain.present("ffmpeg"):
+            log.info("FfmpegTool.lacks_decoders: no ffmpeg to ask")
+            return ()
+        try:
+            ran = subprocess.run([toolchain.executable("ffmpeg"), "-hide_banner", "-decoders"],
+                                 capture_output=True, timeout=PROBE_TIMEOUT_S,
+                                 check=False, creationflags=SUBPROCESS_NO_WINDOW)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log.warning("FfmpegTool.lacks_decoders: could not ask ffmpeg (%s)", e)
+            return ()
+        names = {fields[1] for line in ran.stdout.decode(errors="replace").splitlines()
+                 if len(fields := line.split()) > 1}
+        lacking = tuple(codec for codec in codecs if codec not in names)
+        log.info("FfmpegTool.lacks_decoders: %s of %s", lacking or "none", codecs)
+        return lacking
 
     def preview(self, request: VideoExportRequest, box: tuple[int, int],
                 source_wh: tuple[int, int], *, still: bool) -> PreviewRun | None:
@@ -339,10 +383,11 @@ class FfmpegDecode(VideoDecode):
 
     def __init__(self, cmd: list[str], frames: list[bytes], name: str, *,
                  on_done: Callable[[], None],
-                 on_error: Callable[[str], None] | None = None) -> None:
+                 on_error: Callable[[str], None] | None = None,
+                 explain: Callable[[str], str] | None = None) -> None:
         log.info("FfmpegDecode: %s", name)
         self._frames, self._name = frames, name
-        self._on_done, self._on_error = on_done, on_error
+        self._on_done, self._on_error, self._explain = on_done, on_error, explain
         self._error = ""
         self._stop = threading.Event()
         self._done = threading.Event()
@@ -351,7 +396,8 @@ class FfmpegDecode(VideoDecode):
         self._proc: Any = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            creationflags=SUBPROCESS_NO_WINDOW)
-        self._tail: deque[bytes] = deque(maxlen=3)
+        # Six: a missing codec is named three lines from the end (_NO_DECODER).
+        self._tail: deque[bytes] = deque(maxlen=6)
         self._drain = threading.Thread(target=_drain, args=(self._proc.stderr, self._tail),
                                        daemon=True, name="trcc-decode-stderr")
         self._drain.start()
@@ -387,7 +433,8 @@ class FfmpegDecode(VideoDecode):
         stopped = self._stop.is_set()
         if not stopped and code != 0:
             tail = b" ".join(self._tail).decode(errors="replace").strip()
-            self._error = f"ffmpeg exit {code}" + (f": {tail[:500]}" if tail else "")
+            self._error = ((self._explain(tail) if self._explain else "")
+                           or f"ffmpeg exit {code}" + (f": {tail[:500]}" if tail else ""))
         if pending and not stopped:
             log.warning("FfmpegDecode: %s ended with %d byte(s) of a partial frame "
                         "-- dropped", self._name, pending)

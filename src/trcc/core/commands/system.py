@@ -715,6 +715,13 @@ class RunSetup(Command[SetupResult]):
         # a pre-install warning as a result).
         code = app.platform.setup(dry_run=self.dry_run)
         warnings = app.platform.check_permissions()
+        # An iPhone records HEVC, which some distros' ffmpeg leaves out --
+        # Fedora's stock ffmpeg-free.  Told here, where the user is setting
+        # up, rather than when the first Apple video will not play.
+        if (full := app.platform.full_ffmpeg_hint()) and app.video_tool.lacks_decoders(("hevc",)):
+            log.warning("RunSetup.execute: this ffmpeg has no HEVC decoder")
+            warnings.append("Apple videos (HEVC) will not play with this ffmpeg -- "
+                            f"to get the full one: {full}")
         log.info("RunSetup.execute: exit=%d, %d permission warning(s): %s",
                  code, len(warnings), warnings)
         return SetupResult(

@@ -455,6 +455,10 @@ class LinuxFamily:
     #: :data:`_LINUX_INSTALL_PKGS`.  A missing row means "unconfirmed", not
     #: "same as Debian" — guessing is what #207 was.
     packages: Mapping[str, str] = field(default_factory=dict)
+    #: The line that gets an ffmpeg decoding every format, where this
+    #: family's own leaves some out; "" where it does not
+    #: (``Platform.full_ffmpeg_hint``).
+    full_ffmpeg: str = ""
 
 
 #: The name every TRCC release package goes by (rpm, deb, pacman): an owner
@@ -482,6 +486,13 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
                   "ffmpeg": "/usr/bin/ffmpeg",
                   # By name: Fedora ships it in /usr/bin, EL in /usr/sbin.
                   "sensors-detect": "lm_sensors"},
+        # Stock ffmpeg-free cannot decode HEVC (measured 2026-11-05, Fedora
+        # 44: "no decoder found for: hevc").  RPM Fusion's own two steps,
+        # rpmfusion.org/Configuration and /Howto/Multimedia.  Not on EL: its
+        # URL and EPEL ordering differ, and that has not been tried.
+        full_ffmpeg=("sudo dnf install https://mirrors.rpmfusion.org/free/fedora/"
+                     "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+                     " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing"),
     ),
     LinuxFamily(
         name="Debian-family", manager="apt",
@@ -971,6 +982,7 @@ class LinuxOS(BaseOS, key="linux"):
         """
         super().__init__()
         self._family = family if family is not None else self._detect_family()
+        self._full_ffmpeg = self._family.full_ffmpeg     # Platform.full_ffmpeg_hint
         log.info("LinuxOS: family=%s manager=%s",
                  self._family.name, self._family.manager or "(none)")
 

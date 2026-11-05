@@ -2048,6 +2048,12 @@ class VideoTool(ABC):
         letterboxed -- written to *gif*; whether it was.  Best effort."""
 
     @abstractmethod
+    def lacks_decoders(self, codecs: tuple[str, ...]) -> tuple[str, ...]:
+        """Which of *codecs* (``"hevc"``) this tool's build cannot decode;
+        () when it has them all, or when there is no tool to ask -- a missing
+        one is reported on its own."""
+
+    @abstractmethod
     def preview(self, request: VideoExportRequest, box: tuple[int, int],
                 source_wh: tuple[int, int], *, still: bool) -> PreviewRun | None:
         """Start writing *request*'s frames, composed for the panel as the
@@ -4011,6 +4017,22 @@ class Platform(ABC):
         ``"pynvml"``.  Linux → package manager, Windows → winget, macOS →
         brew, BSD → pkg / pkg_add.
         """
+
+    #: What :meth:`full_ffmpeg_hint` answers -- data, set by a platform whose
+    #: usual ffmpeg leaves formats out (``LinuxOS`` takes its family's).
+    _full_ffmpeg: str = ""
+
+    def full_ffmpeg_hint(self) -> str:
+        """One line that swaps this OS's ffmpeg for a build that decodes every
+        format, or "" where the usual one already does.
+
+        "" by default: Windows and macOS ship a full build in the installer,
+        Debian, Ubuntu and Arch package one.  Fedora's stock ``ffmpeg-free``
+        leaves out HEVC -- an iPhone's video -- so the Linux Fedora family
+        names RPM Fusion's (measured 2026-11-05, Fedora 42 and 44).
+        """
+        log.debug("%s.full_ffmpeg_hint: %r", type(self).__name__, self._full_ffmpeg)
+        return self._full_ffmpeg
 
     @abstractmethod
     def no_devices_hint(self) -> str:

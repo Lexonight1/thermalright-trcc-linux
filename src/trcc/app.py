@@ -185,7 +185,8 @@ class App(CommandBus, ModuleServices):
         self.settings = Settings(platform.paths())
         self.themes = FileContentStore(platform.paths())
         #: What video work is handed to -- the ffmpeg programs unless injected.
-        self.video_tool: VideoTool = video_tool or FfmpegTool(platform.software_install_hint)
+        self.video_tool: VideoTool = video_tool or FfmpegTool(
+            platform.software_install_hint, platform.full_ffmpeg_hint)
         self.media = MediaService(video_tool=self.video_tool)
         #: The trimmers' previews, run here so a window only draws them.
         self.clip_previews = ClipPreviews(video_tool=self.video_tool)
