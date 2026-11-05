@@ -2240,6 +2240,9 @@ class RestoreDeviceState(Command[ThemeResult]):
         else:
             log.info("RestoreDeviceState: %s shows its theme's own background",
                      self.key)
+        # The box is beside the background, whichever it is -- not one of
+        # the sources above, so it comes back after them.
+        app.resume_box(self.key)
 
         return ThemeResult(
             ok=True, key=self.key, theme_name=theme.name,

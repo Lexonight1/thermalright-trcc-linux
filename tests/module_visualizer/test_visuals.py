@@ -465,6 +465,37 @@ def test_a_restart_resumes_the_visual_with_its_settings(app: App) -> None:
     assert dict(_reader(app).spec.settings) == {"growth": 2.0}
 
 
+def test_a_visual_moves_into_a_box_and_comes_back_after_a_restart(
+        app: App, tasks: list[str]) -> None:
+    """The real Visualizer, unchanged, in a box over the theme (#328): the
+    background visual MOVES into the box, drawn at the box's size; a
+    restart, and the module switched off and on, bring it back with its
+    settings.  MUTATION CHECK: drop ``app.resume_box`` from
+    ``RestoreDeviceState``."""
+    from trcc.core.commands import SetInset, SetModuleEnabled
+    from trcc.services.source_driver import inset_task_key
+
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes", settings={"growth": 2.0}))
+    moved = app.dispatch(SetInset(key=_KEY, module="visualizer"))
+    assert moved.ok, moved.message
+    box = app.media.inset(_KEY)
+    assert isinstance(box, _FakeReader)
+    assert (box.spec.width, box.spec.height) == (107, 107)        # a third of 320
+    assert dict(box.spec.settings) == {"growth": 2.0}
+    assert app.settings.for_device(_KEY).chosen_module is None    # the theme's again
+    assert _reader(app) is None and inset_task_key(_KEY) in tasks
+
+    app.media.close_inset(_KEY)                                    # what a restart leaves
+    assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
+    assert dict(app.media.inset(_KEY).spec.settings) == {"growth": 2.0}
+
+    app.modules.start_session()           # a running App's: switching on starts it
+    assert app.dispatch(SetModuleEnabled(key="visualizer", enabled=False)).ok
+    assert app.media.inset(_KEY) is None
+    assert app.dispatch(SetModuleEnabled(key="visualizer", enabled=True)).ok
+    assert isinstance(app.media.inset(_KEY), _FakeReader)
+
+
 def test_a_media_player_replaces_the_visual(app: App,
                                             monkeypatch: pytest.MonkeyPatch) -> None:
     """Which source wins -- not whether ffmpeg is installed (without it the web

@@ -829,11 +829,12 @@ class App(CommandBus, ModuleServices):
         return wanted
 
     def resume_backgrounds(self, module: str) -> None:
-        """*module* has started: each attached panel whose background is its
-        draws again."""
+        """*module* has started: each attached panel whose background -- or
+        box over its theme -- is its draws again."""
         log.info("resume_backgrounds: %s", module)
         for key in self.panel_keys():
             self.resume_background(key, module)
+            self.resume_box(key, module)
 
     def resume_background(self, key: str, module: str | None = None) -> None:
         """Panel *key*'s module background, again -- a theme's that waited
