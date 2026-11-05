@@ -578,3 +578,23 @@ def test_the_thumbnail_draws_the_island(wide: Any, split_mode: int) -> None:
     off, _ = _thumbnail_and_panel(app, theme, 0, 0)
     on, _ = _thumbnail_and_panel(app, theme, 0, split_mode)
     assert on != off
+
+
+@pytest.mark.parametrize("split_mode", [0, 1, 2, 3])
+def test_a_cast_of_the_themes_picture_looks_like_the_theme(
+    wide: Any, split_mode: int,
+) -> None:
+    """A live frame (a cast, a stream, a module's picture) is a background
+    like the theme's, and the island goes over it: the C# draws it in
+    ``GenerateImage`` whenever ``is1600x720``, whatever the picture.  Ours
+    left it off every live frame.  Cast exactly the theme's solid picture and
+    the panel must look exactly like the theme.
+
+    MUTATION CHECK: drop the island from ``build_screencast_frame``."""
+    app, theme = wide
+    _thumbnail, themed = _thumbnail_and_panel(app, theme, 0, split_mode)
+    device = app.devices[_WIDE_KEY]
+    cast = RawFrame(data=bytes([0, 64, 128]) * (1600 * 720), width=1600, height=720)
+    app.display.build_screencast_frame(info=device.info, frame=cast,
+                                       profile=device.profile)
+    assert app.renderer.encode_png(app.display.rendered_surface(_WIDE_KEY)) == themed

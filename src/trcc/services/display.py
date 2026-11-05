@@ -711,6 +711,9 @@ class DisplayService:
             layers += [self._mask_layer(info, s, theme),
                        self._scene_overlay(info, theme, (target_w, target_h),
                                            sensors)]
+        # The island over the cast as over any picture; it was left out, so a
+        # 1600x720 panel lost it whenever a cast, a stream or a module drew.
+        layers += self._island(info, s, (target_w, target_h), resolved)
 
         # Audio spectrum LAST, over everything, because it is a live meter
         # rather than part of the picture — the same order the gui's tick drew
@@ -1547,18 +1550,29 @@ class DisplayService:
         profile: DeviceProfile | None,
     ) -> list[Layer]:
         """What is drawn over the background, in order: the overlay, then the
-        split overlay (Dynamic Island) -- 1600x720 widescreen only, an asset
-        picked by (split_mode, rotation, SUB byte) as the C# does.  The wire
-        and the preview both draw these, so they cannot disagree."""
-        layers: list[Layer] = [Overlay(overlay_key, overlay_surface)]
-        if s.split_mode and _is_widescreen_split(visual_size):
-            split = self._split_layer(info, s.split_mode, s.orientation,
-                                      profile.sub if profile is not None else 0)
-            if split is not None:
-                layers.append(split)
+        Dynamic Island.  The wire and the preview both draw these, so they
+        cannot disagree."""
+        layers: list[Layer] = [Overlay(overlay_key, overlay_surface),
+                               *self._island(info, s, visual_size, profile)]
         frame_log.debug("_layers_over_background: %s %d layer(s)", info.key,
                         len(layers))
         return layers
+
+    def _island(self, info: ProductInfo, s: DeviceSettings,
+                visual_size: tuple[int, int],
+                profile: DeviceProfile | None) -> list[Layer]:
+        """The split overlay (Dynamic Island) when the panel shows one, else
+        nothing -- 1600x720 widescreen only, an asset picked by (split_mode,
+        rotation, SUB byte) as the C# does.  Over EVERY picture: the C# draws
+        it in ``GenerateImage`` whenever ``is1600x720`` (UCScreenImage.cs:1144),
+        the theme's background, a cast and the video player alike."""
+        if not (s.split_mode and _is_widescreen_split(visual_size)):
+            return []
+        split = self._split_layer(info, s.split_mode, s.orientation,
+                                  profile.sub if profile is not None else 0)
+        frame_log.debug("_island: %s style %d -> %s", info.key, s.split_mode,
+                        split is not None)
+        return [split] if split is not None else []
 
     def _split_layer(
         self,
