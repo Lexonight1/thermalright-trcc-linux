@@ -2,8 +2,10 @@
 time dropping down from it.
 
 His design (2026-11-05): "so gamers can have a thin bar above their gaming".
-At rest the window IS the bar: frameless, always on top, across the top of the
-primary screen.  A click on a menu item grows it and drops that item's panel
+At rest the window IS the bar: frameless, across the top of the primary
+screen -- an ordinary window that other windows can cover, with its own
+taskbar entry (his call, 2026-11-05: it should not stay on top; it was
+always-on-top and a Tool window, so nothing could go over it).  A click on a menu item grows it and drops that item's panel
 down; a second click pulls it back up to the bar.  The glass under a dropped
 panel is a picture (``assets/glass.png``, ``dev/tools/gen_hud_glass.py``),
 not real transparency, so it needs no compositor.
@@ -76,8 +78,7 @@ class HudWindow(QWidget):
     """The hudgui window: the thin bar, and a panel that drops from it."""
 
     def __init__(self, app: CommandBus) -> None:
-        super().__init__(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
-                         | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        super().__init__(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         log.info("HudWindow: building")
         self.setWindowTitle("TRCC")
         self._app = app

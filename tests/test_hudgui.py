@@ -45,14 +45,18 @@ def _lit(win: Any) -> list[str]:
     return [item for item, button in win.bar.buttons.items() if button.isChecked()]
 
 
-def test_at_rest_it_is_only_the_bar_on_top_of_everything(window: Any) -> None:
+def test_at_rest_it_is_only_the_bar_and_an_ordinary_window(window: Any) -> None:
+    """Frameless, but not on top of everything and not a Tool window (no
+    taskbar entry): his call, 2026-11-05.  MUTATION CHECK: put
+    ``WindowStaysOnTopHint`` back in ``HudWindow``'s flags."""
     from trcc.ui.hudgui.chrome import CHROME_HEIGHT
 
     assert list(window.bar.buttons) == ["Devices", "Sensors", "Modules",
                                         "Control Center", "About"]
     flags = window.windowFlags()
     assert flags & Qt.WindowType.FramelessWindowHint
-    assert flags & Qt.WindowType.WindowStaysOnTopHint
+    assert not flags & Qt.WindowType.WindowStaysOnTopHint
+    assert flags & Qt.WindowType.Tool != Qt.WindowType.Tool
     assert window.height() == CHROME_HEIGHT and not window.drop.isVisible()
 
 
