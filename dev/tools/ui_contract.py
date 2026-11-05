@@ -35,7 +35,13 @@ past a dispatch helper (``dispatch_echo(SomeCommand())`` in the CLI,
 (``dispatch(Enable() if on else Disable())`` recorded neither branch).
 
 Usage::
-    PYTHONPATH=src python3 dev/tools/ui_contract.py
+    PYTHONPATH=src python3 dev/tools/ui_contract.py                     # the report
+    PYTHONPATH=src python3 dev/tools/ui_contract.py --max-bypasses N    # gate: one line on a pass
+    PYTHONPATH=src python3 dev/tools/ui_contract.py --max-bypasses N --report
+
+A gate run prints the whole report only when it fails (or with ``--report``):
+on every green ``ci_local`` and CI run it was ~50 lines nobody read, burying
+the one that mattered.
 """
 from __future__ import annotations
 
@@ -963,29 +969,13 @@ def gate() -> int:
     return 0
 
 
-def main() -> int:
-    if "--gate" in sys.argv:
-        return gate()
-
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--max-bypasses", type=int, default=None, metavar="N",
-                    help="exit non-zero if the total contract bypass count "
-                         "exceeds N.  A ratchet, like MAX_SILENT: a UI that "
-                         "reaches past the Command bus for something new "
-                         "fails the build, and fixing one lets you lower N.")
-    ap.add_argument("--max-cross", type=int, default=None, metavar="N",
-                    help="exit non-zero if more than N UI->UI reaches are "
-                         "flagged (a skin naming another skin, or shared "
-                         "infrastructure naming a skin).  0 today.")
-    args = ap.parse_args()
-    commands, queries = contract_classes()
-    reach = reach_by_command()
+def _print_report(commands: set[str], queries: set[str],
+                  surfaces: list[UiSurface], edges: list[CrossEdge],
+                  stranded: list[tuple[str, int, str]]) -> None:
+    """The whole audit, section by section -- what a person reads."""
     print(f"{_B}Command-surface completeness audit{_RST}")
     print(f"  contract = {len(commands)} Command(s) + {len(queries)} Query(ies) "
           f"= {len(commands) + len(queries)} + read-only port properties\n")
-
-    surfaces = [scan_ui(name, root, dispatched_by(name, reach))
-                for name, root in _UIS.items() if root.is_dir()]
     for surface in surfaces:
         _print_ui(surface)
 
@@ -1010,27 +1000,64 @@ def main() -> int:
         print(f"  {_G}none — every service/adapter a GUI reaches, cli/api reach too{_RST}")
 
     _print_observe(event_reach())
-    edges = cross_edges()
-    stranded = mislocated()
     _print_cross(edges, stranded)
 
+
+def main() -> int:
+    if "--gate" in sys.argv:
+        return gate()
+
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--max-bypasses", type=int, default=None, metavar="N",
+                    help="exit non-zero if the total contract bypass count "
+                         "exceeds N.  A ratchet, like MAX_SILENT: a UI that "
+                         "reaches past the Command bus for something new "
+                         "fails the build, and fixing one lets you lower N.")
+    ap.add_argument("--max-cross", type=int, default=None, metavar="N",
+                    help="exit non-zero if more than N UI->UI reaches are "
+                         "flagged (a skin naming another skin, or shared "
+                         "infrastructure naming a skin).  0 today.")
+    ap.add_argument("--report", action="store_true",
+                    help="print the whole report even when the gates pass "
+                         "(a run with no gate flag always prints it).")
+    args = ap.parse_args()
+    commands, queries = contract_classes()
+    reach = reach_by_command()
+    surfaces = [scan_ui(name, root, dispatched_by(name, reach))
+                for name, root in _UIS.items() if root.is_dir()]
+    edges = cross_edges()
+    stranded = mislocated()
     total = sum(len(s.service_imports) + len(s.adapter_imports)
                 for s in surfaces)
-    print(f"\n{_B}total contract bypasses:{_RST} {total}")
-    flagged = len([e for e in edges if e.kind])
-    if args.max_cross is not None and flagged > args.max_cross:
-        print(f"{_R}FAIL{_RST} — {flagged} UI->UI reach(es) exceeds the "
-              f"--max-cross ceiling of {args.max_cross}.  A skin is reaching "
-              f"into another skin, or shared infrastructure has learned who "
-              f"its consumers are; both are inversions of the layering.")
-        return 1
+    crossing = len([e for e in edges if e.kind])
+
+    failures: list[str] = []
+    if args.max_cross is not None and crossing > args.max_cross:
+        failures.append(
+            f"{crossing} UI->UI reach(es) exceeds the --max-cross ceiling of "
+            f"{args.max_cross}.  A skin is reaching into another skin, or "
+            f"shared infrastructure has learned who its consumers are; both "
+            f"are inversions of the layering.")
     if args.max_bypasses is not None and total > args.max_bypasses:
-        print(f"{_R}FAIL{_RST} — {total} bypass(es) exceeds the "
-              f"--max-bypasses ceiling of {args.max_bypasses}.  A UI is "
-              f"reaching past the Command bus; route it through a Command "
-              f"or lower the ceiling if you fixed one.")
-        return 1
-    return 0
+        failures.append(
+            f"{total} bypass(es) exceeds the --max-bypasses ceiling of "
+            f"{args.max_bypasses}.  A UI is reaching past the Command bus; "
+            f"route it through a Command or lower the ceiling if you fixed one.")
+
+    gated = args.max_bypasses is not None or args.max_cross is not None
+    if failures or args.report or not gated:
+        _print_report(commands, queries, surfaces, edges, stranded)
+        print(f"\n{_B}total contract bypasses:{_RST} {total}")
+    for failure in failures:
+        print(f"{_R}FAIL{_RST} — {failure}")
+    if gated and not failures:
+        checked = [f"{count} {what} (limit {limit})" for count, what, limit in
+                   ((total, "bypass(es)", args.max_bypasses),
+                    (crossing, "UI->UI reach(es)", args.max_cross))
+                   if limit is not None]
+        print(f"ui contract: {', '.join(checked)} -- ok  "
+              f"(--report for the full audit)")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

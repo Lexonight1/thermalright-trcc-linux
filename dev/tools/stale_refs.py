@@ -21,7 +21,8 @@ So: STATIC.  Resolve the dotted name against the files on disk and read the
 module's AST.  No import, nothing to guard, nothing to be absent.
 
     PYTHONPATH=src python3 dev/tools/stale_refs.py           # report
-    PYTHONPATH=src python3 dev/tools/stale_refs.py --check   # exit 1 if any
+    PYTHONPATH=src python3 dev/tools/stale_refs.py --check   # exit 1 if any; quiet on a pass
+    PYTHONPATH=src python3 dev/tools/stale_refs.py --check --report   # the gate, printing everything
     PYTHONPATH=src python3 dev/tools/stale_refs.py --gate    # self-test only
 
 **Run ``--gate`` before trusting a run.**  Four hand-written versions of this
@@ -367,9 +368,16 @@ _ATTR_CASES: list[tuple[str, str, int, str]] = [
 ]
 
 
-def gate() -> int:
-    """Prove the detector answers the known cases before anyone trusts it."""
+def gate(verbose: bool = True) -> int:
+    """Prove the detector answers the known cases before anyone trusts it.
+
+    *verbose* prints every case; quiet (the ``--check`` run's self-proof)
+    prints only a case that failed, and the one-line verdict."""
     failures: list[str] = []
+
+    def case(ok: bool, line: str) -> None:
+        if verbose or not ok:
+            print(f"  [{'ok  ' if ok else 'FAIL'}] {line}")
 
     for module, name, why in _MUST_RESOLVE:
         defined = None
@@ -378,15 +386,13 @@ def gate() -> int:
             defined = _defines(ast.parse(path.read_text("utf-8")))
         resolves = defined is not None and (
             name in defined or _is_submodule(module, name))
-        mark = "ok  " if resolves else "FAIL"
-        print(f"  [{mark}] resolves: {module}.{name} — {why}")
+        case(resolves, f"resolves: {module}.{name} — {why}")
         if not resolves:
             failures.append(f"{module}.{name} should resolve")
 
     for module, name, why in _MUST_BE_STALE:
         stale = module_file(module) is None
-        mark = "ok  " if stale else "FAIL"
-        print(f"  [{mark}] stale:    {module}.{name} — {why}")
+        case(stale, f"stale:    {module}.{name} — {why}")
         if not stale:
             failures.append(f"{module}.{name} should be stale")
 
@@ -394,13 +400,13 @@ def gate() -> int:
     for source, label, expected, why in _ATTR_CASES:
         got = len(_attributes_in(source, "<gate>", known))
         ok = got == expected
-        mark = "ok  " if ok else "FAIL"
         verdict = "flagged" if expected else "not flagged"
-        print(f"  [{mark}] attr:     {label} — {verdict}: {why}")
+        case(ok, f"attr:     {label} — {verdict}: {why}")
         if not ok:
             failures.append(f"{label} expected {expected} finding(s), got {got}")
 
-    print()
+    if verbose:
+        print()
     if failures:
         print(f"GATE FAILED — {len(failures)}: " + "; ".join(failures))
         return 1
@@ -413,14 +419,19 @@ def gate() -> int:
 def main(argv: list[str]) -> int:
     if "--gate" in argv:
         return gate()
-    if gate() != 0:                    # never report without proving itself
+    # A --check run is a gate: it prints what is wrong and one verdict.  The
+    # self-proof's cases and the known exemptions are for a person reading a
+    # report (no flag, or --report); on every green run they were noise.
+    report = "--check" not in argv or "--report" in argv
+    if gate(verbose=report) != 0:      # never report without proving itself
         return 2
-    print()
+    if report:
+        print()
     all_found = scan() + scan_attributes()
     expected = [f for f in all_found if expected_legacy(f)]
     findings = [f for f in all_found if not expected_legacy(f)]
 
-    for f in expected:
+    for f in expected if report else ():
         print(f"  [expected] {f.where}: {f.module}")
         print(f"             {expected_legacy(f)}")
     for f in findings:
@@ -438,7 +449,9 @@ def main(argv: list[str]) -> int:
     for line in drift:
         print(f"  PYRIGHT EXCLUDE {line}")
 
-    print(f"\n{len(findings)} stale reference(s), {len(expected)} expected, "
+    if report or findings or orphaned or drift:
+        print()
+    print(f"{len(findings)} stale reference(s), {len(expected)} expected, "
           f"{len(orphaned)} orphaned exemption(s), {len(drift)} pyright "
           f"exclude mismatch(es) in {'/, '.join(_SCANNED)}/")
     if "--check" in argv and (findings or orphaned or drift):

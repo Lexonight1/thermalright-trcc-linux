@@ -274,10 +274,15 @@ jobs:
       - name: Ratchet — C# audit coverage
         run: python3 dev/decompiler/audit_coverage.py --fail-under 95
 
+      # At the real count: a UI that reaches past the Command bus for
+      # something new fails here, and fixing one lowers this number.  It sat
+      # at 20 with 7 real until 2026-11-05 -- 13 new bypasses would have
+      # passed, unseen, because a green run printed the whole report and
+      # nobody read the total.
       - name: Ratchet — UI contract bypasses
         env:
           PYTHONPATH: src
-        run: python3 dev/tools/ui_contract.py --max-bypasses 20
+        run: python3 dev/tools/ui_contract.py --max-bypasses 7
 
       # Not a count that may drift down -- a floor of zero.  dev/ and tests/
       # must not name a trcc module, symbol or Platform attribute that no
