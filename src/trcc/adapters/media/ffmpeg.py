@@ -23,8 +23,8 @@ from ...core.errors import ThemeError
 from ...core.geometry import largest_fit_size
 from ...core.logs import per_frame
 from ...core.models import SUBPROCESS_NO_WINDOW, VideoDecodeRequest, VideoProbe
-from ...core.ports import VideoDecode, VideoTool
-from ...services.media_stream import _drain
+from ...core.ports import FrameSource, VideoDecode, VideoTool
+from .stream import StreamReader, _drain
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -94,6 +94,11 @@ class FfmpegTool(VideoTool):
             raise ThemeError("ffmpeg not found on PATH") from e
         log.info("FfmpegTool.decode: %s decoding in the background", request.path.name)
         return decode
+
+    def stream(self, url: str, size: tuple[int, int], fps: int) -> FrameSource:
+        """ffmpeg reading *url* live (``StreamReader``)."""
+        log.info("FfmpegTool.stream: %s at %dx%d, %d fps", url, *size, fps)
+        return StreamReader(url, size, fps)
 
 
 def _read_probe(data: dict[str, Any]) -> VideoProbe:
@@ -213,7 +218,7 @@ class FfmpegDecode(VideoDecode):
     *on_done* tells the owner when there are no more.
 
     ffmpeg is started HERE, on the caller's thread, so one that cannot start
-    raises now.  stderr is drained as it comes (``media_stream._drain``): left
+    raises now.  stderr is drained as it comes (``stream._drain``): left
     in a pipe it fills and stalls ffmpeg.  A decode that fails partway keeps
     what it decoded -- the panel keeps playing it -- and reports once through
     *on_error*; one that fails before any frame leaves ``error`` for the

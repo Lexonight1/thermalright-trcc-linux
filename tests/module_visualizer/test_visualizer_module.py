@@ -459,12 +459,10 @@ def test_a_media_player_started_while_a_visual_waits_is_what_a_restore_resumes(
     user's player never came back."""
     import trcc.core.toolchain as toolchain
     from trcc.core.commands import RestoreDeviceState, SetMediaPlayer
-    from trcc.services.media import MediaService
 
-    from ..test_media_stream import _URL
-    from ..test_media_stream import _FakeReader as _FakeStream
+    from ..test_media_stream import _URL, fake_web_streams
 
-    monkeypatch.setattr(MediaService, "stream_reader", _FakeStream)
+    fake_web_streams(monkeypatch)
     monkeypatch.setattr(toolchain, "present", lambda tool: True)
     _waiting_visual_theme(app, tmp_path)         # the module stays off
     assert app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL)).ok

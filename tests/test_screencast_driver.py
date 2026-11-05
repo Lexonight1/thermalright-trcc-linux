@@ -1366,11 +1366,10 @@ def test_a_stream_taking_over_still_ends_the_cast_properly(
     MUTATION CHECK: give ``SourceDriver`` one key per panel and the cast is
     never stopped."""
     import trcc.core.toolchain as toolchain
-    from tests.test_media_stream import _FakeReader
+    from tests.test_media_stream import fake_web_streams
     from trcc.core.commands import SetMediaPlayer
-    from trcc.services.media import MediaService
 
-    monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
+    fake_web_streams(monkeypatch)
     monkeypatch.setattr(toolchain, "present", lambda tool: True)
     heard: list[Event] = []
     casting.events.subscribe(ScreencastStopped, heard.append)

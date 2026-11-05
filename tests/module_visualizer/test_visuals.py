@@ -472,11 +472,10 @@ def test_a_media_player_replaces_the_visual(app: App,
     source is refused and the visual stays; review stage 2's sandbox has none),
     and never real ffmpeg on the network: the media tests' scripted reader."""
     import trcc.core.toolchain as toolchain
-    from tests.test_media_stream import _FakeReader
-    from trcc.services.media import MediaService
+    from tests.test_media_stream import fake_web_streams
 
     monkeypatch.setattr(toolchain, "present", lambda tool: True)
-    monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
+    fake_web_streams(monkeypatch)
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     app.dispatch(SetMediaPlayer(key=_KEY, uri="https://example.test/a.m3u8"))
     assert app.settings.for_device(_KEY).chosen_module is None

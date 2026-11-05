@@ -44,7 +44,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SingleFileTheme`](#singlefiletheme) | 2 | 0 | 1 |
 | [`TlsIdentity`](#tlsidentity) | 2 | 0 | 1 |
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
-| [`VideoTool`](#videotool) | 2 | 0 | 1 |
 | [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`AppService`](#appservice) | 3 | 0 | 1 |
@@ -68,6 +67,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`SoundInput`](#soundinput) | 3 | 0 | 3 |
 | [`SoundPort`](#soundport) | 3 | 0 | 1 |
+| [`VideoTool`](#videotool) | 3 | 0 | 1 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_DeviceIoPort`](#_deviceioport) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
@@ -618,21 +618,6 @@ submit(token: 'str', request: 'VideoExportRequest') -> None
 
 **Implementations (2):** `SyncVideoExportRunner` · `ThreadVideoExportRunner`
 
-## VideoTool
-
-`core/ports.py`
-
-The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe and decode; then stream, export and the trimmer's preview.
-
-**You implement (2):**
-
-```python
-decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
-probe(path: 'Path') -> VideoProbe
-```
-
-**Implementations (1):** `FfmpegTool`
-
 ## _HidBinding
 
 `adapters/device/transport.py`
@@ -1024,6 +1009,22 @@ worker_thread() -> AbstractContextManager[None]
 ```
 
 **Implementations (1):** `_Sound`
+
+## VideoTool
+
+`core/ports.py`
+
+The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe, decode and stream; then export and the trimmer's preview.
+
+**You implement (3):**
+
+```python
+decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
+probe(path: 'Path') -> VideoProbe
+stream(url: 'str', size: 'tuple[int, int]', fps: 'int') -> FrameSource
+```
+
+**Implementations (1):** `FfmpegTool`
 
 ## VoltageSource
 

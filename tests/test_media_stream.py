@@ -25,6 +25,7 @@ import pytest
 from tests.conftest import show_a_theme
 from tests.mock_platform import MockPlatform
 from trcc.adapters.media.ffmpeg import FfmpegTool
+from trcc.adapters.media.stream import StreamReader, explain_failure
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import (
@@ -39,7 +40,6 @@ from trcc.core.events import ErrorOccurred
 from trcc.core.models import PanelSource, RawFrame, ThemeBackground
 from trcc.core.ports import CaptureNotReady, FrameSource
 from trcc.services.media import MediaService
-from trcc.services.media_stream import StreamReader, explain_failure
 from trcc.services.source_driver import task_key
 
 _KEY = "0402:3922"
@@ -72,6 +72,19 @@ class _FakeReader(FrameSource):
         self.closed = True
 
 
+class _FakeStreams(FfmpegTool):
+    """The ffmpeg tool, its web streams the scripted :class:`_FakeReader`."""
+
+    def stream(self, url: str, size: tuple[int, int], fps: int) -> FrameSource:
+        return _FakeReader(url, size, fps)
+
+
+def fake_web_streams(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every ``FfmpegTool`` streams the scripted reader -- for a test whose
+    App a shared fixture built, so it cannot be handed ``_FakeStreams``."""
+    monkeypatch.setattr(FfmpegTool, "stream", _FakeStreams.stream)
+
+
 @pytest.fixture
 def tasks() -> list[str]:
     """The key of every task ``app`` was handed, in order."""
@@ -83,13 +96,13 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
         tasks: list[str]) -> Iterator[App]:
     import trcc.core.toolchain as toolchain
 
-    monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
     monkeypatch.setattr(toolchain, "present", lambda tool: True)
     # The real threaded scheduler, so a queued send reaches the wire on the
     # sender's thread (``_wire_grows`` waits for it); the stream DRIVER is recorded instead of run, so each test
     # dispatches its own ticks and nothing races it.
     monkeypatch.setattr(App, "add_task", lambda self, task: tasks.append(task.key))
-    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer())
+    app = App(MockPlatform([_SPEC], tmp_path), renderer=QtRenderer(),
+              video_tool=_FakeStreams())
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     show_a_theme(app, _KEY)
     yield app
@@ -539,7 +552,7 @@ def test_the_cli_text_says_what_is_showing(
 
     from .conftest import _CliRenderer
 
-    monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
+    fake_web_streams(monkeypatch)
     monkeypatch.setattr(toolchain, "present", lambda tool: True)
     monkeypatch.setattr(App, "add_task", lambda self, task: None)
     _ctx.set_platform(MockPlatform([_SPEC], tmp_path))
@@ -609,3 +622,36 @@ def test_a_stream_is_not_played_under_the_themes_video(
 
     assert app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL)).ok
     assert app.media.playback(_KEY) is None, "the theme's video plays under the stream"
+
+
+def test_the_stream_never_flashes_a_console_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every program the tool runs carries ``SUBPROCESS_NO_WINDOW``; the
+    stream did not before it moved to the adapter.
+
+    MUTATION CHECK: drop the creationflags from the Popen -- None != the flag."""
+    import io
+    from types import SimpleNamespace
+
+    from trcc.core.models import SUBPROCESS_NO_WINDOW
+
+    options: list[dict[str, Any]] = []
+
+    def ffmpeg(cmd: list[str], **opts: Any) -> Any:
+        options.append(opts)
+        return SimpleNamespace(stdout=io.BytesIO(), stderr=io.BytesIO(b"no such host\n"),
+                               poll=_exited, wait=_exited_after)
+
+    monkeypatch.setattr("trcc.adapters.media.stream.subprocess.Popen", ffmpeg)
+    reader = FfmpegTool().stream(_URL, (8, 8), 16)
+    reader.close()
+    assert [o.get("creationflags") for o in options] == [SUBPROCESS_NO_WINDOW]
+
+
+def _exited() -> int:
+    return 1
+
+
+def _exited_after(timeout: float | None = None) -> int:
+    return 1

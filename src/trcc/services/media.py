@@ -21,7 +21,6 @@ from ..core.errors import ThemeError
 from ..core.logs import per_frame
 from ..core.models import ZT_MAGIC, PanelSource, VideoDecodeRequest, VideoProbe
 from ..core.ports import FrameSource, VideoDecode, VideoTool
-from .media_stream import StreamReader
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -315,14 +314,10 @@ class MediaService:
     never interact with this class.
     """
 
-    #: The reader a web source gets.  A class attribute so a test swaps in a
-    #: fake without ffmpeg or a network (``tests/test_media_stream.py``).
-    stream_reader: type[StreamReader] = StreamReader
-
     def __init__(self, *, video_tool: VideoTool) -> None:
         log.debug("__init__")
-        #: What a video is probed and decoded with (``VideoTool``) -- injected,
-        #: never run here.
+        #: What a video is probed, decoded and streamed with (``VideoTool``) --
+        #: injected, never run here.
         self._tool = video_tool
         self._playbacks: dict[str, Playback] = {}
         #: Each panel's ONE live picture -- a module's, a web stream's -- and
@@ -444,11 +439,11 @@ class MediaService:
         return live
 
     def open_stream(self, device_key: str, url: str,
-                    size: tuple[int, int], fps: int) -> StreamReader:
+                    size: tuple[int, int], fps: int) -> FrameSource:
         """Start reading *url* for *device_key* -- its live picture now."""
         log.info("open_stream: %s <- %s (%dx%d @ %d fps)",
                  device_key, url, *size, fps)
-        reader = self.stream_reader(url, size, fps)
+        reader = self._tool.stream(url, size, fps)
         self.open_live(device_key, PanelSource.MEDIA, reader)
         return reader
 

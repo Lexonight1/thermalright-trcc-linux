@@ -1982,7 +1982,7 @@ class VideoTool(ABC):
     """The tool TRCC hands video work to: today the ``ffmpeg`` and
     ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App
     as the renderer is.  Services ask it; none runs a program itself.  It grows
-    one capability per increment of the port: probe and decode; then stream,
+    one capability per increment of the port: probe, decode and stream; then
     export and the trimmer's preview."""
 
     @abstractmethod
@@ -1998,6 +1998,11 @@ class VideoTool(ABC):
         as they arrive -- and return at once.  *on_done* runs once it ends,
         before :attr:`VideoDecode.done` turns true; *on_error* hears of a
         failure after the first frame.  ``ThemeError`` when it cannot start."""
+
+    @abstractmethod
+    def stream(self, url: str, size: tuple[int, int], fps: int) -> FrameSource:
+        """Start reading *url* in real time, letterboxed to *size* at *fps*:
+        its newest frame on demand (``FrameSource.latest``), until closed."""
 
 
 # =========================================================================

@@ -6,7 +6,7 @@ URL is the same with ffmpeg in place of the screen grab.  This reader runs
 ffmpeg on the URL in real time and keeps the NEWEST frame; the App's
 ``SourceDriver`` takes it each tick (``CaptureSourceFrame``).
 
-Local files keep the ``VideoTool`` decode, which reads a whole video.  A
+Local files keep ``FfmpegTool.decode``, which reads a whole video.  A
 stream never ends, and a slow download would outlast the 30 s IPC timeout, so
 a URL cannot take that path -- and ``Path("https://x")`` collapses its ``//``.
 
@@ -26,10 +26,10 @@ from collections import deque
 from typing import IO
 from urllib.parse import urlsplit
 
-from ..core import toolchain
-from ..core.logs import per_frame
-from ..core.models import RawFrame
-from ..core.ports import CaptureNotReady, FrameSource
+from ...core import toolchain
+from ...core.logs import per_frame
+from ...core.models import SUBPROCESS_NO_WINDOW, RawFrame
+from ...core.ports import CaptureNotReady, FrameSource
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -124,7 +124,8 @@ class StreamReader(FrameSource):
         frames = 0
         self._proc = proc = subprocess.Popen(
             self._command(), stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            creationflags=SUBPROCESS_NO_WINDOW)
         assert proc.stdout is not None and proc.stderr is not None
         # Six, not three: a host that cannot be found prints its reason four
         # lines from the end, and three left it out (explain_failure).
