@@ -21,6 +21,12 @@ lets every program you run read it.
 
 ``--keep`` stops after the grant, to look around; run it again without
 ``--keep`` to take it back (a grant already in place asks nothing).
+
+``--module KEY`` drives what a module's Unlock does: the devices its
+``module.json`` names, under its own key, with what ``locked()`` -- the
+tile's line -- says before and after::
+
+    PYTHONPATH=src python3.12 dev/tools/drive_module_devices.py --module rgb --keep
 """
 from __future__ import annotations
 
@@ -30,6 +36,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import trcc.modules
+from trcc.adapters.modules._catalog import read_manifest
 from trcc.adapters.system import current_platform
 from trcc.adapters.system._module_devices import RULES_DIR
 from trcc.core.models import MODULE_DEVICE
@@ -61,14 +69,16 @@ def nodes(device: str) -> list[str]:
     return out
 
 
-def show(key: str, device: str, step: str) -> None:
-    """The rule file and each node's named-user ACL entries, as they are now."""
+def show(key: str, devices: tuple[str, ...], step: str, locked: str) -> None:
+    """The rule file, what the tile would say, and each attached node's
+    named-user ACL entries, as they are now."""
     rule = RULES_DIR / f"70-trcc-module-{key}.rules"
     print(f"\n== after {step} ==")
+    print(f"tile says: {locked or '(nothing -- it reaches them)'}")
     print(f"{rule}: " + ("present" if rule.exists() else "absent"))
     if rule.exists():
         print("".join(f"    {line}\n" for line in rule.read_text().splitlines()), end="")
-    for node in nodes(device) or ["(device not attached)"]:
+    for node in [n for d in devices for n in nodes(d)] or ["(none attached)"]:
         acl = subprocess.run(["getfacl", "-cpn", node], capture_output=True, text=True,
                              check=False).stdout if node.startswith("/dev") else ""
         users = [line for line in acl.splitlines()
@@ -78,26 +88,37 @@ def show(key: str, device: str, step: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
-    parser.add_argument("device", help="vvvv:pppp, as lsusb prints it")
+    parser.add_argument("device", nargs="?", help="vvvv:pppp, as lsusb prints it")
     parser.add_argument("--key", default="drivetest", help="the module key the rule is for")
+    parser.add_argument("--module", default="",
+                        help="a built-in module: its key and its module.json's devices")
     parser.add_argument("--keep", action="store_true", help="grant only; do not take it back")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    if not MODULE_DEVICE.fullmatch(args.device):
-        parser.error(f"{args.device!r} is not vvvv:pppp as lsusb prints it")
-    vid, pid = (int(part, 16) for part in args.device.split(":"))
-    if (vid, pid) in ALL_DEVICES:
-        parser.error(f"{args.device} is a TRCC panel -- never grant one to every program")
+    if args.module:
+        manifest = read_manifest(Path(trcc.modules.__file__).parent / args.module
+                                 / trcc.modules.MANIFEST)
+        key, wanted = manifest.key, manifest.devices
+    elif args.device:
+        key, wanted = args.key, (args.device,)
+    else:
+        parser.error("name a device, or --module KEY")
+    for device in wanted:
+        if not MODULE_DEVICE.fullmatch(device):
+            parser.error(f"{device!r} is not vvvv:pppp as lsusb prints it")
+        vid, pid = (int(part, 16) for part in device.split(":"))
+        if (vid, pid) in ALL_DEVICES:
+            parser.error(f"{device} is a TRCC panel -- never grant one to every program")
     devices = current_platform().module_devices()
-    log.info("drive: %s for %s through %s", args.device, args.key, type(devices).__name__)
-    show(args.key, args.device, "nothing (before)")
-    note = devices.grant(args.key, (args.device,))
+    log.info("drive: %s for %s through %s", wanted, key, type(devices).__name__)
+    show(key, wanted, "nothing (before)", devices.locked(key, wanted))
+    note = devices.grant(key, wanted)
     print(f"\ngrant said: {note or '(nothing -- reachable)'}")
-    show(args.key, args.device, "grant")
+    show(key, wanted, "grant", devices.locked(key, wanted))
     if args.keep:
         return 0
-    devices.revoke(args.key)
-    show(args.key, args.device, "revoke")
+    devices.revoke(key)
+    show(key, wanted, "revoke", devices.locked(key, wanted))
     return 0
 
 
