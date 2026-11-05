@@ -1181,15 +1181,6 @@ class DisplaySource(int, Enum):
     VIDEO = 48
 
 
-# Date format sub-mode → asset basename for the cycling button icon.
-DATE_FORMAT_IMAGES: dict[int, str] = {
-    1: "display_mode_date_ymd.png",
-    2: "display_mode_date_dmy.png",
-    3: "display_mode_date_md.png",
-    4: "display_mode_date_dm.png",
-}
-
-
 # Overlay mode → background icon asset for the 60×60 grid cell.
 OVERLAY_MODE_IMAGES: dict[OverlayMode, str] = {
     OverlayMode.HARDWARE: "overlay_mode_hardware.png",

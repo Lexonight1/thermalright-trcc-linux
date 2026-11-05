@@ -8,6 +8,7 @@ DataTablePanel: Context-sensitive format controls (C/F, 12H/24H, date format, te
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 from PySide6.QtCore import QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -31,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from ...core.geometry import lock_region_to_panel
 from ...core.logs import per_frame
-from ...core.models import ACTION_ICON_IMAGES, DATE_FORMAT_IMAGES, OverlayMode
+from ...core.models import ACTION_ICON_IMAGES, OverlayMode
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -47,59 +48,60 @@ _DELTA_PROPERTY = "trcc_delta"
 _AXIS_PROPERTY = "trcc_axis"
 
 
-class TwoWaySwitch(QWidget):
-    """Two choices side by side, the chosen one highlighted -- the overlay
-    editor's °C | °F and 12H | 24H.  Clicking the other side picks it."""
+class ChoiceSwitch(QWidget):
+    """Choices side by side, the chosen one highlighted -- the overlay
+    editor's °C | °F, 12H | 24H, — | <unit> and its four date formats.
+    Clicking another picks it."""
 
-    #: The side picked: 0 the left, 1 the right.
+    #: The choice picked, by its place from the left.
     picked = Signal(int)
 
-    def __init__(self, left: str, right: str, parent: QWidget | None = None) -> None:
+    def __init__(self, labels: Sequence[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        log.debug("TwoWaySwitch: %s | %s", left, right)
-        self._labels = (left, right)
-        self._right = False
+        log.debug("ChoiceSwitch: %s", " | ".join(labels))
+        self._labels = tuple(labels)
+        self._chosen = 0
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-    def set_labels(self, left: str, right: str) -> None:
-        """New words for the two sides -- a reading's own unit."""
-        log.debug("TwoWaySwitch.set_labels: %s | %s", left, right)
-        self._labels = (left, right)
+    def set_labels(self, *labels: str) -> None:
+        """New words for the choices -- a reading's own unit."""
+        log.debug("ChoiceSwitch.set_labels: %s", " | ".join(labels))
+        self._labels = labels
         self.update()
 
-    def set_choice(self, right: bool) -> None:
-        """Show *right* (else the left) as the chosen side -- sends nothing."""
-        log.debug("TwoWaySwitch.set_choice: %s", self._labels[int(right)])
-        self._right = right
+    def set_choice(self, index: int) -> None:
+        """Show choice *index* as the chosen one -- sends nothing."""
+        log.debug("ChoiceSwitch.set_choice: %s", self._labels[index])
+        self._chosen = index
         self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        right = event.position().x() >= self.width() / 2
-        log.info("TwoWaySwitch: %s clicked", self._labels[int(right)])
-        if right != self._right:
-            self.set_choice(right)
-            self.picked.emit(int(right))
+        index = min(len(self._labels) - 1,
+                    int(event.position().x() * len(self._labels) / self.width()))
+        log.info("ChoiceSwitch: %s clicked", self._labels[index])
+        if index != self._chosen:
+            self.set_choice(index)
+            self.picked.emit(index)
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        frame_log.debug("TwoWaySwitch.paintEvent: %s chosen",
-                        self._labels[int(self._right)])
-        w, h = self.width(), self.height()
+        frame_log.debug("ChoiceSwitch.paintEvent: %s chosen",
+                        self._labels[self._chosen])
+        w, h, n = self.width(), self.height(), len(self._labels)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         pill = QPainterPath()
         pill.addRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
         p.fillPath(pill, QColor(Colors.PAGE_FRAME))
         p.setClipPath(pill)
-        p.fillRect(QRectF(w / 2 if self._right else 0, 0, w / 2, h),
-                   QColor(Colors.PAGE_GOLD))
+        p.fillRect(QRectF(w * self._chosen / n, 0, w / n, h), QColor(Colors.PAGE_GOLD))
         p.setClipping(False)
         font = QFont(self.font())
         font.setPixelSize(11)
         font.setBold(True)
         p.setFont(font)
-        for side, label in enumerate(self._labels):
-            p.setPen(QColor("#2b2b2b") if side == self._right else QColor("#aaaaaa"))
-            p.drawText(QRect(side * w // 2, 0, w // 2, h), Qt.AlignmentFlag.AlignCenter, label)
+        for i, label in enumerate(self._labels):
+            p.setPen(QColor("#2b2b2b") if i == self._chosen else QColor("#aaaaaa"))
+            p.drawText(QRect(w * i // n, 0, w // n, h), Qt.AlignmentFlag.AlignCenter, label)
         p.end()
 
 
@@ -113,7 +115,7 @@ class DataTablePanel(QFrame):
       myModeSub 0↔1) in the same look
     - Time    (mode 1): the 12H | 24H switch
     - Weekday (mode 2): no controls
-    - Date    (mode 3): button3 — date format cycle (YMD→DMY→MD→DM)
+    - Date    (mode 3): the Y/M/D | D/M/Y | M/D | D/M switch
     - Custom  (mode 4): textBox1 — custom text input
     """
 
@@ -121,9 +123,6 @@ class DataTablePanel(QFrame):
     text_changed = Signal(str)
     #: "C" or "F": the temperature unit, picked on a temperature element.
     temp_unit_changed = Signal(str)
-
-    # Date format images in cycle order (mode_sub 1→2→3→4→1)
-    _DATE_IMAGES = DATE_FORMAT_IMAGES
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -137,7 +136,7 @@ class DataTablePanel(QFrame):
         # button0, its unit switch: myModeSub 1 draws the number + unit, 0 the
         # bare number (the unit baked into the theme art).  Windows: (80, 15)
         # 70x24, drawn as P单位开关 / P单位开关a; the same switch as °C | °F now.
-        self.unit_switch = TwoWaySwitch("—", "%", self)
+        self.unit_switch = ChoiceSwitch(("—", "%"), self)
         self.unit_switch.setGeometry(80, 15, 70, 24)
         self.unit_switch.setToolTip("Show the unit after the value")
         self.unit_switch.picked.connect(self._on_unit_picked)
@@ -146,7 +145,7 @@ class DataTablePanel(QFrame):
         # A temperature's °C | °F -- the one temperature unit (SetTempUnit),
         # the About panel's radios and this switch always the same answer.
         # Legacy had it; the cutover left it inert, then it was gone.
-        self.temp_switch = TwoWaySwitch("°C", "°F", self)
+        self.temp_switch = ChoiceSwitch(("°C", "°F"), self)
         self.temp_switch.setGeometry(80, 15, 70, 24)
         self.temp_switch.setToolTip("Temperature unit")
         self.temp_switch.picked.connect(self._on_temp_picked)
@@ -154,25 +153,19 @@ class DataTablePanel(QFrame):
         self._temp_unit = "C"
 
         # 12H | 24H (mode 1: time) -- myModeSub 1 = 12H, 2 = 24H.
-        self.time_switch = TwoWaySwitch("12H", "24H", self)
+        self.time_switch = ChoiceSwitch(("12H", "24H"), self)
         self.time_switch.setGeometry(80, 15, 70, 24)
         self.time_switch.setToolTip("Time format (12h/24h)")
         self.time_switch.picked.connect(self._on_time_picked)
         self.time_switch.setVisible(False)
 
-        # button3 — date format cycle (mode 3: date)
-        # Windows: (88, 16) 54x22
-        self.date_btn = QPushButton(self)
-        self.date_btn.setGeometry(88, 16, 54, 22)
-        self.date_btn.setFlat(True)
-        self.date_btn.setStyleSheet(Styles.FLAT_BUTTON)
-        self.date_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._date_pixmaps = {
-            k: Assets.load_pixmap(v, 54, 22) for k, v in self._DATE_IMAGES.items()
-        }
-        self.date_btn.setToolTip("Date format")
-        self.date_btn.clicked.connect(self._on_date_clicked)
-        self.date_btn.setVisible(False)
+        # The four date formats (mode 3: date) -- myModeSub 1..4, the C#'s
+        # button3 cycling P YMD / DMY / MD / DM, all four shown at once now.
+        self.date_switch = ChoiceSwitch(("Y/M/D", "D/M/Y", "M/D", "D/M"), self)
+        self.date_switch.setGeometry(15, 15, 200, 24)
+        self.date_switch.setToolTip("Date format")
+        self.date_switch.picked.connect(self._on_date_picked)
+        self.date_switch.setVisible(False)
 
         # textBox1 — custom text input (mode 4: custom)
         # Windows: (15, 15) 200x22
@@ -192,7 +185,7 @@ class DataTablePanel(QFrame):
         self.unit_switch.setVisible(False)
         self.temp_switch.setVisible(False)
         self.time_switch.setVisible(False)
-        self.date_btn.setVisible(False)
+        self.date_switch.setVisible(False)
         self.text_input.setVisible(False)
 
     def show_temp_unit(self, unit: str) -> None:
@@ -201,12 +194,6 @@ class DataTablePanel(QFrame):
         log.debug("show_temp_unit: %s", unit)
         self._temp_unit = unit
         self.temp_switch.set_choice(unit == "F")
-
-    def _update_date_image(self):
-        px = self._date_pixmaps.get(self._mode_sub)
-        if px and not px.isNull():
-            self.date_btn.setIcon(QIcon(px))
-            self.date_btn.setIconSize(self.date_btn.size())
 
     def _on_text_committed(self) -> None:
         """The custom-text field lost focus or was committed."""
@@ -239,8 +226,8 @@ class DataTablePanel(QFrame):
             case OverlayMode.DATE:
                 if self._mode_sub == 0:
                     self._mode_sub = 1  # Default to YMD
-                self._update_date_image()
-                self.date_btn.setVisible(True)
+                self.date_switch.set_choice(self._mode_sub - 1)
+                self.date_switch.setVisible(True)
             case OverlayMode.CUSTOM:
                 self.text_input.setVisible(True)
 
@@ -263,11 +250,10 @@ class DataTablePanel(QFrame):
         log.info("_on_time_picked: mode_sub=%s", self._mode_sub)
         self.format_changed.emit(self._current_mode, self._mode_sub)
 
-    def _on_date_clicked(self):
-        """Cycle date format: 1→2→3→4→1 (YMD→DMY→MD→DM)."""
-        log.debug("_on_date_clicked: mode_sub=%s→%s", self._mode_sub, (self._mode_sub % 4) + 1)
-        self._mode_sub = (self._mode_sub % 4) + 1
-        self._update_date_image()
+    def _on_date_picked(self, index: int) -> None:
+        """One of the four date formats picked (mode_sub 1..4): this clock's."""
+        self._mode_sub = index + 1
+        log.info("_on_date_picked: mode_sub=%s", self._mode_sub)
         self.format_changed.emit(self._current_mode, self._mode_sub)
 
 

@@ -207,7 +207,7 @@ def test_a_temperature_element_switches_the_temperature_unit(window: Any, qtbot:
     qtbot.waitUntil(lambda: _unit(window) == "F", timeout=3000)
 
     window._app.dispatch(SetTempUnit(unit="C"))                  # another UI
-    qtbot.waitUntil(lambda: table.temp_switch._right is False, timeout=3000)
+    qtbot.waitUntil(lambda: table.temp_switch._chosen == 0, timeout=3000)
 
 
 def test_any_other_reading_switches_its_own_unit_on_or_off(
@@ -222,7 +222,7 @@ def test_any_other_reading_switches_its_own_unit_on_or_off(
                                           metric="cpu:usage", mode_sub=1))
     table = ts.data_table
     assert (table.temp_switch.isHidden(), table.unit_switch.isHidden()) == (True, False)
-    assert (table.unit_switch._labels, table.unit_switch._right) == (("—", "%"), True)
+    assert (table.unit_switch._labels, table.unit_switch._chosen) == (("—", "%"), 1)
     picked: list[tuple[int, int]] = []
     table.format_changed.connect(lambda mode, sub: picked.append((mode, sub)))
     _click_side(qtbot, table.unit_switch, right=False)
@@ -237,8 +237,30 @@ def test_a_clock_element_picks_12h_or_24h(window: Any, qtbot: Any) -> None:
     ts = window.uc_theme_setting
     table = ts.data_table
     ts._show_element(OverlayElementConfig(id="c", mode=OverlayMode.TIME, mode_sub=1))
-    assert (table.time_switch.isHidden(), table.time_switch._right) == (False, False)
+    assert (table.time_switch.isHidden(), table.time_switch._chosen) == (False, 0)
     picked: list[tuple[int, int]] = []
     table.format_changed.connect(lambda mode, sub: picked.append((mode, sub)))
     _click_side(qtbot, table.time_switch, right=True)
     assert picked == [(OverlayMode.TIME, 2)]
+
+
+def test_a_date_element_shows_its_four_formats_and_picks_one(
+        window: Any, qtbot: Any) -> None:
+    """All four at once, the chosen one highlighted -- the C# cycled one
+    image per click.  Picking D/M sends mode_sub 4.  MUTATION CHECK: send
+    the index instead of index + 1."""
+    from PySide6.QtCore import QPoint, Qt
+
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+
+    ts = window.uc_theme_setting
+    table = ts.data_table
+    ts._show_element(OverlayElementConfig(id="d", mode=OverlayMode.DATE, mode_sub=2))
+    switch = table.date_switch
+    assert (switch.isHidden(), switch._labels, switch._chosen) == (
+        False, ("Y/M/D", "D/M/Y", "M/D", "D/M"), 1)
+    picked: list[tuple[int, int]] = []
+    table.format_changed.connect(lambda mode, sub: picked.append((mode, sub)))
+    qtbot.mouseClick(switch, Qt.MouseButton.LeftButton,
+                     pos=QPoint(switch.width() * 7 // 8, switch.height() // 2))
+    assert picked == [(OverlayMode.DATE, 4)]
