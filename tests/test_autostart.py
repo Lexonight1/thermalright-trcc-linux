@@ -342,6 +342,37 @@ def test_the_unit_runs_this_install_and_outlives_the_desktop_session(
     assert "graphical-session" not in text
 
 
+def test_systemd_never_restarts_a_daemon_that_found_an_app_serving(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The refusal is not a crash.  MUTATION CHECK: drop the line."""
+    from trcc.core.models import APP_ALREADY_SERVING_EXIT
+
+    service, _calls = _service(tmp_path, monkeypatch)
+    assert f"RestartPreventExitStatus={APP_ALREADY_SERVING_EXIT}\n" in service.render()
+
+
+@pytest.mark.parametrize(("unit", "enabled", "ours"), [
+    (None, 0, False),
+    ('ExecStart=/usr/bin/other -m trcc daemon\n', 0, False),
+    ("THIS", 1, False),
+    ("THIS", 0, True),
+], ids=["none", "another-install", "disabled", "this-install"])
+def test_the_service_runs_this_install_only_when_its_unit_says_so(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        unit: str | None, enabled: int, ours: bool) -> None:
+    """Another install's unit would start other code; a unit the user
+    switched off is theirs to keep off.  MUTATION CHECK: skip the
+    ExecStart comparison."""
+    service, calls = _service(tmp_path, monkeypatch, answers=[enabled])
+    if unit is not None:
+        service.path.parent.mkdir(parents=True, exist_ok=True)
+        service.path.write_text(service.render() if unit == "THIS" else unit,
+                                encoding="utf-8")
+    assert service.runs_this_install() is ours
+    assert calls == ([("is-enabled", "--quiet", "trccd.service")]
+                     if unit == "THIS" else [])
+
+
 def test_install_writes_enables_and_starts_it(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service, calls = _service(tmp_path, monkeypatch)

@@ -9,7 +9,8 @@ import pytest
 
 from trcc import daemon, ipc
 from trcc._boot import _ENV_FLAG
-from trcc.core.ports import Platform
+from trcc.core.models import APP_ALREADY_SERVING_EXIT
+from trcc.core.ports import AppService, Platform
 
 
 def test_ensure_daemon_strips_daemon_flag_from_child_env(
@@ -444,7 +445,7 @@ def test_a_second_app_refuses_while_one_holds_the_lock() -> None:
     holder = ipc.AppLock()
     assert holder.acquire()
     try:
-        assert DaemonUI().preflight() == 1
+        assert DaemonUI().preflight() == APP_ALREADY_SERVING_EXIT
     finally:
         holder.release()
 
@@ -577,3 +578,61 @@ def test_an_app_that_never_answers_is_stopped_before_the_fallback(
     _spawn_once(monkeypatch, spawned, answers_at=None)
     assert daemon.ensure_daemon() is False
     assert spawned.killed
+
+
+
+# ── the App's one owner: this user's App service (2026-11-04) ────────────
+
+
+class _Service(AppService):
+    """An App service that writes down what it was asked."""
+
+    def __init__(self, ours: bool = True, starts: bool = True) -> None:
+        self.ours, self.starts, self.asked = ours, starts, []
+
+    def runs_this_install(self) -> bool:
+        self.asked.append("runs_this_install")
+        return self.ours
+
+    def start(self) -> bool:
+        self.asked.append("start")
+        return self.starts
+
+    def stop(self) -> bool:
+        self.asked.append("stop")
+        return True
+
+
+def test_with_a_service_a_ui_starts_it_rather_than_spawning(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A spawned App lived in the launching terminal's scope, and the
+    service's own daemon, refused, restarted every 5 s.
+    MUTATION CHECK: drop the service branch in ensure_daemon."""
+    monkeypatch.setattr(ipc, "daemon_running", lambda: False)
+    monkeypatch.setattr(ipc, "wait_for_daemon", lambda timeout: True)
+    service = _Service()
+    with mock.patch.object(daemon.subprocess, "Popen") as popen:
+        assert daemon.ensure_daemon(timeout=1.0, service=service) is True
+    assert (service.asked, popen.call_count) == (["runs_this_install", "start"], 0)
+
+
+@pytest.mark.parametrize(("ours", "starts"), [(False, True), (True, False)],
+                         ids=["another-installs-service", "systemd-refused"])
+def test_without_a_service_of_this_install_it_spawns(
+        monkeypatch: pytest.MonkeyPatch, ours: bool, starts: bool) -> None:
+    monkeypatch.setattr(ipc, "daemon_running", lambda: False)
+    monkeypatch.setattr(ipc, "wait_for_daemon", lambda timeout: True)
+    with mock.patch.object(daemon.subprocess, "Popen") as popen:
+        assert daemon.ensure_daemon(timeout=1.0, service=_Service(ours, starts))
+    assert popen.call_count == 1
+
+
+def test_a_service_that_never_answers_is_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The caller then builds an in-process App: the late one must not come
+    up beside it.  MUTATION CHECK: drop ``service.stop()``."""
+    monkeypatch.setattr(ipc, "daemon_running", lambda: False)
+    monkeypatch.setattr(ipc, "wait_for_daemon", lambda timeout: False)
+    service = _Service()
+    with mock.patch.object(daemon.subprocess, "Popen") as popen:
+        assert daemon.ensure_daemon(timeout=0.05, service=service) is False
+    assert (service.asked[-1], popen.call_count) == ("stop", 0)

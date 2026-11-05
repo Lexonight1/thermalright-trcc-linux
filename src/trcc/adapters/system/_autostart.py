@@ -24,8 +24,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ...core.models import AUTOSTART_TARGETS, DEFAULT_AUTOSTART_TARGET
-from ...core.ports import AutostartManager
+from ...core.models import (
+    APP_ALREADY_SERVING_EXIT,
+    AUTOSTART_TARGETS,
+    DEFAULT_AUTOSTART_TARGET,
+)
+from ...core.ports import AppService, AutostartManager
 
 log = logging.getLogger(__name__)
 
@@ -360,6 +364,7 @@ Type=simple
 ExecStart={exec_cmd}
 Restart=on-failure
 RestartSec=5
+RestartPreventExitStatus={already_serving}
 Environment=QT_QPA_PLATFORM=offscreen
 
 [Install]
@@ -384,7 +389,7 @@ def _systemctl_user(*args: str) -> int:
     return done.returncode
 
 
-class SystemdUserService:
+class SystemdUserService(AppService):
     """The App as this user's systemd service, so it keeps the panels going
     through a logout into another session (#311).  Per-user: no root.
 
@@ -410,7 +415,8 @@ class SystemdUserService:
         exec_cmd = " ".join(f'"{a}"' if " " in a else a
                             for a in launch_argv("daemon"))
         log.info("SystemdUserService.render: ExecStart=%s", exec_cmd)
-        return _SERVICE_TEMPLATE.format(exec_cmd=exec_cmd)
+        return _SERVICE_TEMPLATE.format(exec_cmd=exec_cmd,
+                                        already_serving=APP_ALREADY_SERVING_EXIT)
 
     def install(self) -> bool:
         """Write the unit, then enable and start it.  True when running."""
@@ -421,6 +427,36 @@ class SystemdUserService:
                    and self._systemctl("enable", "--now", _SERVICE_NAME) == 0)
         log.info("SystemdUserService.install: enabled and started=%s", started)
         return started
+
+    def runs_this_install(self) -> bool:
+        """The unit is there, switched on, and its ``ExecStart`` is this
+        install's.  Another install's unit would start other code -- and a
+        UI replacing an older App would then meet the same old App again."""
+        try:
+            text = self._path.read_text(encoding="utf-8")
+        except OSError:
+            log.debug("SystemdUserService.runs_this_install: no %s", self._path)
+            return False
+        installed, ours = (next((line for line in unit.splitlines()
+                                 if line.startswith("ExecStart=")), None)
+                           for unit in (text, self.render()))
+        if installed != ours:
+            log.info("SystemdUserService.runs_this_install: no -- it runs %r, "
+                     "this install is %r", installed, ours)
+            return False
+        enabled = self._systemctl("is-enabled", "--quiet", _SERVICE_NAME) == 0
+        log.info("SystemdUserService.runs_this_install: enabled=%s", enabled)
+        return enabled
+
+    def start(self) -> bool:
+        started = self._systemctl("start", _SERVICE_NAME) == 0
+        log.info("SystemdUserService.start: %s", started)
+        return started
+
+    def stop(self) -> bool:
+        stopped = self._systemctl("stop", _SERVICE_NAME) == 0
+        log.info("SystemdUserService.stop: %s", stopped)
+        return stopped
 
     @staticmethod
     def removal_command() -> str:

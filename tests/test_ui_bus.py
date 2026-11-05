@@ -118,18 +118,20 @@ def test_daemon_face_never_composes_a_proxy(fake_platform) -> None:
         app.close()
 
 
-def test_daemon_preflight_refuses_a_peer_with_exit_one(monkeypatch) -> None:
-    """A second daemon FAILED to start — exit 1, unlike the GUI's peer-exit 0.
+def test_daemon_preflight_refuses_a_peer_with_its_own_exit(monkeypatch) -> None:
+    """A second daemon did NOT start — non-zero, unlike the GUI's peer-exit 0.
 
     The GUI returns 0 because a peer means the running window was raised, so
-    the launch did what the user wanted.  A second daemon did not.  Collapsing
-    the two into one declaration would have changed this code.
+    the launch did what the user wanted.  A second daemon did not.  Not 1
+    either: nothing crashed, and the user service, told this code is not a
+    failure, must not restart it (it did, every 5 s, 2026-11-04).
     """
     from trcc import ipc
+    from trcc.core.models import APP_ALREADY_SERVING_EXIT
     from trcc.ui._uis import DaemonUI
 
     monkeypatch.setattr(ipc, "daemon_running", lambda: True)
-    assert DaemonUI().preflight() == 1
+    assert DaemonUI().preflight() == APP_ALREADY_SERVING_EXIT != 0
 
     monkeypatch.setattr(ipc, "daemon_running", lambda: False)
     assert DaemonUI().preflight() is None

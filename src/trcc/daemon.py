@@ -31,7 +31,7 @@ from . import ipc
 
 if TYPE_CHECKING:
     from .core.models import ModuleInfo
-    from .core.ports import Platform, Renderer
+    from .core.ports import AppService, Platform, Renderer
     from .core.results import DaemonResult, DeviceStateResult
 
 log = logging.getLogger(__name__)
@@ -166,8 +166,14 @@ def _wait_for_the_lock_holder(timeout: float) -> bool:
     return False
 
 
-def ensure_daemon(*, timeout: float = _START_TIMEOUT_S) -> bool:
-    """Make sure a current daemon is reachable, spawning one if not.
+def ensure_daemon(*, timeout: float = _START_TIMEOUT_S,
+                  service: AppService | None = None) -> bool:
+    """Make sure a current daemon is reachable, starting one if not.
+
+    Started through this user's App *service* when it runs this install --
+    the App's one owner, which outlives a logout -- else spawned.  A spawned
+    App beside an installed service lived in the launching terminal's scope,
+    and the service's own daemon, refused, restarted every 5 s (2026-11-04).
 
     A running daemon OLDER than this install -- or too old to say -- is
     replaced: stopped, and this install's started, whose session restores what
@@ -208,6 +214,9 @@ def ensure_daemon(*, timeout: float = _START_TIMEOUT_S) -> bool:
                         "answer within %.0fs", timeout)
             return False
         log.info("ensure_daemon: that App was exiting — starting a new one")
+    if service is not None and service.runs_this_install():
+        if (answered := _start_the_service(service, timeout)) is not None:
+            return answered
     cmd = _daemon_spawn_cmd()
     log.info("Spawning the shared App: %s", " ".join(cmd))
     # Strip the daemon-mode flag from the child's env so the spawned daemon
@@ -230,6 +239,33 @@ def ensure_daemon(*, timeout: float = _START_TIMEOUT_S) -> bool:
         creationflags=_detached_flags(),
     )
     return _wait_for_the_spawn(spawned, timeout)
+
+
+def _start_the_service(service: AppService, timeout: float) -> bool | None:
+    """Start the App through its service and wait for it to answer: True
+    once it does.  None when the OS would not start it -- the caller spawns
+    one instead.  Silent at *timeout*: stopped, as a late spawn is, then
+    False, so the caller's in-process App is never a second one."""
+    log.info("Starting the shared App through its service (%s)",
+             type(service).__name__)
+    if not service.start():
+        log.warning("_start_the_service: the service did not start -- "
+                    "spawning the App instead")
+        return None
+    started = time.monotonic()
+    while (left := timeout - (time.monotonic() - started)) > 0:
+        if ipc.wait_for_daemon(timeout=min(_SPAWN_POLL_S, left)):
+            log.info("_start_the_service: the App answered after %.1f s",
+                     time.monotonic() - started)
+            return True
+    if ipc.daemon_running():
+        log.info("_start_the_service: the App answered at the deadline")
+        return True
+    log.warning("_start_the_service: the App did not answer within %.0f s -- "
+                "stopping the service, so it cannot start beside an "
+                "in-process App", timeout)
+    service.stop()
+    return False
 
 
 def _wait_for_the_spawn(spawned: subprocess.Popen[bytes], timeout: float) -> bool:

@@ -2504,6 +2504,33 @@ class _NoModuleDevices(ModuleDevices):
         log.debug("_NoModuleDevices.revoke: %s -- nothing was granted", key)
 
 
+class AppService(ABC):
+    """The App as this user's OS service -- when one is installed, the one
+    owner of the App: a UI that finds no App starts it, rather than spawning
+    one of its own in whatever terminal or editor launched the UI.
+
+    A UI-spawned App beside an installed service ran outside it, so it died
+    with that terminal instead of outliving a logout (#311), and the service's
+    own daemon, refused, was restarted every 5 s (2026-11-04).
+
+    Concrete: ``SystemdUserService`` (``adapters/system/_autostart.py``).  An
+    OS names its own in ``Platform.APP_SERVICE``.
+    """
+
+    @abstractmethod
+    def runs_this_install(self) -> bool:
+        """Installed, switched on, and starting THIS install's App -- a
+        service of another install would start other code."""
+
+    @abstractmethod
+    def start(self) -> bool:
+        """Ask the OS to start it; True when it took the request."""
+
+    @abstractmethod
+    def stop(self) -> bool:
+        """Ask the OS to stop it; True when it took the request."""
+
+
 class RgbHardware(ABC):
     """What Find reads to spot RGB controllers.
 
@@ -3975,6 +4002,16 @@ class Platform(ABC):
     #: table entry, as ``RGB_HARDWARE`` is: ``OpenModuleDevices`` where any
     #: program may open one (Windows, macOS).  None: no way here yet.
     MODULE_DEVICES: ClassVar[staticmethod[[], ModuleDevices] | None] = None
+
+    #: The App as this user's OS service -- a table entry, so a UI asks the
+    #: class, before any platform is built.  None: this OS has none (yet).
+    APP_SERVICE: ClassVar[type[AppService] | None] = None
+
+    @classmethod
+    def app_service(cls) -> AppService | None:
+        """This user's App service on this OS, or None."""
+        log.debug("app_service: %s -> %s", cls.__name__, cls.APP_SERVICE)
+        return cls.APP_SERVICE() if cls.APP_SERVICE is not None else None
 
     def module_devices(self) -> ModuleDevices:
         """Letting this user reach an installed module's USB devices."""

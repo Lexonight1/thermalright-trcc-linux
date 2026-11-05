@@ -29,6 +29,7 @@ import threading
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from ..core.models import APP_ALREADY_SERVING_EXIT
 from ._base import UserInterface
 
 if TYPE_CHECKING:
@@ -136,9 +137,11 @@ class DaemonUI(UserInterface, key="daemon"):
     def preflight(self) -> int | None:
         """Refuse to start if another daemon already owns the socket.
 
-        Exit code **1**, not 0: unlike the GUI -- where a peer means the
-        running window was raised and this launch succeeded at what the user
-        wanted -- a second daemon simply failed to start.
+        Non-zero, not 0: unlike the GUI -- where a peer means the running
+        window was raised and this launch succeeded at what the user wanted
+        -- a second daemon simply did not start.  ``APP_ALREADY_SERVING_EXIT``
+        rather than 1: nothing crashed, and the user service must not restart
+        a refusal (it did, every 5 s, 2026-11-04).
 
         This must run before :meth:`compose`.  Placed any later, the process
         would compose an App and coldplug in :meth:`bring_up`, **opening USB**,
@@ -148,14 +151,14 @@ class DaemonUI(UserInterface, key="daemon"):
         if ipc.daemon_running():
             log.warning("DaemonUI.preflight: another daemon already owns %s",
                         ipc.address())
-            return 1
+            return APP_ALREADY_SERVING_EXIT
         # The socket says nothing while an App is still starting; the lock
         # does, so two Apps launched together cannot both own USB (#314).
         lock = ipc.AppLock()
         if not lock.acquire():
             log.warning("DaemonUI.preflight: another App is starting — "
                         "this one exits")
-            return 1
+            return APP_ALREADY_SERVING_EXIT
         self._lock = lock
         from ..daemon import mark_started
         mark_started()

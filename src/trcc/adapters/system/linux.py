@@ -704,6 +704,7 @@ class LinuxOS(BaseOS, key="linux"):
     RGB_HARDWARE = SysfsRgbHardware
     #: A module's USB devices: a udev rule each, by TRCC's root helper.
     MODULE_DEVICES = staticmethod(_module_devices)
+    APP_SERVICE = SystemdUserService
     #: Audio visuals: what is playing (the PulseAudio/PipeWire monitor),
     #: drawn off-screen on EGL -- no display needed.
     SOUND_INPUT = MonitorSoundInput

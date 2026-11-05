@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-87 ports.
+88 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -45,6 +45,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VideoExportRunner`](#videoexportrunner) | 2 | 0 | 2 |
 | [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
+| [`AppService`](#appservice) | 3 | 0 | 1 |
 | [`BackgroundKind`](#backgroundkind) | 3 | 0 | 1 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
@@ -625,6 +626,22 @@ read(offset: 'int', length: 'int') -> bytes
 ```
 
 **Implementations (2):** `_BytesMapping` · `_HWiNFOMapping`
+
+## AppService
+
+`core/ports.py`
+
+The App as this user's OS service -- when one is installed, the one owner of the App: a UI that finds no App starts it, rather than spawning one of its own in whatever terminal or editor launched the UI.
+
+**You implement (3):**
+
+```python
+runs_this_install() -> bool
+start() -> bool
+stop() -> bool
+```
+
+**Implementations (1):** `SystemdUserService`
 
 ## BackgroundKind
 

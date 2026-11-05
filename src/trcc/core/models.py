@@ -40,6 +40,12 @@ AUTOSTART_TARGETS: dict[str, tuple[str, ...]] = {
     "daemon": (),
 }
 DEFAULT_AUTOSTART_TARGET = "gui"
+#: A daemon's exit when another App already serves (or is starting): it did
+#: not start -- non-zero, for a shell -- but nothing crashed.  The user
+#: service's unit names it in ``RestartPreventExitStatus``, or systemd
+#: restarted a refused daemon every 5 s for as long as the other App ran
+#: (2026-11-04).  75 is ``EX_TEMPFAIL``: try later, not "broken".
+APP_ALREADY_SERVING_EXIT = 75
 
 
 # =========================================================================

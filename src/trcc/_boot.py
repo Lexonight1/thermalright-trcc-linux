@@ -113,9 +113,10 @@ def trcc(
              renderer is not None, reason or "the shared App")
     if reason is None:
         from . import daemon as _daemon_module
+        from .adapters.system import host_platform_class
         from .proxy import AppProxy
 
-        if _daemon_module.ensure_daemon():
+        if _daemon_module.ensure_daemon(service=host_platform_class().app_service()):
             return cast("App", AppProxy())
         log.warning("trcc: the shared App failed to start — falling back to "
                     "an in-process App")
