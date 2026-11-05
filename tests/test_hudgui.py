@@ -732,3 +732,28 @@ def test_every_panel_fits_the_minimum(window: Any, qtbot: Any) -> None:
         assert need.width() <= PANEL_MIN.width() and need.height() <= PANEL_MIN.height(), item
         assert panel.minimumSize() == PANEL_MIN, item       # given, even while hidden
     assert window.width() >= DROP_WIDTH and window.drop.width() >= DROP_WIDTH
+
+
+def test_the_picture_fills_the_bezels_screen_after_a_placeholder(
+        window: Any, qtbot: Any) -> None:
+    """His screenshot (2026-11-05): a 16 px black band inside the bezel and
+    the theme's clock and readings cut on every side.  The placeholder's
+    style (padding 16 px, a border) stayed on the label once a picture came,
+    so a 320x320 picture was drawn in a ~286 px box, centred and cropped.
+    MUTATION CHECK: drop the style reset in ``PreviewSurface.refresh``."""
+    from PySide6.QtGui import QColor
+
+    from trcc.core.commands import LoadTheme
+
+    red, = _themes(window._app, "Red")
+    window.bar.buttons["Devices"].click()
+    devices = window.panel("Devices")
+    preview = devices.panel.preview
+    preview.set_placeholder("Pick a device on the left to see its output.")
+    assert window._app.dispatch(LoadTheme(key=_KEY, path=red)).ok
+    devices.menu.buttons[_KEY].click()
+    qtbot.waitUntil(lambda: preview._label.pixmap() is not None
+                    and not preview._label.pixmap().isNull(), timeout=3000)
+    drawn = preview._label.grab().toImage()
+    corner = QColor(drawn.pixelColor(3, 3))
+    assert corner.name() == QColor(0, 80, 160).name(), corner.name()

@@ -214,6 +214,10 @@ class PreviewSurface(TicksWhileShown, QWidget):
         if pixmap is None:
             self.set_placeholder("Preview surface couldn't be rendered.")
             return
+        # The placeholder's style (padding, a border) must go with it: left
+        # on, the picture was drawn in a box 34 px smaller than the screen,
+        # centred and cropped -- a black band and the theme cut on every side.
+        self._label.setStyleSheet("")
         self._label.setPixmap(pixmap)
         self._label.setText("")
         self._lcd = (preview.width, preview.height)
