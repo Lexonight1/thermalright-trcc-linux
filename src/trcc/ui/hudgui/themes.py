@@ -11,17 +11,29 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QMessageBox,
+    QPushButton,
+    QToolButton,
+    QWidget,
+)
 
 from ...core.commands import (
     ApplyMask,
+    DeleteTheme,
+    ExportCurrentTheme,
+    ImportTheme,
     ListCloudThemes,
     ListMasks,
     ListThemes,
     LoadCloudTheme,
     LoadTheme,
+    SaveTheme,
 )
-from .tiles import Tile, TileGrid
+from .tiles import TILE, Tile, TileGrid
 
 if TYPE_CHECKING:
     from ...core.commands import Command
@@ -32,6 +44,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+#: The property a tile's ✕ carries: the theme it removes.
+_THEME = "hud_theme_path"
 #: The property a category button carries: the category it shows.
 _CATEGORY = "hud_cloud_category"
 _PILL_STYLE = ("QPushButton { color: #dfe5ea; background: rgba(255, 255, 255, 18); "
@@ -49,7 +63,9 @@ def _resolved(path: str | None) -> str | None:
 
 class LocalThemes(TileGrid):
     """The device's installed themes; a click loads one (``LoadTheme`` -- a
-    user's pick, its defaults)."""
+    user's pick, its defaults).  Above them, as the gui has them: save what
+    the panel shows, import a ``.tr``, export what it shows; on each of the
+    user's OWN themes a ✕ removes it, after asking."""
 
     EMPTY = "No themes for {size} yet -- they download on first connect."
 
@@ -59,10 +75,97 @@ class LocalThemes(TileGrid):
         log.debug("LocalThemes: re-listing on ThemesChanged too")
         bus.themes_changed.connect(self.refresh, type=Qt.ConnectionType.QueuedConnection)
 
+    def _header(self) -> QWidget:
+        """Save as…, Import…, Export…"""
+        log.debug("LocalThemes._header")
+        bar = QWidget(self)
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(0, 0, 0, 0)
+        for text, slot in (("Save as…", self._on_save), ("Import…", self._on_import),
+                           ("Export…", self._on_export)):
+            button = QPushButton(text, bar)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+        row.addStretch(1)
+        return bar
+
     def _tiles(self, key: str, size: tuple[int, int]) -> list[Tile]:
         listed = self._app.dispatch(ListThemes(resolution=size))
         log.debug("LocalThemes._tiles: %d", len(listed.themes))
-        return [Tile(_resolved(t.path) or t.path, t.name, t.preview) for t in listed.themes]
+        return [Tile(_resolved(t.path) or t.path, t.name, t.preview,
+                     removable=t.origin == "user") for t in listed.themes]
+
+    def _tile(self, tile: Tile) -> QToolButton:
+        """The base tile, and a ✕ on the user's own theme, as the gui's."""
+        button = super()._tile(tile)
+        log.debug("LocalThemes._tile: %s removable=%s", tile.name, tile.removable)
+        if tile.removable:
+            cross = QToolButton(button)
+            cross.setText("✕")
+            cross.setToolTip("Delete this theme")
+            cross.setGeometry(TILE.width() - 24, 4, 20, 20)
+            cross.setProperty(_THEME, tile.id)
+            cross.clicked.connect(self._on_remove)
+        return button
+
+    # ── What a person asks -- methods, so a test answers ───────────────
+
+    def ask_name(self) -> str:
+        """The name to save the panel's look as, or ""."""
+        log.debug("LocalThemes.ask_name")
+        name, ok = QInputDialog.getText(self, "Save theme", "Name:")
+        return name.strip() if ok else ""
+
+    def confirm(self, question: str) -> bool:
+        """Yes or no."""
+        log.debug("LocalThemes.confirm: %s", question)
+        answer = QMessageBox.question(self, "Themes", question)
+        return answer == QMessageBox.StandardButton.Yes
+
+    def choose_archive(self, saving: bool) -> str:
+        """A ``.tr`` theme file to write (*saving*) or read, or ""."""
+        log.debug("LocalThemes.choose_archive: saving=%s", saving)
+        pick = QFileDialog.getSaveFileName if saving else QFileDialog.getOpenFileName
+        path, _ = pick(self, "Theme file", "", "TRCC themes (*.tr)")
+        return path
+
+    # ── The actions ────────────────────────────────────────────────────
+
+    def _on_save(self) -> None:
+        """Save what the panel shows -- asking first before replacing one."""
+        key, name = self._selection.key, self.ask_name()
+        log.info("LocalThemes._on_save: %s as %r", key, name)
+        if not key or not name:
+            return
+        result = self._app.dispatch(SaveTheme(key=key, name=name))
+        if not result.ok and getattr(result, "target_exists", False) and self.confirm(
+                f"A theme named '{name}' already exists.  Replace it?"):
+            result = self._app.dispatch(SaveTheme(key=key, name=name, overwrite=True))
+        self.note.setText("" if result.ok else result.message)
+
+    def _on_import(self) -> None:
+        key, path = self._selection.key, self.choose_archive(saving=False)
+        log.info("LocalThemes._on_import: %s <- %s", key, path)
+        if key and path:
+            result = self._app.dispatch(ImportTheme(key=key, archive_path=Path(path)))
+            self.note.setText("" if result.ok else result.message)
+
+    def _on_export(self) -> None:
+        """What the panel shows, saved or not, to a ``.tr``."""
+        key, path = self._selection.key, self.choose_archive(saving=True)
+        log.info("LocalThemes._on_export: %s -> %s", key, path)
+        if key and path:
+            result = self._app.dispatch(ExportCurrentTheme(key=key, archive_path=Path(path)))
+            self.note.setText(result.message)
+
+    def _on_remove(self) -> None:
+        """A ✕: the user's theme goes, after asking."""
+        cross = self.sender()
+        path = "" if cross is None else str(cross.property(_THEME))
+        log.info("LocalThemes._on_remove: %s", path)
+        if path and self.confirm(f"Delete the theme '{Path(path).name}'?  This cannot be undone."):
+            result = self._app.dispatch(DeleteTheme(path=Path(path)))
+            self.note.setText("" if result.ok else result.message)
 
     def _pick(self, key: str, tile_id: str) -> Command[Any]:
         log.debug("LocalThemes._pick: %s", tile_id)

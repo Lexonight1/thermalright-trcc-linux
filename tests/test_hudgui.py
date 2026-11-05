@@ -385,3 +385,78 @@ def test_a_drag_outside_the_settings_tab_moves_nothing(window: Any, qtbot: Any) 
     devices.panel.preview.pressed.emit(20, 20)
     devices.panel.preview.dragged.emit(120, 120)
     assert _layout(window) == [("text", "Text", 20, 20)]
+
+
+def _cross(grid: Any, name: str) -> Any:
+    """The ✕ on theme *name*'s tile, or None."""
+    from PySide6.QtWidgets import QToolButton
+
+    tile = next(t for tile_id, t in grid.tiles.items() if Path(tile_id).name == name)
+    return tile.findChild(QToolButton)
+
+
+def test_save_as_saves_what_the_panel_shows_and_asks_before_replacing(
+        window: Any, qtbot: Any) -> None:
+    """The gui's Save: a name, then the theme is listed as the user's own --
+    with a ✕.  A name taken asks first; no means the old one stays.
+    MUTATION CHECK: drop the ``overwrite=True`` re-send in ``_on_save``."""
+    grid = _local_themes(window, qtbot)
+    asked: list[str] = []
+    grid.ask_name = lambda: "Mine"
+    grid.confirm = lambda question: asked.append(question) or True
+    grid._on_save()
+    qtbot.waitUntil(lambda: any(Path(p).name == "Mine" for p in grid.tiles), timeout=3000)
+    assert _cross(grid, "Mine") is not None
+    assert grid.note.text() == ""
+    grid._on_save()                         # the name is taken now
+    assert asked == ["A theme named 'Mine' already exists.  Replace it?"]
+    assert grid.note.text() == ""
+
+
+def test_saying_no_to_replacing_keeps_the_old_one_and_says_why(
+        window: Any, qtbot: Any) -> None:
+    grid = _local_themes(window, qtbot)
+    grid.ask_name = lambda: "Mine"
+    grid.confirm = lambda question: False
+    grid._on_save()
+    qtbot.waitUntil(lambda: any(Path(p).name == "Mine" for p in grid.tiles), timeout=3000)
+    grid._on_save()
+    assert grid.note.text() != ""
+
+
+def test_only_the_users_own_themes_carry_a_cross_and_it_asks_first(
+        window: Any, qtbot: Any) -> None:
+    """A shipped theme has no ✕; the user's own has one, and a no keeps it.
+    MUTATION CHECK: make every tile ``removable`` in ``LocalThemes._tiles``."""
+    _themes(window._app, "Shipped")
+    grid = _local_themes(window, qtbot)
+    grid.ask_name = lambda: "Mine"
+    grid._on_save()
+    qtbot.waitUntil(lambda: any(Path(p).name == "Mine" for p in grid.tiles), timeout=3000)
+    assert _cross(grid, "Shipped") is None
+    grid.confirm = lambda question: False
+    _cross(grid, "Mine").click()
+    assert any(Path(p).name == "Mine" for p in grid.tiles)
+    grid.confirm = lambda question: True
+    _cross(grid, "Mine").click()
+    qtbot.waitUntil(lambda: not any(Path(p).name == "Mine" for p in grid.tiles),
+                    timeout=3000)
+
+
+def test_export_writes_what_the_panel_shows_and_import_brings_it_back(
+        window: Any, qtbot: Any, tmp_path: Path) -> None:
+    """Export what is shown to a ``.tr``; Import lists it as the user's own.
+    MUTATION CHECK: dispatch nothing in ``_on_import``."""
+    from trcc.core.commands import LoadTheme
+
+    shown, = _themes(window._app, "Pictured")
+    assert window._app.dispatch(LoadTheme(key=_KEY, path=shown)).ok
+    grid = _local_themes(window, qtbot)
+    archive = tmp_path / "out" / "Shown.tr"
+    archive.parent.mkdir()
+    grid.choose_archive = lambda saving: str(archive)
+    grid._on_export()
+    assert archive.is_file()
+    grid._on_import()
+    qtbot.waitUntil(lambda: any(Path(p).name == "Shown" for p in grid.tiles), timeout=3000)
+    assert _cross(grid, "Shown") is not None

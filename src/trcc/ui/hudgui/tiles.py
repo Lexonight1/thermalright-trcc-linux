@@ -59,10 +59,12 @@ _TILE_STYLE = ("QToolButton { color: #dfe5ea; background: rgba(255, 255, 255, 12
 
 @dataclass(frozen=True, slots=True)
 class Tile:
-    """One tile: what it names, its name, its picture."""
+    """One tile: what it names, its name, its picture -- and whether the
+    user may remove it (their own saved theme)."""
     id: str
     name: str
     picture: str = ""
+    removable: bool = False
 
 
 class TileGrid(QWidget):
