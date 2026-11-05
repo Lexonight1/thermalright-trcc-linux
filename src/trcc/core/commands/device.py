@@ -60,6 +60,7 @@ from ..models import (
     PanelSource,
     PictureBackground,
     RawFrame,
+    ThemeBackground,
     ThemeDir,
     VideoBackground,
     Wire,
@@ -1537,8 +1538,10 @@ class StopVideo(Command[VideoResult]):
     chosen with nothing drawing, so the snapshot said "module" (bugs #4 and
     #5, tests/test_background_choice.py).
 
-    With nothing chosen -- the theme's own video playing -- the video stops,
-    as before: bringing the theme back would only rewind it.
+    With nothing chosen -- the theme's own video playing -- Stop rewinds it to
+    its first frame and holds it there, as the app's Stop always did (legacy
+    ``MediaService.stop``: STOPPED, frame 0); Play resumes it.  It unloaded
+    instead, and the background went black.
 
     ``keep_override=True`` only unloads and chooses nothing: a teardown (GUI
     close, disconnect -- clearing there wiped the user's choice on every
@@ -1556,6 +1559,9 @@ class StopVideo(Command[VideoResult]):
         s = app.settings.for_device(self.key)
         log.info("StopVideo: %s keep_override=%s choice=%s playback=%s",
                  self.key, self.keep_override, s.background, had_playback)
+        if (not self.keep_override and isinstance(s.background, ThemeBackground)
+                and had_playback):
+            return self._hold_first_frame(app)
         app.media.unload(self.key)
         ended = False
         if not self.keep_override:
@@ -1574,6 +1580,20 @@ class StopVideo(Command[VideoResult]):
             message=(f"video stopped for {self.key}"
                      if had_playback else f"no video playing for {self.key}"),
         )
+
+    def _hold_first_frame(self, app: App) -> VideoResult:
+        """The theme's own video stops: back to its first frame, held."""
+        log.info("StopVideo: %s -- the theme's video holds its first frame",
+                 self.key)
+        playback = app.media.playback(self.key)
+        assert playback is not None          # the caller saw one
+        playback.seek(0)
+        playback.pause(True)
+        _invalidate_scene(app, self.key)
+        app.events.publish(VideoPauseChanged(key=self.key, paused=True))
+        _publish_background(app, self.key)
+        return VideoResult(ok=True, key=self.key,
+                           message=f"video stopped at its first frame for {self.key}")
 
 @dataclass(frozen=True, slots=True)
 class StartScreencast(Command[ScreencastResult]):

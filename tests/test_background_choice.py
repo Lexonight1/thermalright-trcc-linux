@@ -401,14 +401,20 @@ def test_a_stop_over_a_picked_video_plays_the_themes_own_again(
     assert app.media.playback(_KEY) is not None
 
 
-def test_a_stop_with_nothing_chosen_only_stops(
+def test_a_stop_with_nothing_chosen_holds_the_first_frame(
     app: App, tmp_path: Path, decoded: list[str],
 ) -> None:
-    """The theme's own video playing: bringing the theme back would rewind it."""
+    """The theme's own video playing: Stop rewinds it to frame 0 and holds it,
+    as the app's Stop always did (legacy ``MediaService.stop``).  It unloaded
+    it, and the background went black -- bug #5 with nothing chosen."""
     _video_theme(app, tmp_path)
+    playback = app.media.playback(_KEY)
+    assert playback is not None
+    playback.advance()
     decoded.clear()
     app.dispatch(StopVideo(key=_KEY))
-    assert (decoded, app.media.playback(_KEY)) == ([], None)
+    assert app.media.playback(_KEY) is playback, "unloaded: the background goes black"
+    assert (playback.cursor, playback.paused, decoded) == (0, True, [])
 
 
 def test_a_picture_is_not_drawn_under_the_themes_video(
