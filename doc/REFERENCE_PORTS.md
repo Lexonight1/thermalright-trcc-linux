@@ -6,12 +6,12 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-92 ports.
+93 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 4 | 4 |
-| [`Command`](#command) | 1 | 1 | 170 |
+| [`Command`](#command) | 1 | 1 | 173 |
 | [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
@@ -80,6 +80,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`PackageManager`](#packagemanager) | 4 | 0 | 3 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
 | [`Paths`](#paths) | 4 | 15 | 5 |
+| [`PreviewRun`](#previewrun) | 4 | 0 | 1 |
 | [`SendTask`](#sendtask) | 4 | 1 | 5 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
@@ -93,8 +94,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VideoDecode`](#videodecode) | 5 | 0 | 1 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
-| [`VideoTool`](#videotool) | 6 | 0 | 1 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
+| [`VideoTool`](#videotool) | 7 | 0 | 1 |
 | [`RgbSkin`](#rgbskin) | 9 | 0 | 2 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
@@ -135,7 +136,7 @@ execute(app: 'App') -> R_co
 
 **You inherit (1):** `refusal`
 
-**Implementations (170):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `MarkFirstRunDone` · `ModuleIcon` · `OpenRgbPorts` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UnlockModuleDevices` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
+**Implementations (173):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `MarkFirstRunDone` · `ModuleIcon` · `OpenRgbPorts` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewClip` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopClipPreview` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickClipPreview` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UnlockModuleDevices` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
 
 ## CpuSource
 
@@ -1238,6 +1239,23 @@ user_content_dir() -> Path
 
 **Implementations (5):** `BSDPaths` · `BasePaths` · `LinuxPaths` · `MacOSPaths` · `WindowsPaths`
 
+## PreviewRun
+
+`core/ports.py`
+
+One run of the trimmer's preview: the :class:`VideoTool` writing a clip's frames -- composed as the export encodes them, shrunk into the preview box -- in the background, as the C#'s ``UCVideoCut`` does (``UCVideoCut.cs:1507-1537``).
+
+**You implement (4):**
+
+```python
+close() -> None
+ended() -> bool
+exit_code() -> int | None
+frame(index: 'int') -> bytes | None
+```
+
+**Implementations (1):** `FfmpegPreview`
+
 ## SendTask
 
 `core/ports.py`
@@ -1475,25 +1493,6 @@ refresh() -> None
 
 **Implementations (4):** `MacOSAutostart` · `NoopAutostart` · `WindowsAutostart` · `XdgDesktopAutostart`
 
-## VideoTool
-
-`core/ports.py`
-
-The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe, decode, stream, the export's frames and the cloud tiles; then the trimmer's preview.
-
-**You implement (6):**
-
-```python
-decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
-extract_frames(request: 'VideoExportRequest', out_dir: 'Path') -> None
-probe(path: 'Path') -> VideoProbe
-still(video: 'Path', png: 'Path') -> bool
-stream(url: 'str', size: 'tuple[int, int]', fps: 'int') -> FrameSource
-tile_gif(video: 'Path', gif: 'Path') -> bool
-```
-
-**Implementations (1):** `FfmpegTool`
-
 ## Diagnostics
 
 `core/ports.py`
@@ -1513,6 +1512,26 @@ write_debug_report(rendered: 'str', path: 'Path') -> Path
 ```
 
 **Implementations (1):** `DiagnosticsAdapter`
+
+## VideoTool
+
+`core/ports.py`
+
+The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe, decode, stream, the export's frames, the cloud tiles and the trimmer's preview.
+
+**You implement (7):**
+
+```python
+decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
+extract_frames(request: 'VideoExportRequest', out_dir: 'Path') -> None
+preview(request: 'VideoExportRequest', box: 'tuple[int, int]', source_wh: 'tuple[int, int]', still: 'bool') -> PreviewRun | None
+probe(path: 'Path') -> VideoProbe
+still(video: 'Path', png: 'Path') -> bool
+stream(url: 'str', size: 'tuple[int, int]', fps: 'int') -> FrameSource
+tile_gif(video: 'Path', gif: 'Path') -> bool
+```
+
+**Implementations (1):** `FfmpegTool`
 
 ## RgbSkin
 

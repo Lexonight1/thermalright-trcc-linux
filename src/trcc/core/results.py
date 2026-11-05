@@ -279,6 +279,23 @@ class VideoDurationResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class ClipPreviewResult(Result):
+    """The trimmer's preview, as the App runs it (``PreviewClip``,
+    ``TickClipPreview``, ``StopClipPreview``).
+
+    ``image`` is the JPEG to show now, already composed and shrunk into the
+    preview box; ``b""`` means keep the picture on screen.  ``shown`` is that
+    frame's 0-based place in the playing range, and ``active`` says whether a
+    preview or a still is still in progress -- the window's timer stops when
+    it is not.
+    """
+    token: str = ""
+    image: bytes = field(default=b"", repr=False)
+    shown: int = 0
+    active: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class EnsureDataDownloadResult(Result):
     """Forced theme/web/mask archive install for a resolution."""
     width: int = 0

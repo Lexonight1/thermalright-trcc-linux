@@ -262,9 +262,9 @@ class VideoCropDialog(QDialog):
         #: track a stranger's progress bar.
         self._token = ""
         self._playing = False
-        # ClipPreview owns the ffmpeg; the timer only picks up what it has
-        # written -- frames while playing, else one still.
-        self._clip = ClipPreview()
+        # The App runs the preview's ffmpeg (ClipPreview asks it); the timer
+        # only picks up what it has ready -- frames while playing, else one still.
+        self._clip = ClipPreview(app)
         self._play_timer = QTimer(self)
         self._play_timer.timeout.connect(self._on_play_tick)
         self._build()
@@ -298,7 +298,7 @@ class VideoCropDialog(QDialog):
             log.warning("load_video: %s — %s", path, probe.message)
             self._info.setText(f"{path.name}: {probe.message}")
             return False
-        self._clip.load(path, (probe.width, probe.height))
+        self._clip.stop()                  # a new clip: the old preview ends
         self._target_label.setText(f"Source: {path.name}")
         self._duration_label.setText(_format_ms(self._duration_ms))
         self._timeline.set_range(self._duration_ms)

@@ -1026,7 +1026,7 @@ class TRCCApp(QMainWindow):
         self.uc_image_cut.setGeometry(16, 88, 500, 702)
         self.uc_image_cut.setVisible(False)
 
-        self.uc_video_cut = UCVideoCut(self.form_container)
+        self.uc_video_cut = UCVideoCut(self.form_container, app=self._app)
         self.uc_video_cut.setGeometry(16, 88, 500, 702)
         self.uc_video_cut.setVisible(False)
 

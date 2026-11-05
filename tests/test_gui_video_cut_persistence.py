@@ -46,6 +46,30 @@ def _jpeg(w: int = 320, h: int = 320) -> bytes:
     return bytes(ba.data())
 
 
+class _DialogApp(CommandBus):
+    """The App a qtgui dialog talks to; each test answers ``dispatch``."""
+
+    @property
+    def events(self) -> EventBus:
+        return EventBus()
+
+    @property
+    def remote(self) -> bool:
+        return False
+
+
+class _PreviewBus(_DialogApp):
+    """A gui trimmer's bus: records each Command, answers the preview's."""
+
+    def __init__(self) -> None:
+        self.sent: list[Any] = []
+
+    def dispatch(self, cmd: Any) -> Any:
+        from trcc.core.results import ClipPreviewResult
+        self.sent.append(cmd)
+        return ClipPreviewResult(ok=True)
+
+
 def test_a_cut_video_becomes_the_background_as_delivered_and_survives_close(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -115,7 +139,7 @@ def test_the_fit_buttons_carry_their_choice_out_of_the_panel(qtbot) -> None:
     from trcc.core.models import FitMode
     from trcc.ui.gui.uc_video_cut import UCVideoCut
 
-    panel = UCVideoCut()
+    panel = UCVideoCut(app=_PreviewBus())
     qtbot.addWidget(panel)
 
     # Untouched: the auto arm, which is what every export did before.
@@ -151,7 +175,7 @@ def test_the_trimmer_exports_at_the_frame_rate_pressed(qtbot) -> None:
     """
     from trcc.ui.gui.uc_video_cut import UCVideoCut
 
-    panel = UCVideoCut()
+    panel = UCVideoCut(app=_PreviewBus())
     qtbot.addWidget(panel)
     panel._video_path = "/nonexistent/clip.mp4"
     panel._start_ms, panel._end_ms = 0, 500
@@ -165,16 +189,6 @@ def test_the_trimmer_exports_at_the_frame_rate_pressed(qtbot) -> None:
         assert sig.args[4] == expected
 
 
-class _DialogApp(CommandBus):
-    """The App a qtgui dialog talks to; each test answers ``dispatch``."""
-
-    @property
-    def events(self) -> EventBus:
-        return EventBus()
-
-    @property
-    def remote(self) -> bool:
-        return False
 
 
 def test_qtgui_exports_at_the_frame_rate_chosen(qtbot) -> None:
@@ -238,26 +252,30 @@ def test_qtgui_sends_a_real_fit_mode(qtbot) -> None:
         assert type(sent_fit) is FitMode and sent_fit is mode
 
 
-def test_the_trimmer_takes_the_apps_probe(qtbot, tmp_path) -> None:
+def test_the_trimmer_takes_the_apps_probe_and_asks_it_for_the_still(qtbot, tmp_path) -> None:
     """The window dispatches ``ProbeVideoDuration`` and hands the panel the
-    answer: its length sets the timeline, its size the preview's composite.
-    The panel ran ffprobe itself until 2026-11-05 -- a window starting a
-    program, which under a daemon may not even see the file.
+    answer -- its length sets the timeline -- and the first frame is the
+    App's: the panel dispatches ``PreviewClip`` for a still at 0.  The panel
+    ran ffprobe itself until 2026-11-05, and ffmpeg for the preview after
+    that; a window starting programs, which under a daemon may not even see
+    the file.
 
-    MUTATION CHECK: ignore ``probe.width`` / ``probe.height`` -- the preview
-    composes from (0, 0)."""
+    MUTATION CHECK: hand ``ClipPreview`` no bus -- nothing is dispatched."""
+    from trcc.core.commands import PreviewClip
     from trcc.core.results import VideoDurationResult
     from trcc.ui.gui.uc_video_cut import UCVideoCut
 
-    panel = UCVideoCut()
+    bus = _PreviewBus()
+    panel = UCVideoCut(app=bus)
     qtbot.addWidget(panel)
     clip = tmp_path / "clip.mp4"
     panel.load_video(clip, VideoDurationResult(ok=True, path=str(clip),
                                                duration_ms=2458, width=320, height=320))
-    assert (panel._duration_ms, panel._end_ms, panel._clip._source_wh) == (
-        2458, 2458, (320, 320))
+    assert (panel._duration_ms, panel._end_ms) == (2458, 2458)
+    (asked,) = [c for c in bus.sent if isinstance(c, PreviewClip)]
+    assert (asked.path, asked.start_ms, asked.still) == (clip, 0, True)
 
-    failed = UCVideoCut()
+    failed = UCVideoCut(app=_PreviewBus())
     qtbot.addWidget(failed)
     failed.load_video(clip, VideoDurationResult(ok=False, path=str(clip),
                                                 message="Could not read the duration"))

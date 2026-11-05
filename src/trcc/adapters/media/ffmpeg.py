@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from collections import deque
@@ -20,7 +22,7 @@ from typing import Any
 
 from ...core import toolchain
 from ...core.errors import ThemeError, VideoExportError
-from ...core.geometry import largest_fit_size
+from ...core.geometry import fit_rect_for_mode, largest_fit_size
 from ...core.logs import per_frame
 from ...core.models import (
     SUBPROCESS_NO_WINDOW,
@@ -28,8 +30,7 @@ from ...core.models import (
     VideoExportRequest,
     VideoProbe,
 )
-from ...core.ports import FrameSource, VideoDecode, VideoTool
-from ...services.video_export import _composite_filters
+from ...core.ports import FrameSource, PreviewRun, VideoDecode, VideoTool
 from .stream import StreamReader, _drain
 
 log = logging.getLogger(__name__)
@@ -169,6 +170,24 @@ class FfmpegTool(VideoTool):
              "-loop", "0", "-y", str(gif)],
             timeout=TILE_TIMEOUT_S, label=f"animated GIF for {video.name}",
         )
+
+    def preview(self, request: VideoExportRequest, box: tuple[int, int],
+                source_wh: tuple[int, int], *, still: bool) -> PreviewRun | None:
+        """ONE ffmpeg writing the preview's frames into a folder of its own."""
+        folder = Path(tempfile.mkdtemp(prefix="trcc-preview-"))
+        cmd = preview_command(request, folder, box, source_wh, still=still)
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL,
+                                    creationflags=SUBPROCESS_NO_WINDOW)
+        except OSError as e:
+            log.warning("FfmpegTool.preview: cannot run ffmpeg: %s", e)
+            shutil.rmtree(folder, ignore_errors=True)
+            return None
+        log.info("FfmpegTool.preview: pid %d still=%s %s %d-%d ms into %dx%d",
+                 proc.pid, still, request.source.name, request.start_ms,
+                 request.end_ms, *box)
+        return FfmpegPreview(proc, folder)
 
 
 def _run_best_effort(cmd: list[str], *, timeout: float, label: str) -> bool:
@@ -467,3 +486,137 @@ class _JpegFrames:
         """Bytes received that are not yet a whole frame."""
         frame_log.debug("_JpegFrames.pending: %d", len(self._buffer))
         return len(self._buffer)
+
+
+def _composite_filters(
+    req: VideoExportRequest, source_wh: tuple[int, int],
+) -> tuple[list[str], list[str]]:
+    """ffmpeg ``-vf`` filters (and any ``-s``) that compose *req* as the panel
+    shows it: rotate, then scale/crop/pad onto the panel canvas.
+
+    ONE chain for the export and the trimmer's preview, so what the preview
+    shows is what the export encodes.  A panel size of 0 (unknown) composes
+    nothing beyond the rotation.  *source_wh* is the source's probed size
+    (``VideoTool.probe``; ``(0, 0)`` unknown -- the panel is then filled).
+    """
+    log.debug("_composite_filters: %s rotation=%d fit=%s -> %dx%d",
+              req.source.name, req.rotation, req.fit_mode, req.target_w,
+              req.target_h)
+    vf: list[str] = []
+    if req.rotation == 90:
+        vf.append("transpose=1")
+    elif req.rotation == 180:
+        vf.append("transpose=1,transpose=1")
+    elif req.rotation == 270:
+        vf.append("transpose=2")
+
+    # The oracle hands ffmpeg a rect derived from the SOURCE's aspect and
+    # composites it onto a panel-sized canvas; a bare ``-s panel`` stretches
+    # anything that is not already the panel's shape (a 1920x1080 clip came
+    # out 480x480, squashed 1.78x).  ``scale``+``pad`` is that composite in
+    # one filter.  Rotation stays FIRST and the probed size is swapped to
+    # match, because the C# reads post-rotation dimensions
+    # (``buttonXuanzhuan_Click`` swaps bitAngleW/H at 90/270).
+    if req.target_w <= 0 or req.target_h <= 0:
+        log.debug("_composite_filters: panel size unknown — rotation only")
+        return vf, []
+    if req.rotation in (90, 270):
+        source_wh = (source_wh[1], source_wh[0])
+    panel = (req.target_w, req.target_h)
+    if source_wh[0] > 0 and source_wh[1] > 0:
+        fit = fit_rect_for_mode(source_wh, panel, req.fit_mode)
+        # scale -> crop -> pad, ALWAYS all three, because the forced-axis
+        # arms can overflow the canvas (a negative offset, which ``pad``
+        # cannot express) while the auto arm never does.  Written as one
+        # unconditional chain rather than a branch: on the auto path the
+        # crop is the full rect and the pad does the letterboxing, exactly
+        # as before; on a forced axis the crop takes the overflow and the
+        # pad becomes the no-op.  Same filters, no arm to get wrong.
+        vf.append(f"scale={fit.width}:{fit.height}")
+        vf.append(
+            f"crop={min(fit.width, req.target_w)}:"
+            f"{min(fit.height, req.target_h)}:"
+            f"{max(0, -fit.x)}:{max(0, -fit.y)}",
+        )
+        vf.append(
+            f"pad={req.target_w}:{req.target_h}:"
+            f"{max(0, fit.x)}:{max(0, fit.y)}",
+        )
+        size_args: list[str] = []
+    else:
+        # Without the source shape the aspect cannot be preserved.  Say so
+        # rather than silently shipping a stretched clip.
+        log.warning(
+            "export_zt: source size unknown for %s — filling %dx%d, which "
+            "STRETCHES a clip whose aspect differs (install ffprobe)",
+            req.source, req.target_w, req.target_h,
+        )
+        size_args = ["-s", f"{req.target_w}x{req.target_h}"]
+    return vf, size_args
+
+
+def preview_command(
+    req: VideoExportRequest, out_dir: Path, box: tuple[int, int],
+    source_wh: tuple[int, int], *, still: bool = False,
+) -> list[str]:
+    """The trimmer's preview of *req*: composed as the export encodes it,
+    shrunk into *box*, written as numbered JPEGs into *out_dir*.
+
+    The C# previews this way (``UCVideoCut.cs:1507-1537``): ONE ffmpeg
+    decodes the selected range at the chosen rate into numbered files, and
+    its timer shows the ones already written.  *still* writes only the frame
+    at ``req.start_ms`` -- the C#'s ``GetOneImage`` (:1580-1630).
+    """
+    log.debug("preview_command: %s %d-%d ms fps=%d box=%s still=%s",
+              req.source.name, req.start_ms, req.end_ms, req.fps, box, still)
+    vf, _ = _composite_filters(req, source_wh)
+    vf.append(f"scale={box[0]}:{box[1]}:force_original_aspect_ratio=decrease")
+    cmd = [toolchain.executable("ffmpeg"), "-v", "error",
+           "-ss", f"{req.start_ms / 1000.0}"]
+    if not still:
+        cmd += ["-t", f"{(req.end_ms - req.start_ms) / 1000.0}"]
+    cmd += ["-i", str(req.source), "-y", "-vf", ",".join(vf)]
+    cmd += ["-frames:v", "1"] if still else ["-r", str(req.fps)]
+    cmd += ["-q:v", "5", "-f", "image2", str(out_dir / "%05d.jpg")]
+    return cmd
+
+
+def _frame_name(index: int) -> str:
+    """ffmpeg's ``%05d.jpg`` for the 0-based *index* (ffmpeg counts from 1)."""
+    frame_log.debug("_frame_name: %d", index)
+    return f"{index + 1:05d}.jpg"
+
+
+class FfmpegPreview(PreviewRun):
+    """A preview ffmpeg and the folder it writes its numbered JPEGs into."""
+
+    def __init__(self, proc: subprocess.Popen[bytes], folder: Path) -> None:
+        log.debug("FfmpegPreview: pid %d into %s", proc.pid, folder)
+        self._proc, self._folder = proc, folder
+
+    def frame(self, index: int) -> bytes | None:
+        """Complete = the next file exists, or ffmpeg has exited."""
+        current = self._folder / _frame_name(index)
+        ready = current.is_file() and (
+            self.ended or (self._folder / _frame_name(index + 1)).is_file())
+        frame_log.debug("FfmpegPreview.frame: %d ready=%s", index, ready)
+        return current.read_bytes() if ready else None
+
+    @property
+    def ended(self) -> bool:
+        frame_log.debug("FfmpegPreview.ended")
+        return self._proc.poll() is not None
+
+    @property
+    def exit_code(self) -> int | None:
+        frame_log.debug("FfmpegPreview.exit_code: %s", self._proc.returncode)
+        return self._proc.poll()
+
+    def close(self) -> None:
+        """Kill ffmpeg if it still runs, and remove its files."""
+        if self._proc.poll() is None:
+            log.debug("FfmpegPreview.close: killing ffmpeg pid %d", self._proc.pid)
+            self._proc.kill()
+            self._proc.wait()
+        log.debug("FfmpegPreview.close: removing %s", self._folder)
+        shutil.rmtree(self._folder, ignore_errors=True)

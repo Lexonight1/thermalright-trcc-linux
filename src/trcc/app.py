@@ -108,6 +108,7 @@ from .core.registry import find_product
 from .core.results import ConnectResult, Result, UpdateCheckResult
 from .services.audio import AudioCapture
 from .services.background import BackgroundSlot
+from .services.clip_preview import ClipPreviews
 from .services.cloud_theme import CloudThemeService
 from .services.device_sender import DeviceSender
 from .services.display import DisplayService
@@ -186,6 +187,8 @@ class App(CommandBus, ModuleServices):
         #: What video work is handed to -- the ffmpeg programs unless injected.
         self.video_tool: VideoTool = video_tool or FfmpegTool(platform.software_install_hint)
         self.media = MediaService(video_tool=self.video_tool)
+        #: The trimmers' previews, run here so a window only draws them.
+        self.clip_previews = ClipPreviews(video_tool=self.video_tool)
         # The current background per device.  Here rather than on
         # DisplayService because ``_wire_display`` rebuilds that service
         # whenever a renderer is attached, and a background that vanished on
@@ -1699,6 +1702,7 @@ class App(CommandBus, ModuleServices):
         # Each module ends what it runs; the user's choice stays saved.
         self.modules.close()
         self.video_loop.stop()
+        self.clip_previews.close()
         self.stop_hotplug()
         # Blank every panel before releasing it so it goes dark on shutdown
         # instead of holding its last frame lit (#143).  Best-effort: the

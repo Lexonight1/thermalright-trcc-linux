@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**170 total: 120 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**173 total: 123 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -852,6 +852,27 @@ Play a video on the LCD as a single-video theme.
 | `end_ms` | `int | None` | no |
 | `rotation` | `int` | no |
 
+### `PreviewClip`
+
+Start the trimmer's preview of a clip, run by the App -- the range playing at *fps*, or (*still*) the one frame at *start_ms*.
+
+*Command* → `ClipPreviewResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `token` | `str` | yes |
+| `path` | `Path` | yes |
+| `start_ms` | `int` | yes |
+| `end_ms` | `int` | yes |
+| `box_w` | `int` | yes |
+| `box_h` | `int` | yes |
+| `target_w` | `int` | no |
+| `target_h` | `int` | no |
+| `rotation` | `int` | no |
+| `fit_mode` | `FitMode | None` | no |
+| `fps` | `int` | no |
+| `still` | `bool` | no |
+
 ### `ProbeVideoDuration`
 
 How long is this video file, in milliseconds?
@@ -883,6 +904,26 @@ Save the device's CURRENT rendered state as a new theme directory.
 | `key` | `str` | yes |
 | `name` | `str` | yes |
 | `overwrite` | `bool` | no |
+
+### `StopClipPreview`
+
+End window *token*'s preview: its ffmpeg stopped, its frames removed.
+
+*Command* → `ClipPreviewResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `token` | `str` | yes |
+
+### `TickClipPreview`
+
+The next picture of window *token*'s preview -- its timer's tick.
+
+*Command* → `ClipPreviewResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `token` | `str` | yes |
 
 ### `UploadCustomMask`
 

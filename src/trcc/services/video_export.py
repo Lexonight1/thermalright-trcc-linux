@@ -8,7 +8,7 @@ arbitrary clips (subject to copyright!) without learning the format.
 Pipeline:
 
 1.  The ``VideoTool`` (ffmpeg, ``adapters/media/ffmpeg.py``) extracts the
-    clip's JPEG frames, composed for the panel (``_composite_filters``).
+    clip's JPEG frames, composed for the panel.
 2.  The exporter reads each JPEG, appends a header + payload to the
     output file, then deletes the temporary frame file.
 3.  Progress is reported via an optional callback so the GUI can show
@@ -31,7 +31,6 @@ from pathlib import Path
 
 from ..core import toolchain
 from ..core.errors import VideoExportError
-from ..core.geometry import fit_rect_for_mode
 from ..core.models import (
     ZT_MAGIC,
     ZT_MAX_DURATION_MS,
@@ -203,99 +202,6 @@ class VideoExporter:
             raise VideoExportError(
                 f"Could not write {output_path}: {e}",
             ) from e
-
-
-def _composite_filters(
-    req: VideoExportRequest, source_wh: tuple[int, int],
-) -> tuple[list[str], list[str]]:
-    """ffmpeg ``-vf`` filters (and any ``-s``) that compose *req* as the panel
-    shows it: rotate, then scale/crop/pad onto the panel canvas.
-
-    ONE chain for the export and the trimmer's preview, so what the preview
-    shows is what the export encodes.  A panel size of 0 (unknown) composes
-    nothing beyond the rotation.  *source_wh* is the source's probed size
-    (``VideoTool.probe``; ``(0, 0)`` unknown -- the panel is then filled).
-    """
-    log.debug("_composite_filters: %s rotation=%d fit=%s -> %dx%d",
-              req.source.name, req.rotation, req.fit_mode, req.target_w,
-              req.target_h)
-    vf: list[str] = []
-    if req.rotation == 90:
-        vf.append("transpose=1")
-    elif req.rotation == 180:
-        vf.append("transpose=1,transpose=1")
-    elif req.rotation == 270:
-        vf.append("transpose=2")
-
-    # The oracle hands ffmpeg a rect derived from the SOURCE's aspect and
-    # composites it onto a panel-sized canvas; a bare ``-s panel`` stretches
-    # anything that is not already the panel's shape (a 1920x1080 clip came
-    # out 480x480, squashed 1.78x).  ``scale``+``pad`` is that composite in
-    # one filter.  Rotation stays FIRST and the probed size is swapped to
-    # match, because the C# reads post-rotation dimensions
-    # (``buttonXuanzhuan_Click`` swaps bitAngleW/H at 90/270).
-    if req.target_w <= 0 or req.target_h <= 0:
-        log.debug("_composite_filters: panel size unknown — rotation only")
-        return vf, []
-    if req.rotation in (90, 270):
-        source_wh = (source_wh[1], source_wh[0])
-    panel = (req.target_w, req.target_h)
-    if source_wh[0] > 0 and source_wh[1] > 0:
-        fit = fit_rect_for_mode(source_wh, panel, req.fit_mode)
-        # scale -> crop -> pad, ALWAYS all three, because the forced-axis
-        # arms can overflow the canvas (a negative offset, which ``pad``
-        # cannot express) while the auto arm never does.  Written as one
-        # unconditional chain rather than a branch: on the auto path the
-        # crop is the full rect and the pad does the letterboxing, exactly
-        # as before; on a forced axis the crop takes the overflow and the
-        # pad becomes the no-op.  Same filters, no arm to get wrong.
-        vf.append(f"scale={fit.width}:{fit.height}")
-        vf.append(
-            f"crop={min(fit.width, req.target_w)}:"
-            f"{min(fit.height, req.target_h)}:"
-            f"{max(0, -fit.x)}:{max(0, -fit.y)}",
-        )
-        vf.append(
-            f"pad={req.target_w}:{req.target_h}:"
-            f"{max(0, fit.x)}:{max(0, fit.y)}",
-        )
-        size_args: list[str] = []
-    else:
-        # Without the source shape the aspect cannot be preserved.  Say so
-        # rather than silently shipping a stretched clip.
-        log.warning(
-            "export_zt: source size unknown for %s — filling %dx%d, which "
-            "STRETCHES a clip whose aspect differs (install ffprobe)",
-            req.source, req.target_w, req.target_h,
-        )
-        size_args = ["-s", f"{req.target_w}x{req.target_h}"]
-    return vf, size_args
-
-
-def preview_command(
-    req: VideoExportRequest, out_dir: Path, box: tuple[int, int],
-    source_wh: tuple[int, int], *, still: bool = False,
-) -> list[str]:
-    """The trimmer's preview of *req*: composed as the export encodes it,
-    shrunk into *box*, written as numbered JPEGs into *out_dir*.
-
-    The C# previews this way (``UCVideoCut.cs:1507-1537``): ONE ffmpeg
-    decodes the selected range at the chosen rate into numbered files, and
-    its timer shows the ones already written.  *still* writes only the frame
-    at ``req.start_ms`` -- the C#'s ``GetOneImage`` (:1580-1630).
-    """
-    log.debug("preview_command: %s %d-%d ms fps=%d box=%s still=%s",
-              req.source.name, req.start_ms, req.end_ms, req.fps, box, still)
-    vf, _ = _composite_filters(req, source_wh)
-    vf.append(f"scale={box[0]}:{box[1]}:force_original_aspect_ratio=decrease")
-    cmd = [toolchain.executable("ffmpeg"), "-v", "error",
-           "-ss", f"{req.start_ms / 1000.0}"]
-    if not still:
-        cmd += ["-t", f"{(req.end_ms - req.start_ms) / 1000.0}"]
-    cmd += ["-i", str(req.source), "-y", "-vf", ",".join(vf)]
-    cmd += ["-frames:v", "1"] if still else ["-r", str(req.fps)]
-    cmd += ["-q:v", "5", "-f", "image2", str(out_dir / "%05d.jpg")]
-    return cmd
 
 
 def _noop_progress(_percent: int, _msg: str) -> None:

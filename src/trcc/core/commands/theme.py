@@ -30,6 +30,7 @@ from ..events import (
     ThemeSaved,
 )
 from ..geometry import content_is_portrait, save_folder_resolution
+from ..logs import per_frame
 from ..models import (
     CUTTER_DEFAULT_FPS,
     CUTTER_FPS_CHOICES,
@@ -44,6 +45,7 @@ from ..models import (
 )
 from ..ports import ContentStore
 from ..results import (
+    ClipPreviewResult,
     CloudCategoryEntry,
     CloudThemeEntryResult,
     CloudThemeLoadResult,
@@ -107,6 +109,7 @@ if TYPE_CHECKING:
 from ..models import MEDIA, MediaKind
 
 log = logging.getLogger(__name__)
+frame_log = per_frame(__name__)
 
 
 def _theme_preview(themes: ContentStore, theme_dir: Path) -> str:
@@ -2750,6 +2753,76 @@ class ExportVideoClip(Command[VideoExportResult]):
             message=(f"Encoding {self.path.name} at {target_w}x{target_h} "
                      f"— watch for VideoExportFinished(token={token})"),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class PreviewClip(Command[ClipPreviewResult]):
+    """Start the trimmer's preview of a clip, run by the App -- the range
+    playing at *fps*, or (*still*) the one frame at *start_ms*.
+
+    Composed as ``ExportVideoClip`` encodes it, for a panel of *target_w* x
+    *target_h* (0 unknown: rotation only), and shrunk into the window's
+    *box_w* x *box_h*.  *token* is the window's own name for its preview, so
+    two trimmers never stop each other's.  Returns at once; the frames come
+    from :class:`TickClipPreview`.  It ran in each window until 2026-11-05.
+    """
+    token: str
+    path: Path
+    start_ms: int
+    end_ms: int
+    box_w: int
+    box_h: int
+    target_w: int = 0
+    target_h: int = 0
+    rotation: int = 0
+    fit_mode: FitMode | None = None
+    fps: int = CUTTER_DEFAULT_FPS
+    still: bool = False
+
+    def execute(self, app: App) -> ClipPreviewResult:
+        log.info("PreviewClip.execute: %s %s %d-%d ms still=%s box=%dx%d", self.token,
+                 self.path.name, self.start_ms, self.end_ms, self.still,
+                 self.box_w, self.box_h)
+        # No existence check here (core does no file I/O): a missing file is
+        # ffmpeg exiting with no frame, which the preview logs and ends.
+        request = VideoExportRequest(
+            source=self.path, start_ms=self.start_ms, end_ms=self.end_ms,
+            target_w=self.target_w, target_h=self.target_h, rotation=self.rotation,
+            fit_mode=self.fit_mode, fps=self.fps)
+        box = (self.box_w, self.box_h)
+        if self.still:
+            app.clip_previews.still(self.token, request, box)
+        else:
+            app.clip_previews.play(self.token, request, box)
+        return ClipPreviewResult(ok=True, token=self.token, active=True)
+
+
+@dataclass(frozen=True, slots=True)
+class TickClipPreview(Command[ClipPreviewResult]):
+    """The next picture of window *token*'s preview -- its timer's tick.
+
+    A Command, not a Query: it moves the preview's cursor on.  ``image`` is
+    empty when the window should keep the picture it shows.
+    """
+    LOG_LEVEL: ClassVar[int] = logging.DEBUG
+    token: str
+
+    def execute(self, app: App) -> ClipPreviewResult:
+        frame_log.debug("TickClipPreview.execute: %s", self.token)
+        frame = app.clip_previews.tick(self.token)
+        return ClipPreviewResult(ok=True, token=self.token, image=frame.image or b"",
+                                 shown=frame.shown, active=frame.active)
+
+
+@dataclass(frozen=True, slots=True)
+class StopClipPreview(Command[ClipPreviewResult]):
+    """End window *token*'s preview: its ffmpeg stopped, its frames removed."""
+    token: str
+
+    def execute(self, app: App) -> ClipPreviewResult:
+        log.info("StopClipPreview.execute: %s", self.token)
+        app.clip_previews.stop(self.token)
+        return ClipPreviewResult(ok=True, token=self.token)
 
 
 @dataclass(frozen=True, slots=True)

@@ -1978,12 +1978,39 @@ class VideoDecode(ABC):
         """Stop the decode (idempotent) -- a new video replaced it, or none plays."""
 
 
+class PreviewRun(ABC):
+    """One run of the trimmer's preview: the :class:`VideoTool` writing a
+    clip's frames -- composed as the export encodes them, shrunk into the
+    preview box -- in the background, as the C#'s ``UCVideoCut`` does
+    (``UCVideoCut.cs:1507-1537``)."""
+
+    @abstractmethod
+    def frame(self, index: int) -> bytes | None:
+        """Frame *index* (0-based) once it is COMPLETE -- the next one exists
+        or the run has ended -- so a frame being written is never read
+        half-done.  None until then, or when there is no such frame."""
+
+    @property
+    @abstractmethod
+    def ended(self) -> bool:
+        """Whether the tool has finished writing, one way or the other."""
+
+    @property
+    @abstractmethod
+    def exit_code(self) -> int | None:
+        """How the run ended; None while it is running."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Stop the run and remove its frames (idempotent)."""
+
+
 class VideoTool(ABC):
     """The tool TRCC hands video work to: today the ``ffmpeg`` and
     ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App
     as the renderer is.  Services ask it; none runs a program itself.  It grows
     one capability per increment of the port: probe, decode, stream, the
-    export's frames and the cloud tiles; then the trimmer's preview."""
+    export's frames, the cloud tiles and the trimmer's preview."""
 
     @abstractmethod
     def probe(self, path: Path) -> VideoProbe:
@@ -2019,6 +2046,15 @@ class VideoTool(ABC):
     def tile_gif(self, video: Path, gif: Path) -> bool:
         """A 120x120, 8 fps looping GIF of *video* -- aspect kept,
         letterboxed -- written to *gif*; whether it was.  Best effort."""
+
+    @abstractmethod
+    def preview(self, request: VideoExportRequest, box: tuple[int, int],
+                source_wh: tuple[int, int], *, still: bool) -> PreviewRun | None:
+        """Start writing *request*'s frames, composed for the panel as the
+        export encodes them and shrunk into *box*, in the background; return
+        at once.  *still* writes only the frame at ``request.start_ms``.
+        *source_wh* is the probed source size (``(0, 0)`` unknown).  None
+        when the tool cannot start -- logged, never raised."""
 
 
 # =========================================================================

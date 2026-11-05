@@ -45,6 +45,7 @@ from ...core.models import (
 from ...core.models import (
     ZT_MAX_DURATION_MS as MAX_DURATION_MS,
 )
+from ...core.ports import CommandBus
 from ...core.results import VideoDurationResult
 from ..presentation.clip_preview import ClipPreview
 from .assets import Assets
@@ -127,8 +128,9 @@ class UCVideoCut(QWidget):
     export_requested = Signal(int, int, int, object, int)
     video_cut_done = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, app: CommandBus):
         super().__init__(parent)
+        log.debug("__init__: app=%s", app)
         self.setFixedSize(PANEL_W, PANEL_H)
 
         # State
@@ -153,10 +155,11 @@ class UCVideoCut(QWidget):
         self._end_ms = 0
         self._dragging = None  # 'start' or 'end'
 
-        # Preview state.  ClipPreview owns the ffmpeg; the timer only picks
-        # up what it has written -- frames while playing, else one still.
+        # Preview state.  The App runs the preview's ffmpeg (ClipPreview asks
+        # it); the timer only picks up what it has ready -- frames while
+        # playing, else one still.
         self._preview_pixmap = None
-        self._clip = ClipPreview()
+        self._clip = ClipPreview(app)
         self._preview_timer = QTimer(self)
         self._preview_timer.timeout.connect(self._preview_tick)
         self._previewing = False
@@ -372,7 +375,7 @@ class UCVideoCut(QWidget):
             return
         self._duration_ms = probe.duration_ms
 
-        self._clip.load(Path(self._video_path), (probe.width, probe.height))
+        self._clip.stop()                  # a new clip: the old preview ends
 
         # Reset handles
         self._start_x = TIMELINE_X
