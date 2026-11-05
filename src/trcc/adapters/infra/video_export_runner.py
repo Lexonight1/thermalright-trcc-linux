@@ -65,7 +65,7 @@ def _keep_in_library(
     identical clip is kept once, and the temp directory goes -- the same move
     ``SingleFileTheme.adopt`` makes for ``LoadVideo``.
     """
-    from ...services.video_export import VideoExportError
+    from ...core.errors import VideoExportError
     try:
         ref = library.store_background(produced.read_bytes(), produced.suffix,
                                        request.target_w, request.target_h)
@@ -100,7 +100,8 @@ def _export_and_publish(
     # Imported here, not at module scope: the exporter warns about a missing
     # ffmpeg on construction, and a headless run that never exports anything
     # should not pay for that probe.
-    from ...services.video_export import VideoExporter, VideoExportError
+    from ...core.errors import VideoExportError
+    from ...services.video_export import VideoExporter
     try:
         path = _keep_in_library(library, VideoExporter(
                 install_hint, video_tool=video_tool or FfmpegTool()).export_zt(

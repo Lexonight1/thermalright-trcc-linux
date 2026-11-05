@@ -23,19 +23,13 @@ next/'s ``LoadCloudTheme`` Command turns this into:
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
 
 from ..core import toolchain
 from ..core.models import CloudCategory, CloudThemeEntry
-from ..core.ports import CloudCatalog, Paths
+from ..core.ports import CloudCatalog, Paths, VideoTool
 
 log = logging.getLogger(__name__)
-
-
-# Hide the console window on Windows when shelling out (parity with
-# the rest of the codebase that invokes subprocess).
-_NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class CloudThemeService:
@@ -45,10 +39,14 @@ class CloudThemeService:
         self,
         catalog: CloudCatalog,
         paths: Paths,
+        *,
+        video_tool: VideoTool,
     ) -> None:
         log.debug("__init__: catalog=%s paths=%s", catalog, paths)
         self._catalog = catalog
         self._paths = paths
+        #: What draws the tiles (``VideoTool``) -- injected, never run here.
+        self._tool = video_tool
 
     # ── Read-only catalog ─────────────────────────────────────────────
 
@@ -111,12 +109,12 @@ class CloudThemeService:
         # static fallback matches the video's actual content).
         png_target = target_dir / f"{theme_id}.png"
         if not _is_first_frame_png(png_target, mp4_target):
-            _extract_first_frame_png(mp4_target, png_target)
+            self._tool.still(mp4_target, png_target)
 
         # Animated 120×120 GIF thumbnail for the GUI tile (QMovie).
         gif_target = target_dir / f"{theme_id}.gif"
         if not gif_target.is_file():
-            _generate_animated_gif(mp4_target, gif_target)
+            self._tool.tile_gif(mp4_target, gif_target)
 
     def backfill_previews(self, resolution: tuple[int, int]) -> int:
         """Give every downloaded cloud video at *resolution* its thumbnails.
@@ -137,78 +135,6 @@ class CloudThemeService:
         for theme_id in ids:
             self.ensure_previews(theme_id, resolution)
         return len(ids)
-
-
-# =========================================================================
-# ffmpeg helpers — both shell-outs are best-effort; log + continue on fail
-# =========================================================================
-
-
-def _run_ffmpeg_or_warn(
-    cmd: list[str], *, timeout: float, label: str,
-) -> None:
-    """Run a fire-and-forget ffmpeg invocation; warn on any failure.
-
-    Shared shape behind ``_extract_first_frame_png`` and
-    ``_generate_animated_gif``.  Both want "best-effort thumbnail
-    generation; if ffmpeg is missing or fails, log and move on."
-    Neither needs the output stream.  *label* names the high-level
-    operation (e.g. ``"first-frame PNG"``) so warnings read like
-    actions, not binary invocations.
-    """
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, timeout=timeout,
-            creationflags=_NO_WINDOW,
-        )
-    except FileNotFoundError:
-        log.warning(
-            "materialise: ffmpeg not on PATH — %s skipped "
-            "(install ffmpeg to enable rich thumbnails)", label,
-        )
-        return
-    except subprocess.TimeoutExpired:
-        log.warning("materialise: %s timed out after %ss", label, timeout)
-        return
-    except (OSError, subprocess.SubprocessError) as e:
-        log.warning("materialise: %s failed: %s: %s",
-                    label, type(e).__name__, e)
-        return
-    if result.returncode != 0:
-        log.warning(
-            "materialise: %s rc=%d: %s", label, result.returncode,
-            result.stderr.decode("utf-8", errors="replace")[:200],
-        )
-
-
-def _extract_first_frame_png(mp4: Path, png: Path) -> None:
-    """Write the MP4's first frame to *png*.  Best-effort."""
-    log.info("materialise: extracting first-frame PNG → %s", png)
-    _run_ffmpeg_or_warn(
-        [toolchain.executable("ffmpeg"),
-         "-i", str(mp4), "-vframes", "1", "-y", str(png)],
-        timeout=10, label=f"first-frame PNG for {mp4.name}",
-    )
-
-
-def _generate_animated_gif(mp4: Path, gif: Path) -> None:
-    """Write a 120×120 8fps animated GIF preview of *mp4* to *gif*.
-
-    Aspect kept, letterboxed in black, as the C# fits its tile PNGs to 120
-    (``UCThemeWeb.SetThemeWeb``).  ``scale=120:120`` stretched a non-square
-    video to the square; the gui's own copy of this chain had the fit, and
-    the two had drifted.
-    """
-    log.info("materialise: generating animated GIF → %s", gif)
-    _run_ffmpeg_or_warn(
-        [
-            toolchain.executable("ffmpeg"), "-i", str(mp4),
-            "-vf", "scale=120:120:force_original_aspect_ratio=decrease,"
-                   "pad=120:120:(ow-iw)/2:(oh-ih)/2:black,fps=8",
-            "-loop", "0", "-y", str(gif),
-        ],
-        timeout=30, label=f"animated GIF for {mp4.name}",
-    )
 
 
 def _is_first_frame_png(png: Path, mp4: Path) -> bool:

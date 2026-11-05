@@ -13,9 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.adapters.repo.http import HttpFetchError, UrllibHttpFetcher
 from trcc.adapters.theme.cloud import CzhordeCatalog
-from trcc.core.ports import HttpFetcher
+from trcc.core.ports import HttpFetcher, VideoTool
 from trcc.core.protocol import FBL_PROFILES
 from trcc.services.cloud_theme import CloudThemeService
 
@@ -388,7 +389,6 @@ def test_the_tile_gif_keeps_the_videos_aspect(tmp_path: Path) -> None:
     from PySide6.QtGui import QImage
 
     from trcc.core import toolchain
-    from trcc.services.cloud_theme import _generate_animated_gif
 
     if not toolchain.present("ffmpeg"):
         pytest.skip("ffmpeg not on PATH")
@@ -398,7 +398,7 @@ def test_the_tile_gif_keeps_the_videos_aspect(tmp_path: Path) -> None:
                     "-pix_fmt", "yuv420p", str(mp4)],
                    capture_output=True, check=True, timeout=60)
 
-    _generate_animated_gif(mp4, gif)
+    assert FfmpegTool().tile_gif(mp4, gif)
 
     frame = QImage(str(gif))
     assert (frame.width(), frame.height()) == (120, 120)
@@ -432,7 +432,7 @@ def test_materialise_writes_flat_layout(
         catalog=CzhordeCatalog(
             http=http, cache_dir=cache, resolution=f"{w}x{h}",
         ),
-        paths=paths,
+        paths=paths, video_tool=FfmpegTool(),
     )
     mp4_path = service.materialise("a004", resolution=resolution)
     # Returns the MP4 file (not a theme dir).
@@ -473,7 +473,7 @@ def test_download_cloud_theme_caches_without_applying(
     app.cloud_themes = CloudThemeService(
         catalog=CzhordeCatalog(http=http, cache_dir=cache,
                                resolution=f"{w}x{h}"),
-        paths=app.platform.paths(),
+        paths=app.platform.paths(), video_tool=app.video_tool,
     )
 
     result = app.dispatch(
@@ -510,7 +510,7 @@ def test_download_cloud_theme_reports_a_failed_fetch(fake_platform) -> None:
     app.cloud_themes = CloudThemeService(
         catalog=CzhordeCatalog(http=FakeHttp(), cache_dir=cache,
                                resolution="320x320"),
-        paths=app.platform.paths(),
+        paths=app.platform.paths(), video_tool=app.video_tool,
     )
 
     result = app.dispatch(
@@ -550,7 +550,7 @@ def test_a_failed_download_leaves_no_directory(tmp_path: Path) -> None:
 # GIF had once failed, every click.  And nothing ever made a GIF for a video
 # downloaded while ffmpeg was missing.
 
-def _cached(tmp_path: Path, ids: tuple[str, ...]):
+def _cached(tmp_path: Path, ids: tuple[str, ...], tool: VideoTool | None = None):
     paths = FakePaths(tmp_path)
     folder = paths.cloud_theme_dir(320, 320)
     folder.mkdir(parents=True)
@@ -559,49 +559,60 @@ def _cached(tmp_path: Path, ids: tuple[str, ...]):
     service = CloudThemeService(
         catalog=CzhordeCatalog(http=FakeHttp(), cache_dir=paths.data_dir() / "web",
                                resolution="320x320"),
-        paths=paths,
+        paths=paths, video_tool=tool or FfmpegTool(),
     )
     return service, folder
 
 
+class _TileRecorder(FfmpegTool):
+    """The ffmpeg tool, its tiles recorded by name instead of drawn."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.made: list[str] = []
+
+    def still(self, video: Path, png: Path) -> bool:
+        self.made.append(png.name)
+        return True
+
+    def tile_gif(self, video: Path, gif: Path) -> bool:
+        self.made.append(gif.name)
+        return True
+
+
 @pytest.fixture
-def ffmpeg_calls(monkeypatch):
+def tiles(monkeypatch) -> _TileRecorder:
     from trcc.services import cloud_theme
 
-    made: list[str] = []
-    monkeypatch.setattr(cloud_theme, "_generate_animated_gif",
-                        lambda mp4, gif: made.append(gif.name))
-    monkeypatch.setattr(cloud_theme, "_extract_first_frame_png",
-                        lambda mp4, png: made.append(png.name))
     monkeypatch.setattr(cloud_theme.toolchain, "present", lambda tool: True)
-    return made
+    return _TileRecorder()
 
 
-def test_a_tile_click_runs_no_ffmpeg(tmp_path: Path, ffmpeg_calls) -> None:
-    service, _ = _cached(tmp_path, ("a004",))
+def test_a_tile_click_runs_no_ffmpeg(tmp_path: Path, tiles: _TileRecorder) -> None:
+    service, _ = _cached(tmp_path, ("a004",), tiles)
     service.materialise("a004", (320, 320))
-    assert ffmpeg_calls == []
+    assert tiles.made == []
 
 
 def test_the_backfill_makes_only_the_missing_gifs(tmp_path: Path,
-                                                  ffmpeg_calls) -> None:
-    service, folder = _cached(tmp_path, ("a001", "a002"))
+                                                  tiles: _TileRecorder) -> None:
+    service, folder = _cached(tmp_path, ("a001", "a002"), tiles)
     (folder / "a002.gif").write_bytes(b"GIF89a")
     for theme_id in ("a001", "a002"):           # first-frame PNGs are fresh
         (folder / f"{theme_id}.png").write_bytes(b"png")
     assert service.backfill_previews((320, 320)) == 2
-    assert ffmpeg_calls == ["a001.gif"]
+    assert tiles.made == ["a001.gif"]
 
 
 def test_the_backfill_without_ffmpeg_runs_nothing(tmp_path: Path,
-                                                  ffmpeg_calls,
+                                                  tiles: _TileRecorder,
                                                   monkeypatch) -> None:
     from trcc.services import cloud_theme
 
     monkeypatch.setattr(cloud_theme.toolchain, "present", lambda tool: False)
-    service, _ = _cached(tmp_path, ("a001",))
+    service, _ = _cached(tmp_path, ("a001",), tiles)
     service.backfill_previews((320, 320))
-    assert ffmpeg_calls == []
+    assert tiles.made == []
 
 
 def test_downloaded_names_only_cached_videos(tmp_path: Path) -> None:
@@ -630,7 +641,7 @@ def test_a_landed_install_backfills_both_orientations(fake_platform,
 
 
 def test_the_explicit_download_still_makes_the_thumbnails(fake_platform,
-                                                          ffmpeg_calls) -> None:
+                                                          tiles: _TileRecorder) -> None:
     from trcc.app import App
     from trcc.core.commands import DownloadCloudTheme
 
@@ -641,8 +652,8 @@ def test_the_explicit_download_still_makes_the_thumbnails(fake_platform,
         catalog=CzhordeCatalog(http=http,
                                cache_dir=app.platform.paths().data_dir() / "web",
                                resolution="320x320"),
-        paths=app.platform.paths(),
+        paths=app.platform.paths(), video_tool=tiles,
     )
     assert app.dispatch(DownloadCloudTheme(theme_id="a004",
                                            resolution=(320, 320))).ok
-    assert sorted(ffmpeg_calls) == ["a004.gif", "a004.png"]
+    assert sorted(tiles.made) == ["a004.gif", "a004.png"]

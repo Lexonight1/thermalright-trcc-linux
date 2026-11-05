@@ -19,11 +19,17 @@ from pathlib import Path
 from typing import Any
 
 from ...core import toolchain
-from ...core.errors import ThemeError
+from ...core.errors import ThemeError, VideoExportError
 from ...core.geometry import largest_fit_size
 from ...core.logs import per_frame
-from ...core.models import SUBPROCESS_NO_WINDOW, VideoDecodeRequest, VideoProbe
+from ...core.models import (
+    SUBPROCESS_NO_WINDOW,
+    VideoDecodeRequest,
+    VideoExportRequest,
+    VideoProbe,
+)
 from ...core.ports import FrameSource, VideoDecode, VideoTool
+from ...services.video_export import _composite_filters
 from .stream import StreamReader, _drain
 
 log = logging.getLogger(__name__)
@@ -31,6 +37,11 @@ frame_log = per_frame(__name__)
 
 #: A probe reads a container's header; a file that takes longer is not one.
 PROBE_TIMEOUT_S = 10
+#: An export decodes up to ``ZT_MAX_DURATION_MS`` of video at any source size.
+EXPORT_TIMEOUT_S = 600
+#: The cloud tiles: one frame, then a 120x120 GIF of the whole (short) video.
+STILL_TIMEOUT_S = 10
+TILE_TIMEOUT_S = 30
 
 _JPEG_SOI = b"\xff\xd8"
 _JPEG_EOI = b"\xff\xd9"
@@ -99,6 +110,88 @@ class FfmpegTool(VideoTool):
         """ffmpeg reading *url* live (``StreamReader``)."""
         log.info("FfmpegTool.stream: %s at %dx%d, %d fps", url, *size, fps)
         return StreamReader(url, size, fps)
+
+    def extract_frames(self, request: VideoExportRequest, out_dir: Path) -> None:
+        """The clip as ``%04d.jpg`` in *out_dir*, through the same filter
+        chain the trimmer's preview shows (``_composite_filters``)."""
+        req = request
+        vf, size_args = _composite_filters(req, self.probe(req.source).size or (0, 0))
+        cmd: list[str] = [
+            toolchain.executable("ffmpeg"),
+            "-ss", f"{req.start_ms / 1000.0}",
+            "-t", f"{(req.end_ms - req.start_ms) / 1000.0}",
+            "-i", str(req.source),
+            "-y",
+            "-r", str(req.fps),
+            *size_args,
+        ]
+        if vf:
+            cmd.extend(["-vf", ",".join(vf)])
+        cmd.extend(["-f", "image2", "-q:v", "5", str(out_dir / "%04d.jpg")])
+        log.info("FfmpegTool.extract_frames: %s: %s", req.source.name, " ".join(cmd))
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, timeout=EXPORT_TIMEOUT_S,
+                check=False, creationflags=SUBPROCESS_NO_WINDOW,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise VideoExportError(
+                f"ffmpeg timed out after {EXPORT_TIMEOUT_S}s.  Try a shorter clip.",
+            ) from e
+        if result.returncode != 0:
+            stderr_tail = result.stderr.decode(errors="replace")[-400:]
+            raise VideoExportError(
+                f"ffmpeg exited {result.returncode}.  Last output:\n{stderr_tail}",
+            )
+
+    def still(self, video: Path, png: Path) -> bool:
+        """*video*'s first frame as *png*."""
+        log.info("FfmpegTool.still: %s -> %s", video.name, png)
+        return _run_best_effort(
+            [toolchain.executable("ffmpeg"),
+             "-i", str(video), "-vframes", "1", "-y", str(png)],
+            timeout=STILL_TIMEOUT_S, label=f"first-frame PNG for {video.name}",
+        )
+
+    def tile_gif(self, video: Path, gif: Path) -> bool:
+        """A 120x120 8 fps GIF of *video*.
+
+        Aspect kept, letterboxed in black, as the C# fits its tile PNGs to 120
+        (``UCThemeWeb.SetThemeWeb``).  ``scale=120:120`` stretched a
+        non-square video to the square; the gui's own copy of this chain had
+        the fit, and the two had drifted.
+        """
+        log.info("FfmpegTool.tile_gif: %s -> %s", video.name, gif)
+        return _run_best_effort(
+            [toolchain.executable("ffmpeg"), "-i", str(video),
+             "-vf", "scale=120:120:force_original_aspect_ratio=decrease,"
+                    "pad=120:120:(ow-iw)/2:(oh-ih)/2:black,fps=8",
+             "-loop", "0", "-y", str(gif)],
+            timeout=TILE_TIMEOUT_S, label=f"animated GIF for {video.name}",
+        )
+
+
+def _run_best_effort(cmd: list[str], *, timeout: float, label: str) -> bool:
+    """Run *cmd* for a picture nothing waits on; whether it worked.  Any
+    failure is a warning naming *label* -- the action, not the binary."""
+    log.debug("_run_best_effort: %s", label)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=timeout,
+                                check=False, creationflags=SUBPROCESS_NO_WINDOW)
+    except FileNotFoundError:
+        log.warning("_run_best_effort: ffmpeg not on PATH — %s skipped", label)
+        return False
+    except subprocess.TimeoutExpired:
+        log.warning("_run_best_effort: %s timed out after %ss", label, timeout)
+        return False
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("_run_best_effort: %s failed: %s: %s", label, type(e).__name__, e)
+        return False
+    if result.returncode != 0:
+        log.warning("_run_best_effort: %s rc=%d: %s", label, result.returncode,
+                    result.stderr.decode("utf-8", errors="replace")[:200])
+        return False
+    return True
 
 
 def _read_probe(data: dict[str, Any]) -> VideoProbe:

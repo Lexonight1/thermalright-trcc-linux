@@ -110,6 +110,12 @@ class ThemeError(TrccError):
     """Theme load / parse / export failed."""
 
 
+class VideoExportError(TrccError):
+    """A video could not be baked into a ``Theme.zt`` -- its message says why,
+    in words a user can act on.  In core because the ``VideoTool`` port
+    raises it and the service turns it into a result."""
+
+
 class ModuleUnavailable(TrccError):
     """A module cannot run on this machine -- its ``pre_enable`` says why."""
 

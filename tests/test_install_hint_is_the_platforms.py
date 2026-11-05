@@ -14,9 +14,9 @@ import pytest
 
 from trcc.adapters.media.ffmpeg import FfmpegTool
 from trcc.core import toolchain
-from trcc.core.errors import ThemeError
+from trcc.core.errors import ThemeError, VideoExportError
 from trcc.services.media import MediaService
-from trcc.services.video_export import VideoExporter, VideoExportError
+from trcc.services.video_export import VideoExporter
 
 _SRC = Path(__file__).resolve().parent.parent / "src" / "trcc"
 _COMMAND = re.compile(r"\b(dnf|apt|apt-get|brew|winget|pacman|zypper|pkg) install\b")

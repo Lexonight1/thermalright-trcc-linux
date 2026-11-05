@@ -17,6 +17,7 @@ from ..errors import (
     ThemeError,
     TransportError,
     TrccError,
+    VideoExportError,
 )
 from ..events import (
     DataInstalled,
@@ -815,7 +816,7 @@ def _tr_background(app: App, key: str, archive_path: Path,
         yield background
         return
 
-    from ...services.video_export import VideoExporter, VideoExportError
+    from ...services.video_export import VideoExporter
 
     duration = _clip_end_ms(app, background, 0)
     if duration > ZT_MAX_DURATION_MS:
@@ -2811,7 +2812,7 @@ class LoadVideo(Command[ThemeResult]):
                 ),
             )
 
-        from ...services.video_export import VideoExporter, VideoExportError
+        from ...services.video_export import VideoExporter
 
         # One ``with`` for the whole assembly: the marker is written only on a
         # clean exit, so any failure below leaves a markerless directory that

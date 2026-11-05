@@ -67,7 +67,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
 | [`SoundInput`](#soundinput) | 3 | 0 | 3 |
 | [`SoundPort`](#soundport) | 3 | 0 | 1 |
-| [`VideoTool`](#videotool) | 3 | 0 | 1 |
 | [`VoltageSource`](#voltagesource) | 3 | 0 | 1 |
 | [`_DeviceIoPort`](#_deviceioport) | 3 | 0 | 1 |
 | [`_SharedRotatingFileHandler`](#_sharedrotatingfilehandler) | 3 | 4 | 2 |
@@ -94,6 +93,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VideoDecode`](#videodecode) | 5 | 0 | 1 |
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
+| [`VideoTool`](#videotool) | 6 | 0 | 1 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`RgbSkin`](#rgbskin) | 9 | 0 | 2 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
@@ -1010,22 +1010,6 @@ worker_thread() -> AbstractContextManager[None]
 
 **Implementations (1):** `_Sound`
 
-## VideoTool
-
-`core/ports.py`
-
-The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe, decode and stream; then export and the trimmer's preview.
-
-**You implement (3):**
-
-```python
-decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
-probe(path: 'Path') -> VideoProbe
-stream(url: 'str', size: 'tuple[int, int]', fps: 'int') -> FrameSource
-```
-
-**Implementations (1):** `FfmpegTool`
-
 ## VoltageSource
 
 `core/ports.py`
@@ -1490,6 +1474,25 @@ refresh() -> None
 ```
 
 **Implementations (4):** `MacOSAutostart` · `NoopAutostart` · `WindowsAutostart` · `XdgDesktopAutostart`
+
+## VideoTool
+
+`core/ports.py`
+
+The tool TRCC hands video work to: today the ``ffmpeg`` and ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App as the renderer is.  Services ask it; none runs a program itself.  It grows one capability per increment of the port: probe, decode, stream, the export's frames and the cloud tiles; then the trimmer's preview.
+
+**You implement (6):**
+
+```python
+decode(request: 'VideoDecodeRequest', frames: 'list[bytes]', on_done: 'Callable[[], None]', on_error: 'Callable[[str], None] | None' = None) -> VideoDecode
+extract_frames(request: 'VideoExportRequest', out_dir: 'Path') -> None
+probe(path: 'Path') -> VideoProbe
+still(video: 'Path', png: 'Path') -> bool
+stream(url: 'str', size: 'tuple[int, int]', fps: 'int') -> FrameSource
+tile_gif(video: 'Path', gif: 'Path') -> bool
+```
+
+**Implementations (1):** `FfmpegTool`
 
 ## Diagnostics
 

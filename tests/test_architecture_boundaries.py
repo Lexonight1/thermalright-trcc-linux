@@ -476,6 +476,26 @@ def test_commands_invalidate_the_scene_only_through_the_seam() -> None:
     )
 
 
+def test_every_program_the_video_tool_runs_hides_its_console() -> None:
+    """Each ``subprocess.run`` / ``Popen`` in ``adapters/media`` -- the
+    ``VideoTool``'s ffmpeg -- passes ``creationflags``
+    (``SUBPROCESS_NO_WINDOW``).  Before the port, three of its programs did
+    not, and each flashed a console on Windows: a video load, a web stream,
+    and every cloud tile.
+
+    MUTATION CHECK: drop ``creationflags`` from any one call and this names it.
+    """
+    offenders = []
+    for path in sorted((_SRC / "trcc" / "adapters" / "media").rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("run", "Popen")
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "subprocess"
+                    and not any(k.arg == "creationflags" for k in node.keywords)):
+                offenders.append(f"{path.relative_to(_SRC)}:{node.lineno}")
+    assert offenders == []
+
 def test_os_path_confined_to_zip_slip_normalisation() -> None:
     """CLAUDE.md Code Style: prefer pathlib; ``os.path`` only where a lexical
     path-string operation is required (zip-slip member sanitisation).

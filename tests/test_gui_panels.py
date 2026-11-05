@@ -1583,11 +1583,9 @@ def test_splash_make_returns_widget_with_fallback(qapp: object) -> None:
 
 def test_video_exporter_rejects_missing_source(tmp_path) -> None:
     """VideoExporter raises VideoExportError when the source doesn't exist."""
-    from trcc.services.video_export import (
-        VideoExporter,
-        VideoExportError,
-        VideoExportRequest,
-    )
+    from trcc.core.errors import VideoExportError
+    from trcc.core.models import VideoExportRequest
+    from trcc.services.video_export import VideoExporter
 
     missing = tmp_path / "nope.mp4"
     request = VideoExportRequest(
@@ -1600,11 +1598,9 @@ def test_video_exporter_rejects_missing_source(tmp_path) -> None:
 
 def test_video_exporter_rejects_bad_range(tmp_path) -> None:
     """VideoExporter rejects end_ms <= start_ms."""
-    from trcc.services.video_export import (
-        VideoExporter,
-        VideoExportError,
-        VideoExportRequest,
-    )
+    from trcc.core.errors import VideoExportError
+    from trcc.core.models import VideoExportRequest
+    from trcc.services.video_export import VideoExporter
 
     real = tmp_path / "fake.mp4"
     real.write_bytes(b"\x00" * 16)
@@ -1618,11 +1614,9 @@ def test_video_exporter_rejects_bad_range(tmp_path) -> None:
 
 def test_video_exporter_rejects_bad_rotation(tmp_path) -> None:
     """Rotation must be one of 0/90/180/270."""
-    from trcc.services.video_export import (
-        VideoExporter,
-        VideoExportError,
-        VideoExportRequest,
-    )
+    from trcc.core.errors import VideoExportError
+    from trcc.core.models import VideoExportRequest
+    from trcc.services.video_export import VideoExporter
 
     real = tmp_path / "fake.mp4"
     real.write_bytes(b"\x00" * 16)

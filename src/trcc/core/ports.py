@@ -1982,8 +1982,8 @@ class VideoTool(ABC):
     """The tool TRCC hands video work to: today the ``ffmpeg`` and
     ``ffprobe`` programs (``adapters/media/ffmpeg.py``), injected into the App
     as the renderer is.  Services ask it; none runs a program itself.  It grows
-    one capability per increment of the port: probe, decode and stream; then
-    export and the trimmer's preview."""
+    one capability per increment of the port: probe, decode, stream, the
+    export's frames and the cloud tiles; then the trimmer's preview."""
 
     @abstractmethod
     def probe(self, path: Path) -> VideoProbe:
@@ -2003,6 +2003,22 @@ class VideoTool(ABC):
     def stream(self, url: str, size: tuple[int, int], fps: int) -> FrameSource:
         """Start reading *url* in real time, letterboxed to *size* at *fps*:
         its newest frame on demand (``FrameSource.latest``), until closed."""
+
+    @abstractmethod
+    def extract_frames(self, request: VideoExportRequest, out_dir: Path) -> None:
+        """The clip *request* names, composed as the panel shows it --
+        rotated, fitted to its size -- as numbered JPEGs in *out_dir*, at its
+        rate.  ``VideoExportError`` when the tool fails or times out."""
+
+    @abstractmethod
+    def still(self, video: Path, png: Path) -> bool:
+        """*video*'s first frame, written to *png*; whether it was.  Best
+        effort: a failure is logged, never raised."""
+
+    @abstractmethod
+    def tile_gif(self, video: Path, gif: Path) -> bool:
+        """A 120x120, 8 fps looping GIF of *video* -- aspect kept,
+        letterboxed -- written to *gif*; whether it was.  Best effort."""
 
 
 # =========================================================================

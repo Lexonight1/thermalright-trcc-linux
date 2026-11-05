@@ -535,12 +535,12 @@ def test_an_unexpected_failure_leaves_no_temp_directory(
 ) -> None:
     """Only a worded ``VideoExportError`` cleaned up; anything else -- a raise
     from the progress callback, the frame reader -- left the directory."""
-    from trcc.services.video_export import VideoExporter
+    from trcc.adapters.media.ffmpeg import FfmpegTool
 
     def boom(*a: object, **k: object) -> None:
         raise RuntimeError("frame reader fell over")
 
-    monkeypatch.setattr(VideoExporter, "_run_ffmpeg", boom)
+    monkeypatch.setattr(FfmpegTool, "extract_frames", boom)
 
     assert app.dispatch(
         ExportVideoClip(key=KEY, path=fake_clip, start_ms=0, end_ms=1000)).ok

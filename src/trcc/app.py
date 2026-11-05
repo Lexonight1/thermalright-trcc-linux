@@ -240,6 +240,7 @@ class App(CommandBus, ModuleServices):
                 cache_dir=platform.paths().data_dir() / "web",
             ),
             paths=platform.paths(),
+            video_tool=self.video_tool,
         )
         # GitHub releases adapter for `check_for_update` Command.
         self.github_releases = GitHubReleases(http=self.http)

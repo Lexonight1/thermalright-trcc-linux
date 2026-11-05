@@ -7,8 +7,8 @@ arbitrary clips (subject to copyright!) without learning the format.
 
 Pipeline:
 
-1.  ``ffmpeg -ss <start> -t <duration> -r 24 -s WxH ... %04d.jpg``
-    extracts JPEG frames at 24 fps.
+1.  The ``VideoTool`` (ffmpeg, ``adapters/media/ffmpeg.py``) extracts the
+    clip's JPEG frames, composed for the panel (``_composite_filters``).
 2.  The exporter reads each JPEG, appends a header + payload to the
     output file, then deletes the temporary frame file.
 3.  Progress is reported via an optional callback so the GUI can show
@@ -24,16 +24,15 @@ from __future__ import annotations
 import logging
 import shutil
 import struct
-import subprocess
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 from ..core import toolchain
+from ..core.errors import VideoExportError
 from ..core.geometry import fit_rect_for_mode
 from ..core.models import (
-    SUBPROCESS_NO_WINDOW,
     ZT_MAGIC,
     ZT_MAX_DURATION_MS,
     ThemeDir,
@@ -46,11 +45,6 @@ log = logging.getLogger(__name__)
 
 # The container's constants live in ``core.models`` — one owner for a
 # format three modules touch.  See the "Theme.zt container" section there.
-_FFMPEG_TIMEOUT_S = 600
-
-
-class VideoExportError(RuntimeError):
-    """Raised when video export fails for an actionable reason."""
 
 
 ProgressCallback = Callable[[int, str], None]
@@ -58,12 +52,13 @@ ProgressCallback = Callable[[int, str], None]
 
 
 class VideoExporter:
-    """ffmpeg-driven ``Theme.zt`` encoder."""
+    """``Theme.zt`` encoder: the ``VideoTool`` extracts the frames."""
 
     def __init__(self, install_hint: Callable[[str], str]
                  = toolchain.generic_install_hint, *, video_tool: VideoTool) -> None:
         self._install_hint = install_hint
-        #: What a source is probed with (``VideoTool``) -- injected, never run here.
+        #: What extracts the clip's frames (``VideoTool``) -- injected, never
+        #: run here; this service packs them into the ``.zt``.
         self._tool = video_tool
         if not toolchain.present("ffmpeg"):
             log.warning("VideoExporter: exports will fail — %s",
@@ -144,7 +139,8 @@ class VideoExporter:
         frames_dir = temp_dir / "frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
         try:
-            self._run_ffmpeg(req, frames_dir, progress)
+            progress(5, "Extracting frames…")
+            self._tool.extract_frames(req, frames_dir)
             jpegs = self._collect_frames(frames_dir, progress)
             output_path = ThemeDir(temp_dir).zt
             self._write_zt(output_path, jpegs, progress, req.fps)
@@ -155,47 +151,6 @@ class VideoExporter:
             # progress callback or the frame reader left the directory behind.
             _discard(temp_dir)
             raise
-
-    def _run_ffmpeg(
-        self,
-        req: VideoExportRequest,
-        frames_dir: Path,
-        progress: ProgressCallback,
-    ) -> None:
-        log.debug("_run_ffmpeg: req=%s frames_dir=%s", req, frames_dir)
-        progress(5, "Extracting frames…")
-        vf, size_args = _composite_filters(req, self._tool.probe(req.source).size or (0, 0))
-
-        cmd: list[str] = [
-            toolchain.executable("ffmpeg"),
-            "-ss", f"{req.start_ms / 1000.0}",
-            "-t", f"{(req.end_ms - req.start_ms) / 1000.0}",
-            "-i", str(req.source),
-            "-y",
-            "-r", str(req.fps),
-            *size_args,
-        ]
-        if vf:
-            cmd.extend(["-vf", ",".join(vf)])
-        cmd.extend([
-            "-f", "image2", "-q:v", "5",
-            str(frames_dir / "%04d.jpg"),
-        ])
-
-        try:
-            result = subprocess.run(
-                cmd, capture_output=True, timeout=_FFMPEG_TIMEOUT_S,
-                check=False, creationflags=SUBPROCESS_NO_WINDOW,
-            )
-        except subprocess.TimeoutExpired as e:
-            raise VideoExportError(
-                f"ffmpeg timed out after {_FFMPEG_TIMEOUT_S}s.  Try a shorter clip.",
-            ) from e
-        if result.returncode != 0:
-            stderr_tail = result.stderr.decode(errors="replace")[-400:]
-            raise VideoExportError(
-                f"ffmpeg exited {result.returncode}.  Last output:\n{stderr_tail}",
-            )
 
     def _collect_frames(
         self, frames_dir: Path, progress: ProgressCallback,
