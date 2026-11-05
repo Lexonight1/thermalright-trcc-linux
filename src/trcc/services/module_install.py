@@ -87,15 +87,6 @@ def _as_written(manifest: ModuleManifest) -> ModuleManifest:
     return dataclasses.replace(manifest, icon=Path(manifest.icon).name if manifest.icon else "")
 
 
-def _to_do_first(module: AvailableModule) -> tuple[bool, str]:
-    """How "Get modules" orders the list: what there is to do -- Install,
-    Update -- first, then the rest (installed, taken back), each by key.
-    His order (2026-11-05); in the App, so every UI lists it alike."""
-    done = module.status not in ("available", "update")
-    log.debug("_to_do_first: %s %s -> %s", module.key, module.status, done)
-    return done, module.key
-
-
 class ModuleInstaller:
     """The App's installer.  One change at a time: two UIs installing at once
     take turns."""
@@ -178,11 +169,15 @@ class ModuleInstaller:
         log.info("ModuleInstaller.browse")
         with self._lock:
             index = self.index(now)
-        found = tuple(sorted(
-            (self._available(index, r) for r in index.releases.values()),
-            key=_to_do_first))
-        log.info("ModuleInstaller.browse: %s", {m.key: m.status for m in found})
-        return found
+        found = [self._available(index, r) for _, r in sorted(index.releases.items())]
+        # His order (2026-11-05): what there is to do -- Install, Update --
+        # first, then the rest; each half keeps the key order.  In the App,
+        # so every UI lists it alike.
+        to_do = ("available", "update")
+        ordered = (*(m for m in found if m.status in to_do),
+                   *(m for m in found if m.status not in to_do))
+        log.info("ModuleInstaller.browse: %s", {m.key: m.status for m in ordered})
+        return ordered
 
     def _available(self, index: ModuleIndex, release: ModuleRelease) -> AvailableModule:
         record = self._signed_install(release.key)
