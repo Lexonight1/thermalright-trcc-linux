@@ -178,7 +178,11 @@ class ModuleInstaller:
         record = self._signed_install(release.key)
         reason = self._trust.revoked(index, release.key,
                                      record.sha256 if record else release.sha256) or ""
-        status = ("revoked" if reason else "available" if record is None
+        # Built in, it IS installed -- it has no install record only because
+        # it came with TRCC.  Read as "not installed", the list offered
+        # Install, and install() then refused (2026-11-05).
+        status = ("installed" if self._built_in(release.key)
+                  else "revoked" if reason else "available" if record is None
                   else "installed" if record.version == release.version else "update")
         log.debug("ModuleInstaller._available: %s -> %s", release.key, status)
         return AvailableModule(

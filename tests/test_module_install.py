@@ -239,6 +239,18 @@ def test_the_list_shows_what_the_index_offers(cli_app: App, shop: Shop) -> None:
             greeter.asks) == (KEY, "Greeter", "1", "available", ModuleAsks(("events",)))
 
 
+def test_a_built_in_module_the_index_lists_reads_as_installed(
+        cli_app: App, shop: Shop, monkeypatch: pytest.MonkeyPatch) -> None:
+    """It ships with TRCC, so it has no install record -- read as "not
+    installed", "Get modules" offered Install, which install() refuses
+    (the maintainer's window, 2026-11-05: "Audio Visualizer 1  Install").
+    MUTATION CHECK: drop the built-in test in ModuleInstaller._available."""
+    monkeypatch.setattr(cli_app.module_installer, "_built_in", lambda key: key == KEY)
+    shop.list("1")
+    (listed,) = cli_app.dispatch(BrowseModules()).modules
+    assert (listed.key, listed.status) == (KEY, "installed")
+
+
 def test_no_index_is_a_refusal_with_a_reason(cli_app: App, shop: Shop) -> None:
     result = cli_app.dispatch(BrowseModules())
     assert not result.ok
