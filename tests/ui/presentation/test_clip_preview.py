@@ -42,14 +42,21 @@ def _req(clip: Path, start: int, end: int, **kw) -> VideoExportRequest:
                               target_w=160, target_h=160, **kw)
 
 
-def _drain(preview: ClipPreview, seconds: float) -> list[bytes]:
+def _drain(preview: ClipPreview, done, timeout: float = 15.0) -> list[bytes]:
+    """Poll until ``done(frames)`` -- ffmpeg's own pace, not a fixed window.
+    Returns what arrived; the caller's asserts judge it, a timeout included."""
     frames: list[bytes] = []
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not done(frames):
         if (data := preview.poll()) is not None:
             frames.append(data)
         time.sleep(0.005)
     return frames
+
+
+def _looped(frames: list[bytes]) -> bool:
+    """The first frame came round again: one whole pass, then the loop."""
+    return len(frames) > 1 and frames[-1] == frames[0]
 
 
 @needs_ffmpeg
@@ -60,7 +67,7 @@ def test_play_decodes_the_range_once_at_the_chosen_rate(clip: Path) -> None:
     preview.play(_req(clip, 0, 1000, fps=15), BOX)
     assert time.monotonic() - started < 0.05, "play() must not wait for ffmpeg"
 
-    frames = _drain(preview, 3.0)
+    frames = _drain(preview, _looped)
     preview.stop()
     distinct = list(dict.fromkeys(frames))
     # 1 s at 15 fps: ~15 distinct frames, then it loops back to the first.
@@ -74,7 +81,7 @@ def test_a_still_is_one_frame_then_the_preview_is_idle(clip: Path) -> None:
     preview = ClipPreview()
     preview.load(clip)
     preview.still(_req(clip, 500, 501), BOX)
-    frames = _drain(preview, 2.0)
+    frames = _drain(preview, lambda _f: not preview.active)
     assert len(frames) == 1
     assert frames[0][:2] == b"\xff\xd8"
     assert not preview.active
@@ -89,7 +96,7 @@ def test_the_preview_is_composed_as_export_encodes_it(clip: Path) -> None:
     preview = ClipPreview()
     preview.load(clip)
     preview.still(_req(clip, 0, 1, fit_mode=FitMode.WIDTH), BOX)
-    (jpeg,) = _drain(preview, 2.0)
+    (jpeg,) = _drain(preview, lambda _f: not preview.active)
     img = QImage.fromData(jpeg)
     assert (img.width(), img.height()) == BOX
     top = img.pixelColor(80, 2)
@@ -166,7 +173,7 @@ def test_a_drag_lands_on_the_newest_still_only(clip: Path) -> None:
     preview._start = spy
     for ms in range(0, 1900, 100):
         preview.still(_req(clip, ms, ms + 1), BOX)
-    frames = _drain(preview, 3.0)
+    frames = _drain(preview, lambda _f: not preview.active)
     assert started == [0, 1800]
     assert len(frames) == 2
     assert not preview.active

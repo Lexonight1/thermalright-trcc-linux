@@ -341,6 +341,9 @@ def test_broadcasts_continue_when_the_poll_thread_never_starts(
         raise RuntimeError("sensor adapter is broken")
 
     monkeypatch.setattr(app.platform.sensors(), "start_polling", refuse)
+    # The grace is what is under test, not its length: 2 x the 1 s floor made
+    # this a 2 s test for one broadcast.
+    monkeypatch.setattr("trcc.services.metrics_loop._SWEEP_GRACE", 0.1)
     seen = _subscribe_publishes(app)
 
     app.metrics_loop.start()

@@ -43,6 +43,19 @@ from ..mock_platform import (
     scripted_ram,
 )
 
+#: The static/linked tick the tests run at.  The real one is 1 s, so every
+#: test that waited for a frame paid a whole second, and the two that let
+#: ticks pass paid two (24 s for this file).  Nothing here measures the real
+#: cadence -- each waits on a frame or on a count of ticks.
+_TICK_S = 0.05
+
+
+@pytest.fixture(autouse=True)
+def _static_effects_tick_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "trcc.modules.rgb.services.effect_clock.STATIC_INTERVAL_S", _TICK_S)
+
+
 OFF, OPENRGB, RAM_MODE, BOARD = RgbFollowMode
 STRIP = RgbMirrorDevice(0, "Strip", 4, "strip")
 RAM = RgbMirrorDevice(1, "RAM", 2, "ram")
@@ -1466,7 +1479,7 @@ def test_a_header_follows_the_cpu_temperature(tmp_path: Path) -> None:
     _until(lambda: _header_shows(platform, 1, (255, 110, 0), 8))
     app.last_raw_readings = {}                    # the reading goes missing
     platform.aura.writes.clear()
-    time.sleep(1.5)                               # more than one tick
+    time.sleep(3 * _TICK_S)                       # more than one tick
     assert platform.aura.reports(0x40) == []      # held: nothing new to write
     app.close()
 
@@ -1560,7 +1573,7 @@ def test_a_linked_colour_is_written_only_when_it_changes() -> None:
     service.configure(BOARD, "", 0, EFFECT_SOURCE, targets=("strip",),
                       effects={"strip": LinkedEffect("temp", "cpu")})
     _until(lambda: len(made[-1].shown) == 1)
-    time.sleep(2.2)                                # two more ticks, same colour
+    time.sleep(2.2 * _TICK_S)                      # two more ticks, same colour
     assert len(made[-1].shown) == 1
     readings["cpu:temp"] = 95.0
     _until(lambda: len(made[-1].shown) == 2)

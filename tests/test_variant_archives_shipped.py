@@ -78,16 +78,30 @@ def _ships_anything(archive: str) -> bool:
     return (_DATA / f"{stem}.7z").is_file()
 
 
+def _checked() -> dict[str, list[str]]:
+    """Each archive to check, with every rule call that produces its name.
+
+    One case per ARCHIVE, not per (archive, call): the SUB sweep produces each
+    name ~270 times, and checking one file 270 times was 20,480 cases -- 64% of
+    the whole suite's collection -- for 75 files.
+    """
+    by_archive: dict[str, list[str]] = {}
+    for archive, produced_by in sorted(_required()):
+        if _ships_anything(archive):
+            by_archive.setdefault(archive, []).append(produced_by)
+    return by_archive
+
+
 @pytest.mark.parametrize(
-    ("archive", "produced_by"),
-    sorted(a for a in _required() if _ships_anything(a[0])),
+    ("archive", "produced_by"), sorted(_checked().items()),
     ids=lambda v: str(v)[:44],
 )
 def test_every_producible_suffix_has_an_archive(
-    archive: str, produced_by: str,
+    archive: str, produced_by: list[str],
 ) -> None:
     assert (_DATA / archive).is_file(), (
-        f"{produced_by} returns a suffix whose archive is not shipped: "
+        f"{produced_by[0]} (and {len(produced_by) - 1} more call(s)) returns "
+        f"a suffix whose archive is not shipped: "
         f"src/trcc/data/{archive} does not exist.  The installer fetches that "
         f"name from this repo's main branch, so the device gets an EMPTY "
         f"library.  Pack it with dev/tools/pack_theme_archives.py, or stop "
@@ -97,7 +111,7 @@ def test_every_producible_suffix_has_an_archive(
 
 def test_the_sweep_is_not_vacuous() -> None:
     """A filter that excluded everything would make every case above pass."""
-    checked = [a for a in _required() if _ships_anything(a[0])]
+    checked = _checked()
     assert len(checked) >= 50, (
         f"only {len(checked)} archive(s) checked — the shipped-anything filter "
         f"is excluding real resolutions and this gate proves nothing"

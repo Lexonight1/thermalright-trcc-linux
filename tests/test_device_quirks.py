@@ -197,7 +197,10 @@ def _trofeo_reply() -> bytes:
 
 
 def _trofeo(tmp_path, script: list[bytes], settles: list[float], monkeypatch):
-    """A 0x0407-fingerprint panel with a state dir; sleeps are recorded."""
+    """A 0x0407-fingerprint panel with a state dir; sleeps are recorded.
+    conftest zeroes the boot settle for speed; this puts the real one back,
+    since the recorded 3.0 is what these tests read."""
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd._QUIRK_BOOT_SETTLE_S", 3.0)
     monkeypatch.setattr("trcc.adapters.device.hid_lcd.time.sleep", settles.append)
     transport = FakeBulkTransport()
     transport.read_script = list(script)

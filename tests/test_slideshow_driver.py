@@ -17,6 +17,7 @@ sleep; the three that drive a rotation run on the production scheduler.
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -228,6 +229,20 @@ def _driving(app: App) -> bool:
     return task_key(_KEY) in scheduler._threads
 
 
+def _driver_thread(app: App) -> threading.Thread:
+    """The slideshow's own thread -- the only one that rotates."""
+    scheduler = app._send_scheduler
+    assert isinstance(scheduler, ThreadSendScheduler)
+    return scheduler._threads[task_key(_KEY)]._thread
+
+
+def _never_rotates_again(driver: threading.Thread) -> bool:
+    """Once the slideshow's thread has exited, nothing can rotate the panel.
+    Waiting for that replaces a fixed 1.5 s sleep that only hoped no
+    rotation came later."""
+    return _wait_for(lambda: not driver.is_alive())
+
+
 def test_a_saved_slideshow_resumes_when_the_app_starts(tmp_home: Path) -> None:
     """D2: enabled and saved, it never rotated after a restart but in the gui.
 
@@ -265,6 +280,7 @@ def test_a_theme_picked_by_hand_ends_the_slideshow(tmp_home: Path) -> None:
         app.dispatch(ConfigureSlideshow(key=_KEY, themes=("SlideA", "SlideB"),
                                         interval_s=1.0))
         app.dispatch(SetSlideshow(key=_KEY, enabled=True))
+        rotator = _driver_thread(app)
         assert _wait_for(lambda: _showing(app) in ("SlideA", "SlideB"))
         manual = app.platform.paths().user_content_dir() / "data" / "theme320320" / "Manual"
         assert app.dispatch(LoadTheme(key=_KEY, path=manual)).ok
@@ -277,8 +293,7 @@ def test_a_theme_picked_by_hand_ends_the_slideshow(tmp_home: Path) -> None:
         # -- the event not yet published, not a missing one (a 0.3 s sleep
         # before the publish made it fail every time).
         assert _wait_for(lambda: heard[-1] is False), heard
-        import time
-        time.sleep(1.5)
+        assert _never_rotates_again(rotator), "the slideshow's thread outlived it"
         assert _showing(app) == "Manual", "the rotation replaced the user's pick"
     finally:
         app.close()
@@ -310,6 +325,7 @@ def test_a_module_visual_ends_the_slideshow(tmp_home: Path) -> None:
         app.dispatch(ConfigureSlideshow(key=_KEY, themes=("SlideA", "SlideB"),
                                         interval_s=1.0))
         app.dispatch(SetSlideshow(key=_KEY, enabled=True))
+        rotator = _driver_thread(app)
         assert _wait_for(lambda: _showing(app) in ("SlideA", "SlideB"))
         # Between rotations, as a user acts: once the driver has recorded what
         # its load put up.  A source landing DURING its load is read as that
@@ -322,8 +338,7 @@ def test_a_module_visual_ends_the_slideshow(tmp_home: Path) -> None:
         app.show_source("probe", _KEY, _Still(), 30.0)
 
         assert _wait_for(lambda: not app.settings.for_device(_KEY).slideshow_enabled)
-        import time
-        time.sleep(1.5)
+        assert _never_rotates_again(rotator), "the slideshow's thread outlived it"
         assert app.settings.for_device(_KEY).module_source == "probe", (
             "the rotation ended the visual")
     finally:
@@ -413,12 +428,12 @@ def test_a_pick_landing_during_a_rotation_still_ends_the_slideshow(
         app.dispatch(ConfigureSlideshow(key=_KEY, themes=("SlideA", "SlideB"),
                                         interval_s=1.0))
         app.dispatch(SetSlideshow(key=_KEY, enabled=True))
+        rotator = _driver_thread(app)
         assert _wait_for(picked.is_set), "the rotation never loaded"
 
         assert _wait_for(lambda: not app.settings.for_device(_KEY).slideshow_enabled), (
             "the pick that landed during a rotation was taken for the slideshow's own")
-        import time
-        time.sleep(1.5)
+        assert _never_rotates_again(rotator), "the slideshow's thread outlived it"
         assert _showing(app) == "Manual"
     finally:
         app.close()
@@ -507,13 +522,13 @@ def test_a_cast_landing_during_a_rotation_still_ends_the_slideshow(
         app.dispatch(ConfigureSlideshow(key=_KEY, themes=("SlideA", "SlideB"),
                                         interval_s=1.0))
         app.dispatch(SetSlideshow(key=_KEY, enabled=True))
+        rotator = _driver_thread(app)
         assert _wait_for(cast.is_set), "the rotation never loaded"
         assert _wait_for(lambda: results == [True]), results
 
         assert _wait_for(lambda: not app.settings.for_device(_KEY).slideshow_enabled), (
             "the cast that landed during a rotation was taken for the slideshow's own")
-        import time
-        time.sleep(1.5)
+        assert _never_rotates_again(rotator), "the slideshow's thread outlived it"
         assert app.settings.for_device(_KEY).screencast_region is not None, (
             "the next rotation ended the user's cast")
     finally:

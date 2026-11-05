@@ -852,6 +852,23 @@ def _scsi_handshake_does_not_wait_for_a_usb_reset(
 
 
 @pytest.fixture(autouse=True)
+def _report_handshakes_do_not_pace_like_hardware(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The HID LCD + LED handshake waits for real firmware: 50 ms before the
+    init write, 200 ms after it, 500 ms between failed attempts, and 3 s for a
+    streaming-firmware panel to boot.  A fake answers at once, so every mock
+    connect paid 0.25 s and every refused handshake 1.75 s -- the round
+    durations at the top of ``--durations``.  The tests that pin the real
+    values put them back (``test_hid_lcd_geometry``, ``test_device_quirks``),
+    as ``test_scsi_lcd_geometry`` does for the SCSI settle above."""
+    monkeypatch.setattr("trcc.adapters.device._base._DELAY_PRE_INIT_S", 0.0)
+    monkeypatch.setattr("trcc.adapters.device._base._DELAY_POST_INIT_S", 0.0)
+    monkeypatch.setattr("trcc.adapters.device._base._HANDSHAKE_RETRY_DELAY_S", 0.0)
+    monkeypatch.setattr("trcc.adapters.device.hid_lcd._QUIRK_BOOT_SETTLE_S", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def _home_is_never_the_real_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

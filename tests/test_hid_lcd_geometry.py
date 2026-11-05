@@ -560,15 +560,45 @@ def test_type2_sub_selects_the_encode_rotation(
 
 
 
+# ── Pacing for real firmware ─────────────────────────────────────────
+
+def test_the_handshake_paces_for_real_firmware(
+    fake_bulk: FakeBulkTransport, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Settle 50 ms, init, let the firmware answer 200 ms, read; 500 ms before
+    a retry.  conftest zeroes these for speed; this puts the real values back
+    and pins where each one falls.
+
+    MUTATION CHECK: drop the post-init sleep in ``_init_exchange``, or the
+    retry sleep in ``_handshake_retry``, and the order breaks."""
+    from trcc.adapters.device import _base
+    monkeypatch.setattr(_base, "_DELAY_PRE_INIT_S", 0.05)
+    monkeypatch.setattr(_base, "_DELAY_POST_INIT_S", 0.2)
+    monkeypatch.setattr(_base, "_HANDSHAKE_RETRY_DELAY_S", 0.5)
+    order: list[str] = []
+    monkeypatch.setattr(_base.time, "sleep", lambda s: order.append(f"sleep {s}"))
+    write, read = fake_bulk.write, fake_bulk.read
+
+    def init(endpoint: int, data: bytes, timeout_ms: int = 100) -> int:
+        order.append("init")
+        return write(endpoint, data, timeout_ms)
+
+    def answer(endpoint: int, length: int, timeout_ms: int = 100) -> bytes:
+        order.append("read")
+        return read(endpoint, length, timeout_ms)
+
+    monkeypatch.setattr(fake_bulk, "write", init)
+    monkeypatch.setattr(fake_bulk, "read", answer)
+    fake_bulk.read_script = [b"\x01" * 512, _type2_response(100)]
+
+    assert _make_type2(fake_bulk).connect().resolution == (320, 320)
+    assert order == ["sleep 0.05", "init", "sleep 0.2", "read", "sleep 0.5",
+                     "sleep 0.05", "init", "sleep 0.2", "read"]
+
+
 # ── A reply that is not a panel's (2026-10-22) ───────────────────────
 
-@pytest.fixture
-def no_retry_wait(monkeypatch: pytest.MonkeyPatch) -> None:
-    from trcc.adapters.device import _base
-    monkeypatch.setattr(_base, "_HANDSHAKE_RETRY_DELAY_S", 0)
-
-
-def test_a_reply_that_is_not_a_panels_is_unrecognised(no_retry_wait: None) -> None:
+def test_a_reply_that_is_not_a_panels_is_unrecognised() -> None:
     """A vid:pid match is all the scan checks: a device that ANSWERS, but not
     as a Thermalright panel does, is told apart from one that says nothing --
     through the retries -- so the failure can offer to leave it alone.
@@ -581,7 +611,7 @@ def test_a_reply_that_is_not_a_panels_is_unrecognised(no_retry_wait: None) -> No
         _make_type2(transport).connect()
 
 
-def test_silence_is_not_an_unrecognised_reply(no_retry_wait: None) -> None:
+def test_silence_is_not_an_unrecognised_reply() -> None:
     """An asleep panel says nothing, as a missing one does: never offer to
     leave a real cooler alone for that."""
     from trcc.core.errors import UnrecognisedReply

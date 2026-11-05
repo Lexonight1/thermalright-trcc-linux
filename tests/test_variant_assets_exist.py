@@ -46,12 +46,22 @@ def _named_images() -> set[tuple[str, str]]:
     return out
 
 
+def _by_image() -> dict[str, list[str]]:
+    """Each named image, with every row that names it -- one case per image
+    (652 rows name 71 images; one file was checked ~9 times)."""
+    rows: dict[str, list[str]] = {}
+    for image, where in sorted(_named_images()):
+        rows.setdefault(image, []).append(where)
+    return rows
+
+
 @pytest.mark.parametrize(
-    ("image", "where"), sorted(_named_images()), ids=lambda v: str(v)[:40],
+    ("image", "where"), sorted(_by_image().items()), ids=lambda v: str(v)[:40],
 )
-def test_every_named_button_image_exists(image: str, where: str) -> None:
+def test_every_named_button_image_exists(image: str, where: list[str]) -> None:
     assert (_ASSETS / f"{image}.png").is_file(), (
-        f"{where} names button_image {image!r}, but "
+        f"{where[0]} (and {len(where) - 1} more row(s)) names button_image "
+        f"{image!r}, but "
         f"src/trcc/ui/gui/assets/{image}.png does not exist — the sidebar "
         f"draws a blank button for that cooler.  Extract it with "
         f"dev/tools/extract_resx_images.py --names {image},{image}a"
