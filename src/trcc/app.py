@@ -851,6 +851,18 @@ class App(CommandBus, ModuleServices):
         log.debug("encode_png: %dx%d", frame.width, frame.height)
         return self.renderer.encode_png(self.renderer.from_raw_rgb24(frame))
 
+    def fit_png(self, png: bytes, size: tuple[int, int]) -> bytes:
+        """*png* covering *size*: scaled to fill, centred, the overflow off."""
+        r = self.renderer
+        picture = r.decode_image(png)
+        (pw, ph), (w, h) = r.surface_size(picture), size
+        scale = max(w / pw, h / ph)
+        cw, ch = max(1, round(pw * scale)), max(1, round(ph * scale))
+        log.debug("fit_png: %dx%d -> cover %dx%d, %dx%d shown", pw, ph, cw, ch, w, h)
+        covered = r.resize(picture, cw, ch) if (cw, ch) != (pw, ph) else picture
+        return r.encode_png(r.composite(r.create_surface(w, h, (0, 0, 0)), covered,
+                                        ((w - cw) // 2, (h - ch) // 2)))
+
     def _persist_user_mask_dc(self, event: OverlayChanged) -> None:
         """On any overlay-metric edit (``OverlayChanged``), rewrite an active
         user mask's ``config1.dc`` so its metric placement is editable +

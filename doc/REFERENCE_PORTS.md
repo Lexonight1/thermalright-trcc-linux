@@ -31,7 +31,6 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
 | [`BaseModule`](#basemodule) | 2 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
-| [`FilesPort`](#filesport) | 2 | 0 | 1 |
 | [`FrameSource`](#framesource) | 2 | 0 | 3 |
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
@@ -48,7 +47,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`_HidBinding`](#_hidbinding) | 2 | 0 | 2 |
 | [`_MappingPort`](#_mappingport) | 2 | 0 | 2 |
 | [`AppService`](#appservice) | 3 | 0 | 1 |
-| [`BackgroundKind`](#backgroundkind) | 3 | 0 | 1 |
+| [`BackgroundKind`](#backgroundkind) | 3 | 1 | 1 |
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
 | [`BoardTempSource`](#boardtempsource) | 3 | 0 | 2 |
@@ -57,6 +56,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DiskSource`](#disksource) | 3 | 0 | 3 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`FanSource`](#fansource) | 3 | 2 | 4 |
+| [`FilesPort`](#filesport) | 3 | 0 | 1 |
 | [`GpuSource`](#gpusource) | 3 | 10 | 14 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
@@ -98,8 +98,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 9 | 8 |
-| [`ContentStore`](#contentstore) | 32 | 0 | 1 |
-| [`ModuleServices`](#moduleservices) | 35 | 0 | 1 |
+| [`ContentStore`](#contentstore) | 33 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 36 | 0 | 1 |
 
 ---
 
@@ -419,21 +419,6 @@ submit(resolution: 'tuple[int, int]', variant: 'str' = '', mask_variant: 'str' =
 
 **Implementations (2):** `SyncDataInstallRunner` · `ThreadDataInstallRunner`
 
-## FilesPort
-
-`core/ports.py`
-
-The ``files`` capability: TRCC's data folder, and pictures.
-
-**You implement (2):**
-
-```python
-data_root() -> Path
-encode_png(frame: 'RawFrame') -> bytes
-```
-
-**Implementations (1):** `_Files`
-
 ## FrameSource
 
 `core/ports.py`
@@ -691,6 +676,8 @@ resume(key: 'str') -> None
 snapshot(key: 'str') -> dict[str, Any] | None
 ```
 
+**You inherit (1):** `picture`
+
 **Implementations (1):** `VisualBackground`
 
 ## BaseBulkDevice
@@ -836,6 +823,22 @@ rpm() -> int | None
 **You inherit (2):** `on_gpu` · `percent`
 
 **Implementations (4):** `HwmonFan` · `SmcFan` · `SuperIoFan` · `SysctlFan`
+
+## FilesPort
+
+`core/ports.py`
+
+The ``files`` capability: TRCC's data folder, and pictures.
+
+**You implement (3):**
+
+```python
+data_root() -> Path
+encode_png(frame: 'RawFrame') -> bytes
+fit_png(png: 'bytes', size: 'tuple[int, int]') -> bytes
+```
+
+**Implementations (1):** `_Files`
 
 ## GpuSource
 
@@ -1629,7 +1632,7 @@ worker_thread_context() -> AbstractContextManager[None]
 
 Where themes, masks, backgrounds and capture configs are kept.
 
-**You implement (32):**
+**You implement (33):**
 
 ```python
 background_config(ref: 'str') -> dict[str, Any] | None
@@ -1662,6 +1665,7 @@ store_screencast(region: 'tuple[int, int, int, int, bool]') -> str
 tile_path(theme_dir: 'Path') -> Path | None
 user_theme_folders() -> builtins.list[Path]
 video_path(theme: 'Theme') -> Path | None
+write_background(theme_dir: 'Path', png: 'bytes') -> Path
 write_manifest(theme_dir: 'Path', manifest: 'dict') -> Path
 write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 ```
@@ -1674,7 +1678,7 @@ write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 
 The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
 
-**You implement (35):**
+**You implement (36):**
 
 ```python
 add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
@@ -1683,6 +1687,7 @@ data_root() -> Path
 encode_png(frame: 'RawFrame') -> bytes
 end_source(key: 'str', keep_choice: 'bool' = False) -> None
 fetch(url: 'str', allow: 'Callable[[str], bool]') -> bytes
+fit_png(png: 'bytes', size: 'tuple[int, int]') -> bytes
 gl_surface() -> type[GlSurface] | None
 hardware_ids() -> RgbHardware
 latest_readings() -> Mapping[str, float] | None

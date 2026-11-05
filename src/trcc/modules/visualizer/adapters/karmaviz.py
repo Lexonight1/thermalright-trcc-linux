@@ -312,6 +312,7 @@ class KarmaViz(GlVisual, key="karmaviz"):
     """KarmaViz's presets, one gallery tile each."""
 
     RANK = 20                       # after TRCC Pipes and Cavalier, before MilkDrop
+    PRESETS_SHIP = True             # assets/karmaviz/presets, not the user's
     INFO = VisualInfo(
         kind="karmaviz", title="KarmaViz", category="KarmaViz", uses_presets=True,
         adjustments=(

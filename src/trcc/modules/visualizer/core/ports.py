@@ -45,6 +45,10 @@ class VisualEngine(ABC):
     #: first thing the user sees (their call).  Equal ranks keep the order
     #: their classes registered in.  See :func:`ranked_visuals`.
     RANK: ClassVar[int] = 50
+    #: Whether its presets SHIP with TRCC (KarmaViz's) -- then each has a
+    #: shipped preview -- or are the user's own files (MilkDrop's), drawn on
+    #: the user's computer once and kept.
+    PRESETS_SHIP: ClassVar[bool] = False
 
     @classmethod
     def on_surface(cls, surface: type | None) -> type[VisualEngine]:

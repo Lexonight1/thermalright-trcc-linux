@@ -226,6 +226,10 @@ class _Files(FilesPort):
         log.debug("_Files.encode_png")
         return self._services.encode_png(frame)
 
+    def fit_png(self, png: bytes, size: tuple[int, int]) -> bytes:
+        log.debug("_Files.fit_png: %s", size)
+        return self._services.fit_png(png, size)
+
 
 class _Frames(FramesPort):
     def __init__(self, scope: ModuleScope) -> None:

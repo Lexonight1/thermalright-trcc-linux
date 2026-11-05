@@ -650,6 +650,14 @@ class FileContentStore(ContentStore):
         out.write_bytes(png)
         return out
 
+    def write_background(self, theme_dir: Path, png: bytes) -> Path:
+        """Write the theme's own background picture -- see
+        ContentStore.write_background."""
+        out = ThemeDir(theme_dir).bg
+        log.info("write_background: %d byte(s) → %s", len(png), out)
+        out.write_bytes(png)
+        return out
+
     def copy_preview(self, src_theme_dir: Path, dst_theme_dir: Path) -> bool:
         """Copy one theme's tile to another — see ContentStore.copy_preview."""
         src = ThemeDir(src_theme_dir).preview
@@ -731,10 +739,13 @@ class FileContentStore(ContentStore):
         found = self._resolve_asset_ref(ref) if isinstance(ref, str) and ref else None
         if found is not None and found.is_dir():
             # A ref naming a FOLDER is a module's background (its settings),
-            # readable or not -- never a picture to draw.
-            log.debug("background_path: %s → a module's background (%s), no "
-                      "file", theme.name, ref)
-            return None
+            # readable or not -- never a picture to draw.  Its picture is the
+            # theme's own still beside it (SaveTheme writes one), which an
+            # export carries and a TRCC without the module shows.
+            still = ThemeDir(theme.path).bg
+            log.debug("background_path: %s → a module's background (%s), "
+                      "still %s", theme.name, ref, still.exists())
+            return still if still.exists() else None
         if isinstance(ref, str) and ref:
             resolved = self._resolve_asset_ref(ref)
             if resolved is not None:

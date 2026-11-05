@@ -1904,6 +1904,13 @@ class ContentStore(ABC):
         """
 
     @abstractmethod
+    def write_background(self, theme_dir: Path, png: bytes) -> Path:
+        """Give *theme_dir* its own background picture (``00.png``); return
+        its path.  A theme whose background a module draws keeps a still of
+        it here -- what an export carries and a TRCC without the module shows.
+        """
+
+    @abstractmethod
     def copy_preview(self, src_theme_dir: Path, dst_theme_dir: Path) -> bool:
         """Copy *src*'s grid tile to *dst*; False when *src* has none.
 
@@ -2654,6 +2661,14 @@ class BackgroundKind(ABC):
         """What a theme saved now from panel *key* keeps -- None when this
         kind is not what the panel shows."""
 
+    def picture(self, payload: Mapping[str, Any],
+                size: tuple[int, int]) -> bytes | None:
+        """A still of this background drawn with *payload* at *size*, as PNG
+        -- the theme's own picture (``00.png``), which an export carries and a
+        TRCC without the module shows.  None: this kind draws no still."""
+        log.debug("BackgroundKind.picture: %s has none (%s)", self.prefix, size)
+        return None
+
 
 class PanelsPort(ABC):
     """The ``panels`` capability: the LCD panels attached."""
@@ -2804,6 +2819,11 @@ class FilesPort(ABC):
     @abstractmethod
     def encode_png(self, frame: RawFrame) -> bytes:
         """*frame* as a PNG."""
+
+    @abstractmethod
+    def fit_png(self, png: bytes, size: tuple[int, int]) -> bytes:
+        """The picture *png* covering *size*: scaled to fill it, centred,
+        the overflow cut off -- never stretched, never letterboxed."""
 
 
 class FramesPort(ABC):
@@ -3075,6 +3095,9 @@ class ModuleServices(ABC):
 
     @abstractmethod
     def encode_png(self, frame: RawFrame) -> bytes: ...
+
+    @abstractmethod
+    def fit_png(self, png: bytes, size: tuple[int, int]) -> bytes: ...
 
     @abstractmethod
     def watch_frames(self, handler: Callable[[PanelPicture], None]) -> None: ...

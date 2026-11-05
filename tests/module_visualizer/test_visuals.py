@@ -1232,3 +1232,106 @@ def test_a_visual_background_is_read_or_refused(
     read = visualizer_app._choice(found[2], _KEY) if found is not None else None
     assert (read, app.themes.background_path(theme)) == (
         expected, None)                                     # drawn, never a file
+
+
+# ── The previews are pictures: shipped, never drawn per gallery open ─────
+
+
+def test_every_built_in_visual_and_shipped_preset_has_its_preview(tmp_path: Path) -> None:
+    """The gallery tile and a visual theme's own ``00.png`` come from the
+    shipped preview -- every built-in visual's, and every preset that ships
+    (KarmaViz's; ``PRESETS_SHIP``).  One added without a preview would be
+    drawn on the user's machine again: run dev/tools/gen_visual_previews.py."""
+    wanted = [(key, "") for key in VISUALS if not VISUALS[key].INFO.uses_presets]
+    wanted += [(key, preset) for key in VISUALS if VISUALS[key].PRESETS_SHIP
+               for preset in VISUALS[key].presets(tmp_path)]
+    missing = [f"{key} {preset}".strip() for key, preset in wanted
+               if not visualizer_app.preview_file(key, preset).is_file()]
+    assert len(wanted) > 13 and missing == [], (
+        f"no preview for {missing}: run dev/tools/gen_visual_previews.py")
+
+
+def test_a_gallery_tile_draws_nothing(
+        app: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """It was drawn on every gallery open -- 25 ms a visual (2026-11-05) for
+    a preview picture.  MUTATION CHECK: draw it again."""
+    from PySide6.QtGui import QImage
+
+    def drawn(*_: Any) -> Any:
+        raise AssertionError("a built-in visual's tile was drawn")
+    monkeypatch.setattr(visualizer_app, "snapshot", drawn)
+    for visual, preset in (("trcc-pipes", ""), ("karmaviz", "stormy_monday.json")):
+        tile = app.dispatch(VisualTile(visual=visual, preset=preset, size=120))
+        assert tile.ok, tile.message
+        picture = QImage.fromData(tile.image)
+        assert (picture.width(), picture.height()) == (120, 120)
+
+
+def test_a_preview_covers_the_panel_without_stretching(app: App) -> None:
+    """``fit_png``: scaled to FILL, centred, the overflow cut -- a square
+    preview on a 1600x720 panel is neither squashed nor letterboxed.  A 2x1
+    picture, red | blue, covering 4x4: the left half red, the right blue."""
+    from PySide6.QtGui import QColor, QImage
+
+    two = QImage(2, 1, QImage.Format.Format_RGB32)
+    two.setPixelColor(0, 0, QColor(255, 0, 0))
+    two.setPixelColor(1, 0, QColor(0, 0, 255))
+    fitted = QImage.fromData(app.fit_png(app.renderer.encode_png(two), (4, 4)))
+    assert (fitted.width(), fitted.height()) == (4, 4)
+    left, right = fitted.pixelColor(0, 2), fitted.pixelColor(3, 2)
+    assert (left.red() > 200 and left.blue() < 60, right.blue() > 200 and right.red() < 60) == (True, True)
+    # No bar: the top row is the picture too -- letterboxed, it is black.
+    assert fitted.pixelColor(0, 0).red() > 200
+
+
+def test_a_saved_visual_theme_has_its_picture_and_exports_it(
+        app: App, tmp_path: Path) -> None:
+    """The theme keeps the visual's preview as its own ``00.png``: an export
+    carries it and a TRCC without the module shows it.  Both had no
+    background at all (work list 25, #8)."""
+    import zipfile
+
+    from PySide6.QtGui import QImage
+
+    from trcc.core.commands import ExportTheme
+
+    assert app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Start"))).ok
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    saved = app.dispatch(SaveTheme(key=_KEY, name="Viz"))
+    still = Path(saved.theme_path) / "00.png"
+    picture = QImage(str(still))
+    assert (picture.width(), picture.height()) == (320, 320)
+    assert app.themes.background_path(app.themes.load(Path(saved.theme_path))) == still
+
+    archive = tmp_path / "viz.zip"
+    assert app.dispatch(ExportTheme(key=_KEY, theme_name="Viz", archive_path=archive)).ok
+    with zipfile.ZipFile(archive) as z:
+        assert z.read("00.png") == still.read_bytes()
+
+
+def test_a_preset_picture_is_drawn_once_and_again_when_it_changes(
+        app: App, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A preset is the user's own file, so its picture is drawn here -- once,
+    and kept; editing the preset draws it again."""
+    from typing import cast
+
+    from trcc.core.models import RawFrame
+
+    module = cast(visualizer_app.VisualizerModule, app.modules.root("visualizer"))
+    preset = tmp_path / "a.milk"
+    preset.write_text("one", encoding="utf-8")
+    draws: list[str] = []
+
+    def drawn(spec: Any, engine: Any) -> RawFrame:
+        draws.append(spec.kind)
+        return RawFrame(data=bytes(3 * 16 * 16), width=16, height=16)
+    monkeypatch.setattr(visualizer_app, "snapshot", drawn)
+    monkeypatch.setattr(module, "resolve",
+                        lambda kind, name: (None, preset, ""))
+    first, _ = module.picture_png("milkdrop", "a.milk", (16, 16))
+    again, _ = module.picture_png("milkdrop", "a.milk", (16, 16))
+    assert (len(draws), first == again) == (1, True)
+    import os
+    os.utime(preset, ns=(preset.stat().st_atime_ns, preset.stat().st_mtime_ns + 10**9))
+    module.picture_png("milkdrop", "a.milk", (16, 16))
+    assert len(draws) == 2

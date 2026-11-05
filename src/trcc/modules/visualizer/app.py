@@ -10,7 +10,10 @@ themes save and load its visuals through :class:`VisualBackground`.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import shutil
 from collections.abc import Mapping
 from functools import partial
 from pathlib import Path
@@ -26,7 +29,7 @@ from .core.events import VisualHearingChanged
 from .core.models import VISUAL_FPS, VisualInfo, VisualSpec
 from .core.ports import VisualEngine, ranked_visuals
 from .core.results import VisualResult
-from .services.visual_stream import VisualReader
+from .services.visual_stream import VisualReader, snapshot
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +37,14 @@ log = logging.getLogger(__name__)
 PREFIX = "visual_background"
 #: Its presets' folder, in TRCC's data folder (where it has always been).
 PRESETS = "visuals"
+#: Where pictures drawn on this computer are kept, under TRCC's data folder
+#: -- a preset's, which no TRCC can ship (they are the user's own files).
+TILES = "visual_tiles"
+#: Each built-in visual's preview, drawn once by dev/tools/gen_visual_previews.py
+#: and shipped: ``<kind>.jpg``, and ``<kind>/<preset>.jpg`` for presets that
+#: ship (``VisualEngine.PRESETS_SHIP``).  No centre picture: none can ship.
+#: JPEG: as PNG, KarmaViz's noisy gradients made 19 previews 2.8 MB.
+PREVIEWS = Path(__file__).resolve().parent / "assets" / "previews"
 
 #: One panel's choice: which visual, its preset, its slider values.
 Choice = tuple[str, str, dict[str, float]]
@@ -80,6 +91,70 @@ class VisualizerModule(BaseModule, key="visualizer"):
         if kind not in self._visuals:
             raise OSError(f"no audio visual {kind!r} on this computer")
         return self._visuals[kind]
+
+    def picture_png(self, kind: str, preset: str, size: tuple[int, int],
+                    settings: Mapping[str, float] | None = None,
+                    ) -> tuple[bytes, str]:
+        """*kind*'s picture at *size* -- the gallery's tile -- as PNG:
+        ``(png, "")``, or ``(b"", problem)``.  A theme saved with a visual
+        keeps the same picture as its own ``00.png`` (VisualBackground.picture).
+
+        A built-in visual's, and a shipped preset's, is its SHIPPED preview
+        (``assets/previews``), fitted to *size*.  Every tile was drawn on
+        every gallery open -- 32 tiles, 6 s, measured 2026-11-05 -- for what
+        is a preview picture.  Only a preset of the user's own (MilkDrop) is
+        drawn here, once, and kept.
+        """
+        _info, preset_path, problem = self.resolve(kind, preset)
+        if problem:
+            log.debug("visualizer.picture_png: %s %r -- %s", kind, preset, problem)
+            return b"", problem
+        shipped = preview_file(kind, preset)
+        if shipped.is_file():
+            log.debug("visualizer.picture_png: %s shipped preview at %s", kind, size)
+            return self.host.files.fit_png(shipped.read_bytes(), size), ""
+        args = self._picture_args()
+        sliders = dict(settings or {})
+        path = self._picture_path(kind, preset_path, size, args, sliders)
+        if path.is_file():
+            log.debug("visualizer.picture_png: %s %r %s kept", kind, preset, size)
+            return path.read_bytes(), ""
+        spec = VisualSpec(kind, *size, preset=preset_path, settings=sliders, **args)
+        try:
+            frame = snapshot(spec, self.visual(kind)())
+        except OSError as e:
+            log.warning("visualizer.picture_png: %s could not draw: %s", kind, e)
+            return b"", f"{kind} could not draw: {e}"
+        png = self.host.files.encode_png(frame)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        part = path.with_suffix(".part")      # never a half-written picture
+        part.write_bytes(png)
+        part.replace(path)
+        log.info("visualizer.picture_png: %s %r %dx%d drawn and kept (%d bytes)",
+                 kind, preset, size[0], size[1], len(png))
+        return png, ""
+
+    def _picture_path(self, kind: str, preset: Path | None, size: tuple[int, int],
+                      args: Mapping[str, Any], sliders: Mapping[str, float],
+                      ) -> Path:
+        """Where a drawn picture is kept: a folder per LOOK -- the centre
+        picture drawn into it (its file, its last change, its fire) -- with
+        one file per visual, preset FILE (and its last change: an edited
+        preset is drawn again), size and sliders.  A new look replaces the old
+        folders: nothing can ask for their pictures again."""
+        center = args.get("center")
+        look = _digest([str(center), _changed(center), args.get("center_fire", 0.0)])
+        root = self.host.files.data_root() / TILES
+        folder = root / look
+        if root.is_dir() and not folder.is_dir():
+            for old in (p for p in root.iterdir() if p.is_dir()):
+                log.info("visualizer._picture_path: %s is an old look -- removed", old.name)
+                shutil.rmtree(old, ignore_errors=True)
+        name = _digest([kind, str(preset), _changed(preset), list(size),
+                        sorted(sliders.items())])
+        log.debug("visualizer._picture_path: %s %r %s -> %s/%s", kind, preset,
+                  size, look, name)
+        return folder / f"{name}.png"
 
     def presets_dir(self) -> Path:
         """Where the preset files are."""
@@ -280,6 +355,22 @@ class VisualBackground(BackgroundKind):
         log.debug("VisualBackground.resume: %s", key)
         self._module.resume(key)
 
+    def picture(self, payload: Mapping[str, Any],
+                size: tuple[int, int]) -> bytes | None:
+        """The theme's own picture of its visual: the gallery tile, at the
+        panel's *size* -- kept, so it is drawn once."""
+        chosen = _choice(payload, "picture")
+        if chosen is None:
+            log.warning("VisualBackground.picture: unreadable %s", dict(payload))
+            return None
+        kind, preset, sliders = chosen
+        png, problem = self._module.picture_png(kind, preset, size, sliders)
+        if problem:
+            log.warning("VisualBackground.picture: %s %r -- %s", kind, preset, problem)
+            return None
+        log.info("VisualBackground.picture: %s %r at %dx%d", kind, preset, *size)
+        return png
+
     def snapshot(self, key: str) -> dict[str, Any] | None:
         """What a theme saved now from panel *key* keeps."""
         chosen = self._module.choice(key)
@@ -288,6 +379,28 @@ class VisualBackground(BackgroundKind):
             return None
         kind, preset, sliders = chosen
         return {"visual": kind, "preset": preset, "settings": sliders}
+
+
+def preview_file(kind: str, preset: str = "") -> Path:
+    """Where *kind*'s shipped preview is -- its *preset*'s, when it has one."""
+    found = (PREVIEWS / kind / f"{Path(preset).stem}.jpg" if preset
+             else PREVIEWS / f"{kind}.jpg")
+    log.debug("preview_file: %s %r -> %s", kind, preset, found)
+    return found
+
+
+def _changed(path: Path | None) -> int:
+    """*path*'s last change, 0 for none -- part of a kept picture's name."""
+    stamp = path.stat().st_mtime_ns if path is not None and path.is_file() else 0
+    log.debug("_changed: %s -> %d", path, stamp)
+    return stamp
+
+
+def _digest(parts: list[Any]) -> str:
+    """A short, stable name for *parts* -- a kept picture's file name."""
+    found = hashlib.sha256(json.dumps(parts, default=str).encode()).hexdigest()[:16]
+    log.debug("_digest: %s -> %s", parts, found)
+    return found
 
 
 def _choice(data: Mapping[str, Any], key: str) -> Choice | None:

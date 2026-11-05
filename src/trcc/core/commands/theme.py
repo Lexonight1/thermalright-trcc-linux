@@ -717,6 +717,19 @@ class LoadTheme(Command[ThemeResult]):
                      if sent else f"Theme '{theme.name}' rendered but send failed",
             )
 
+def _module_picture(app: App, key: str, module: str,
+                    size: tuple[int, int]) -> bytes | None:
+    """A still of the background *module* draws on panel *key*, at *size*, as
+    PNG -- its own preview picture (``BackgroundKind.picture``); None when the
+    module has none to give."""
+    kind = app.background_kind_of(module)
+    payload = kind.snapshot(key) if kind is not None else None
+    still = kind.picture(payload, size) if kind is not None and payload is not None else None
+    log.info("_module_picture: %s %s at %dx%d -> %s", key, module, *size,
+             f"{len(still)} bytes" if still else "none")
+    return still
+
+
 def _module_drawing(app: App, s: DeviceSettings) -> str | None:
     """The module whose background a theme saved from *s* carries -- the
     chosen one, when it is what the panel shows (no cast over it) and it is
@@ -1038,6 +1051,10 @@ class SaveTheme(Command[ThemeResult]):
         # The background is one thing: a picture, a video -- or an audio
         # visual, its settings in its own JSON like any library asset.
         module = _module_drawing(app, s)
+        if module and (still := _module_picture(app, self.key, module, (width, height))):
+            # The theme's own picture of it: what an export carries and a TRCC
+            # without the module shows.  Without it, both had no background.
+            app.themes.write_background(target, still)
         bg_ref = (self._store_module_background(app, module) if module
                   else self._store_background(app, theme, s, width, height))
         if bg_ref is not None:
@@ -1447,16 +1464,20 @@ class ExportCurrentTheme(Command[ThemeExportResult]):
                           "(connect the device first)")
 
         manifest = SaveTheme._live_manifest(app, theme, s, name, *resolution)
-        bg = SaveTheme._pick_asset(
+        module = _module_drawing(app, s)
+        still = _module_picture(app, self.key, module, resolution) if module else None
+        bg = (None if still else SaveTheme._pick_asset(
             s.chosen_file, app.themes.background_path(theme), "background",
-        )
+        ))
         mask = (SaveTheme._pick_asset(
             s.mask_path, app.themes.mask_path(theme), "mask",
         ) if s.mask_visible else None)
         try:
             with _tr_background(app, self.key, self.archive_path, bg,
                                 resolution) as baked:
-                background = (
+                # A module's picture is the background as the panel shows it;
+                # it carried the theme's own picture instead (work list 25 #8).
+                background = still or (
                     baked if baked is None
                     or MEDIA.kind_of(baked) is MediaKind.ANIMATED
                     else app.renderer.encode_png(app.renderer.open_image(baked)))

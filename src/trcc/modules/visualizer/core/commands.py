@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, ClassVar
 from trcc.core.commands._base import ModuleCommand, ModuleQuery
 from trcc.core.models import Capability
 
-from .models import VisualSpec
 from .results import VisualResult, VisualsResult, VisualTileResult
 
 if TYPE_CHECKING:
@@ -157,25 +156,16 @@ class VisualTile(ModuleQuery[VisualTileResult, "VisualizerModule"]):
     size: int = 120
 
     def run(self, module: VisualizerModule) -> VisualTileResult:
-        from ..services.visual_stream import snapshot
-
         log.info("VisualTile: %s %r at %d", self.visual, self.preset, self.size)
-        _info, preset, problem = module.resolve(self.visual, self.preset)
-        if not 16 <= self.size <= MAX_TILE:
-            problem = f"a tile is 16 to {MAX_TILE} pixels a side"
-        if not problem:
-            spec = VisualSpec(self.visual, self.size, self.size, preset=preset,
-                              **module._picture_args())
-            try:
-                frame = snapshot(spec, module.visual(self.visual)())
-            except OSError as e:
-                problem = f"{self.visual} could not draw: {e}"
+        png, problem = (
+            (b"", f"a tile is 16 to {MAX_TILE} pixels a side")
+            if not 16 <= self.size <= MAX_TILE
+            else module.picture_png(self.visual, self.preset, (self.size, self.size)))
         if problem:
             log.warning("VisualTile: %s %r refused: %s", self.visual,
                         self.preset, problem)
             return VisualTileResult(ok=False, visual=self.visual,
                                     preset=self.preset, message=problem)
-        png = module.host.files.encode_png(frame)
         return VisualTileResult(ok=True, visual=self.visual, preset=self.preset,
                                 image=png, media_type="image/png",
                                 message=f"{len(png)} bytes")
