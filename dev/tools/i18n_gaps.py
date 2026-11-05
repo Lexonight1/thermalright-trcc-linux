@@ -173,15 +173,14 @@ def write_main(new: Table, path: Path = MAIN) -> int:
 
 
 def _block_keys(block: list[str]) -> set[str]:
-    """The keys a language's block already holds, read from its lines."""
+    """The keys a language's block already holds -- the block read as one
+    dict, since an entry too long for a line is split over two (the English
+    block's ``'Your panel {panel} uses {module} ...'`` is), and a line at a
+    time read half an entry and failed."""
     import ast
 
-    keys: set[str] = set()
-    for line in block[1:]:
-        text = line.strip().rstrip(",")
-        if text and not text.startswith("#"):
-            parsed = ast.literal_eval("{" + text + "}")
-            keys.update(parsed)
+    keys = set(ast.literal_eval("{" + "\n".join(block[1:]) + "}"))
+    log.debug("_block_keys: %d", len(keys))
     return keys
 
 

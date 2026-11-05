@@ -71,6 +71,22 @@ def test_the_gap_tool_adds_lines_without_moving_any(tmp_path: Path) -> None:
         "    'de': {", "        'A': 'Ah',", "        'B': 'Beh',", "    },"]
 
 
+def test_the_gap_tool_reads_an_entry_split_over_two_lines(tmp_path: Path) -> None:
+    """A long entry wraps its translation onto the next line; the block is
+    still read whole.  MUTATION CHECK: read ``_block_keys`` a line at a time."""
+    source = tmp_path / "i18n.py"
+    source.write_text(
+        "TRANSLATIONS = {\n"
+        "    'en': {\n"
+        "        'Long words':\n"
+        "            'Long words',\n"
+        "    },\n"
+        "}\n", encoding="utf-8")
+    assert i18n_gaps.write_main({"en": {"Long words": "Long words", "B": "B"}}, source) == 1
+    assert source.read_text(encoding="utf-8").split("\n")[2:6] == [
+        "        'Long words':", "            'Long words',", "        'B': 'B',", "    },"]
+
+
 def test_a_module_table_merges_into_its_json(tmp_path: Path) -> None:
     """A module's ``i18n.json`` gains the new entries and keeps the old."""
     (tmp_path / "viz").mkdir()
