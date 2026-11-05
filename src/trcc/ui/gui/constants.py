@@ -295,6 +295,7 @@ class Layout:
     TOGGLE_MASK = (5, 5, 36, 18)
     ACTION_BTN_1 = (149, 30, 40, 40)
     ACTION_BTN_2 = (219, 30, 40, 40)
+    ACTION_BTN_3 = (289, 30, 40, 40)   # ours: the Background panel's Box
 
     # Add element panel buttons
     ADD_BTN_X = 12
@@ -351,6 +352,16 @@ class Styles:
     FLAT_BUTTON_HOVER = """
         QPushButton { background-color: transparent; border: none; }
         QPushButton:hover { background-color: rgba(255, 255, 255, 15); }
+    """
+
+    #: An action of ours with no Windows icon: its name, drawn like the
+    #: white outlined icons beside it.
+    ACTION_TEXT_BUTTON = """
+        QPushButton { background-color: transparent; color: white;
+                      border: 2px solid white; border-radius: 5px;
+                      font-family: 'Microsoft YaHei'; font-size: 10pt; }
+        QPushButton:hover { background-color: rgba(255, 255, 255, 15); }
+        QPushButton:disabled { color: gray; border-color: gray; }
     """
 
     TEXT_BUTTON = """

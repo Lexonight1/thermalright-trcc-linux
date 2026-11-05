@@ -23,6 +23,10 @@ from PySide6.QtGui import (
     QPalette,
 )
 from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QFrame,
     QLabel,
     QLineEdit,
@@ -32,7 +36,7 @@ from PySide6.QtWidgets import (
 
 from ...core.geometry import lock_region_to_panel
 from ...core.logs import per_frame
-from ...core.models import ACTION_ICON_IMAGES, OverlayMode
+from ...core.models import ACTION_ICON_IMAGES, InsetCorner, InsetSize, OverlayMode
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -292,6 +296,7 @@ class DisplayModePanel(QFrame):
         "Network": "Network stream",
         "Settings": "Settings",
         "Upload": "Upload custom mask",
+        "Box": "A module's picture in a box over the theme",
     }
 
     # Tooltip text for toggle buttons by mode
@@ -334,18 +339,24 @@ class DisplayModePanel(QFrame):
         # Action buttons with icon images
         _ICON_MAP = ACTION_ICON_IMAGES
         self._action_buttons: list[QPushButton] = []
-        action_positions = [Layout.ACTION_BTN_1, Layout.ACTION_BTN_2]
+        action_positions = [Layout.ACTION_BTN_1, Layout.ACTION_BTN_2,
+                            Layout.ACTION_BTN_3]
         for i, action_name in enumerate(self.actions):
             if i >= len(action_positions):
                 break
             btn = QPushButton(self)
             btn.setGeometry(*action_positions[i])
             if (icon_name := _ICON_MAP.get(action_name)):
+                btn.setStyleSheet(Styles.FLAT_BUTTON_HOVER)
                 px = Assets.load_pixmap(icon_name, 40, 40)
                 if not px.isNull():
                     btn.setIcon(QIcon(px))
                     btn.setIconSize(btn.size())
-            btn.setStyleSheet(Styles.FLAT_BUTTON_HOVER)
+            else:
+                # An action of ours with no Windows icon says what it is.
+                log.debug("_setup_ui: %s has no icon -- a text button", action_name)
+                btn.setText(action_name)
+                btn.setStyleSheet(Styles.ACTION_TEXT_BUTTON)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setToolTip(self._TOOLTIP_MAP.get(action_name, action_name))
             btn.setEnabled(False)  # Disabled until toggle is ON (C# buttonOnOff_Set)
@@ -833,3 +844,48 @@ class ScreenCastPanel(DisplayModePanel):
             if self._audio_on else
             "QPushButton { background: #555; color: white; border: none; font-size: 10px; }"
         )
+
+
+class InsetDialog(QDialog):
+    """The Background panel's Box: a module's picture in a box over the
+    theme -- which module (or Off), the corner, the size.  Opened on what
+    the App holds; it sends nothing itself (:meth:`choice`)."""
+
+    def __init__(self, modules: Sequence[tuple[str, str]], module: str,
+                 corner: str, size: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        log.info("InsetDialog: %d module(s), now %r %s %s", len(modules), module,
+                 corner, size)
+        self.setWindowTitle("Module picture in a box")
+        self._module = self._combo((("", "Off"), *modules), module)
+        self._corner = self._combo(tuple(
+            (c.value, c.value.replace("-", " ").capitalize()) for c in InsetCorner),
+            corner)
+        self._size = self._combo(tuple((z.value, z.value.capitalize())
+                                       for z in InsetSize), size)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form = QFormLayout(self)
+        form.addRow("Module:", self._module)
+        form.addRow("Corner:", self._corner)
+        form.addRow("Size:", self._size)
+        form.addRow(buttons)
+
+    def _combo(self, items: Sequence[tuple[str, str]], current: str) -> QComboBox:
+        """A combo of ``(value, label)`` items, on *current*."""
+        combo = QComboBox(self)
+        for value, label in items:
+            combo.addItem(label, userData=value)
+        combo.setCurrentIndex(max(0, combo.findData(current)))
+        log.debug("InsetDialog._combo: %d item(s), on %r", len(items), current)
+        return combo
+
+    def choice(self) -> tuple[str, str, str]:
+        """The module ("" for Off), the corner and the size chosen."""
+        chosen = (str(self._module.currentData()), str(self._corner.currentData()),
+                  str(self._size.currentData()))
+        log.info("InsetDialog.choice: %s", chosen)
+        return chosen

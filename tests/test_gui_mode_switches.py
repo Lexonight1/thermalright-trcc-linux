@@ -264,3 +264,39 @@ def test_a_date_element_shows_its_four_formats_and_picks_one(
     qtbot.mouseClick(switch, Qt.MouseButton.LeftButton,
                      pos=QPoint(switch.width() * 7 // 8, switch.height() // 2))
     assert picked == [(OverlayMode.DATE, 4)]
+
+
+def test_the_background_panels_box_sets_and_clears_a_module_box(
+        window: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Box opens on what the App holds, lists the modules that draw
+    pictures, and sends ONE Command: SetInset, or ClearInset for Off.
+    MUTATION CHECK: drop ``"Box"`` from ``UCThemeSetting``'s action map."""
+    import trcc.ui.gui.trcc_app as trcc_app_module
+
+    opened: list[tuple[Any, ...]] = []
+    answers = iter([("visualizer", "top-left", "small"), ("", "top-left", "small")])
+
+    class _Dialog:
+        def __init__(self, modules: Any, module: str, corner: str, size: str,
+                     parent: Any = None) -> None:
+            opened.append((tuple(modules), module, corner, size))
+
+        def exec(self) -> Any:
+            from PySide6.QtWidgets import QDialog
+            return QDialog.DialogCode.Accepted
+
+        def choice(self) -> tuple[str, str, str]:
+            return next(answers)
+
+    monkeypatch.setattr(trcc_app_module, "InsetDialog", _Dialog)
+    box = window.uc_theme_setting.background_panel._action_buttons[2]
+    assert box.text() == "Box" and box.isEnabled()
+    box.click()
+    snap = _snap(window)
+    assert (snap.inset_module, snap.inset_corner, snap.inset_size) == (
+        "visualizer", "top-left", "small")
+    assert opened[0][1:] == ("", "bottom-right", "medium")      # no box yet
+    assert "visualizer" in dict(opened[0][0])
+    box.click()
+    assert opened[1][1:] == ("visualizer", "top-left", "small")  # what the App holds
+    assert _snap(window).inset_module == ""

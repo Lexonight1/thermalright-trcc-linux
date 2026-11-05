@@ -24,6 +24,7 @@ from PySide6.QtGui import QColor, QIcon, QPalette, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QInputDialog,
     QLabel,
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import (
+    ClearInset,
     ConnectDevice,
     ControlCenterSnapshot,
     DeleteTheme,
@@ -56,6 +58,7 @@ from ...core.commands import (
     SetBackground,
     SetGpuDevice,
     SetHddEnabled,
+    SetInset,
     SetLanguage,
     SetMaskVisible,
     SetMediaPlayer,
@@ -76,6 +79,8 @@ from ...core.models import (
     CUTTER_DEFAULT_FPS,
     FitMode,
     HardwareMetrics,
+    InsetCorner,
+    InsetSize,
     Kind,
     ThemeDir,
 )
@@ -90,6 +95,7 @@ from .assets import Assets
 from .base import create_image_button, set_background_pixmap
 from .base_handler import BaseHandler
 from .constants import Colors, Layout, Sizes, Styles
+from .display_mode_panels import InsetDialog
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
 from .module_page import ModulePage
@@ -2036,6 +2042,8 @@ class TRCCApp(QMainWindow):
                 self._on_media_player_load_clicked()
             case UCThemeSetting.CMD_VIDEO_URL:
                 self._on_media_player_url_clicked()
+            case UCThemeSetting.CMD_INSET:
+                self._on_inset_clicked()
             case 51:
                 self._show_panel(1)
             case UCThemeSetting.CMD_VIDEO_TOGGLE:
@@ -2286,6 +2294,33 @@ class TRCCApp(QMainWindow):
         result = self._app.dispatch(SetMediaPlayer(key=h.device_key, uri=url))
         self.uc_preview.set_status(
             f"Streaming: {url}" if result.ok else f"Error: {result.message}")
+
+    def _on_inset_clicked(self) -> None:
+        """The Background panel's Box: a module's picture in a box over the
+        theme, opened on what the App holds and sent as one Command."""
+        h = self._active_lcd()
+        if h is None:
+            log.info("_on_inset_clicked: no LCD selected")
+            return
+        snap = self._app.dispatch(LcdSnapshot(key=h.device_key))
+        choices = [(m.key, m.title) for m in self._app.dispatch(ListModules()).modules
+                   if m.draws_pictures]
+        if snap.inset_module and snap.inset_module not in dict(choices):
+            choices.append((snap.inset_module, snap.inset_title or snap.inset_module))
+        dialog = InsetDialog(choices, snap.inset_module,
+                             snap.inset_corner or InsetCorner.BOTTOM_RIGHT.value,
+                             snap.inset_size or InsetSize.MEDIUM.value, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            log.info("_on_inset_clicked: cancelled")
+            return
+        module, corner, size = dialog.choice()
+        result = self._app.dispatch(
+            SetInset(key=h.device_key, module=module, corner=corner, size=size)
+            if module else ClearInset(key=h.device_key))
+        log.info("_on_inset_clicked: %s -> ok=%s %s", module or "off", result.ok,
+                 result.message)
+        self.uc_preview.set_status(result.message if result.ok
+                                   else f"Error: {result.message}")
 
     def _video_picker_start_dir(self, h: Any) -> str:
         """Resolve the QFileDialog start directory for a video pick.
