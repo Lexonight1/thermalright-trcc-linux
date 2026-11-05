@@ -216,8 +216,14 @@ jobs:
           Requires:   libusb1
           Requires:   sg3_utils
           Requires:   python3-hidapi
-          Recommends: p7zip
-          Recommends: ffmpeg
+          # ffmpeg is REQUIRED (2026-11-05): every video theme, cloud video and
+          # the trimmer run it.  By PATH, not name: stock Fedora has no
+          # package called ffmpeg (that one is RPM Fusion), so a Recommends on
+          # the name was silently skipped there.  /usr/bin/ffmpeg is the stock
+          # ffmpeg-free, or the RPM Fusion ffmpeg where that repo is on.  7z the
+          # same: the Fedora p7zip ships 7za, not the 7z the app looks for.
+          Requires:   /usr/bin/ffmpeg
+          Recommends: /usr/bin/7z
           Recommends: python3-dbus
           Recommends: dmidecode
           Recommends: python3-sounddevice
@@ -365,8 +371,8 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-hid, python3-click, python3-typer, python3-fastapi, python3-cryptography, python3-uvicorn, python3-websockets, python3-python-multipart | python3-multipart (<< 0.1), python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils
-          Recommends: p7zip-full, ffmpeg, python3-pynvml, python3-dbus, dmidecode, python3-sounddevice
+          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-hid, python3-click, python3-typer, python3-fastapi, python3-cryptography, python3-uvicorn, python3-websockets, python3-python-multipart | python3-multipart (<< 0.1), python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils, ffmpeg
+          Recommends: p7zip-full, python3-pynvml, python3-dbus, dmidecode, python3-sounddevice
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
           Description: Thermalright LCD/LED Control Center for Linux
@@ -449,8 +455,8 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pip, python3-venv, libportaudio2, libusb-1.0-0, sg3-utils, libxcb-cursor0, libegl1
-          Recommends: p7zip-full, ffmpeg, python3-dbus, python3-gi, dmidecode
+          Depends: python3 (>= 3.9), python3-pip, python3-venv, libportaudio2, libusb-1.0-0, sg3-utils, libxcb-cursor0, libegl1, ffmpeg
+          Recommends: p7zip-full, python3-dbus, python3-gi, dmidecode
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
           Description: Thermalright LCD/LED Control Center for Linux
@@ -586,6 +592,10 @@ jobs:
           depend = libusb
           depend = sg3_utils
           depend = dmidecode
+          # ffmpeg is a hard depend (2026-11-05): every video theme, cloud
+          # video and the trimmer run it.  It was an optdepend, which pacman
+          # never installs unless asked.
+          depend = ffmpeg
           # DO NOT make this a hard depend. python-nvidia-ml-py depends on
           # nvidia-utils -- ~938 MB of driver + EGL stack on an AMD-only
           # machine (#216). It was changed to a hard depend once, shipped in
@@ -594,7 +604,6 @@ jobs:
           # Platform.software_install_hint names the per-distro package (#207).
           optdepend = python-nvidia-ml-py: NVIDIA GPU sensor support
           optdepend = 7zip: theme archive extraction
-          optdepend = ffmpeg: video and GIF playback
           # DO NOT make either of these a hard depend (#293).  They are the
           # SAME python module from two packages and CONFLICT with each other,
           # so naming one forces the other off the system: a Steam Deck has

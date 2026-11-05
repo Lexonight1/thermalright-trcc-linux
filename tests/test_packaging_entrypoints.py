@@ -479,3 +479,24 @@ def test_every_runtime_asset_is_in_the_wheel() -> None:
                     for v in patterns))
     assert left_out == []
 
+
+
+def test_every_package_installs_ffmpeg() -> None:
+    """Every video theme, cloud video and the trimmer run ffmpeg, and it was
+    only ever suggested: a deb/rpm ``Recommends`` (skipped by
+    ``--no-install-recommends``) and an Arch ``optdepend`` (never installed
+    unless asked).  The rpm's was a package stock Fedora does not have, so
+    dnf skipped it there every time -- by PATH, ``/usr/bin/ffmpeg`` is
+    Fedora's own ffmpeg-free (2026-11-05).  Windows, macOS and Nix ship it.
+
+    MUTATION CHECK: put any one back as a suggestion -> fails naming it."""
+    deb_depends = {
+        name: re.search(r"^\s*Depends:([^\n]*)", _step(name), re.M)
+        for name in ("Build DEB (Ubuntu/Debian)",
+                     "Build DEB legacy (Ubuntu 22.04 / 24.04, Debian 12)")}
+    rpm = _step("Build RPM (Fedora)")
+
+    assert {name: bool(m and re.search(r"(^|[ ,])ffmpeg(,|$)", m.group(1).strip()))
+            for name, m in deb_depends.items()} == dict.fromkeys(deb_depends, True)
+    assert re.search(r"^\s*Requires:\s+/usr/bin/ffmpeg\s*$", rpm, re.M)
+    assert "ffmpeg" in _arch_depends()
