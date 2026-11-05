@@ -139,16 +139,16 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # ── Listings each surface answers its own way ─────────────────────────
     # ListDevices: retired 2026-09-25 -- the CLI reaches it too now, through
     # the exit hook that names panels which blank when frames stop (#228).
-    "ModuleIcon": (frozenset({"api", "gui", "qtgui"}), (
+    "ModuleIcon": (frozenset({"api", "gui", "hudgui", "qtgui"}), (
         "scoped: a module's symbol as the bytes the App read (2026-10-22) -- "
-        "the API serves it at /system/modules/{key}/icon and both windows "
+        "the API serves it at /system/modules/{key}/icon and every window "
         "draw it on the tile; a terminal draws no pictures, and `trcc system "
         "modules list` names each module instead"
     )),
     # Developer mode installs code nobody reviewed.  No API route reaches it,
     # so a browser page cannot switch it on or install a folder through a
     # token that leaked: only a UI on this machine -- a window, or ``trcc``.
-    **{name: (frozenset({"cli", "gui", "qtgui"}), (
+    **{name: (frozenset({"cli", "gui", "hudgui", "qtgui"}), (
         "scoped: developer mode (2026-10-28) -- unsigned installs from a folder "
         "on this machine; deliberately no API route, so nothing remote can "
         "switch it on or install code nobody reviewed"))

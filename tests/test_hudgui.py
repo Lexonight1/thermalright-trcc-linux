@@ -516,3 +516,27 @@ def test_shown_reads_as_a_person_does() -> None:
     assert [shown(42.4, "°C"), shown(7.25, "%"), shown(3200.0, "MHz"), shown(3.0, "")] == \
         ["42°C", "7.2%", "3200 MHz", "3"]
     assert [group_of("gpu:primary:temp"), group_of("my_module:x")] == ["GPU", "My Module"]
+
+
+# ── Modules ──────────────────────────────────────────────────────────────
+
+
+def test_modules_is_the_shared_list_and_follows_a_switch_from_another_ui(
+        window: Any, qtbot: Any) -> None:
+    """The gui's and qtgui's list (``qt_modules.ModulesView``): every module
+    the App has, each with its switch -- and a module switched in another UI
+    turns here too.  MUTATION CHECK: drop the ``app_settings_changed``
+    connection in ``hudgui.modules.modules_panel``."""
+    from trcc.core.commands import ListModules, SetModuleEnabled
+    from trcc.ui.qt_modules import ModulesView
+
+    window.bar.buttons["Modules"].click()
+    view = window.panel("Modules")
+    assert isinstance(view, ModulesView)
+    listed = window._app.dispatch(ListModules()).modules
+    qtbot.waitUntil(lambda: set(view.switches) == {m.key for m in listed}, timeout=3000)
+    module = next(m for m in listed if not m.problem)
+    assert window._app.dispatch(SetModuleEnabled(key=module.key,
+                                                 enabled=not module.enabled)).ok
+    qtbot.waitUntil(lambda: view.switches[module.key].isChecked() is not module.enabled,
+                    timeout=3000)

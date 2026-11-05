@@ -41,6 +41,7 @@ from ..qt_preview import FRAME_EDGE
 from .chrome import CHROME_HEIGHT, ChromeBar
 from .devices import DevicesView
 from .dropdown import DropPanel
+from .modules import modules_panel
 from .sensors import SensorsView
 
 if TYPE_CHECKING:
@@ -112,6 +113,8 @@ class HudWindow(QWidget):
                 self._panels[item] = devices
             elif item == "Sensors":
                 self._panels[item] = SensorsView(self._app, self._bus)
+            elif item == "Modules":
+                self._panels[item] = modules_panel(self._app, self._bus)
             else:
                 self._panels[item] = _placeholder(item)
         return self._panels[item]
