@@ -2000,6 +2000,12 @@ class PreviewRun(ABC):
     def exit_code(self) -> int | None:
         """How the run ended; None while it is running."""
 
+    @property
+    @abstractmethod
+    def error(self) -> str:
+        """Why the run ended without its frames, in words for the user --
+        "" while it runs, or when it ended well."""
+
     @abstractmethod
     def close(self) -> None:
         """Stop the run and remove its frames (idempotent)."""

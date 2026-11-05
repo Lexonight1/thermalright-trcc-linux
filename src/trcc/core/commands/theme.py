@@ -2811,7 +2811,8 @@ class TickClipPreview(Command[ClipPreviewResult]):
         frame_log.debug("TickClipPreview.execute: %s", self.token)
         frame = app.clip_previews.tick(self.token)
         return ClipPreviewResult(ok=True, token=self.token, image=frame.image or b"",
-                                 shown=frame.shown, active=frame.active)
+                                 shown=frame.shown, active=frame.active,
+                                 message=frame.error)
 
 
 @dataclass(frozen=True, slots=True)

@@ -23,6 +23,7 @@ import subprocess
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from typing import IO
 from urllib.parse import urlsplit
 
@@ -49,8 +50,12 @@ class StreamReader(FrameSource):
     """ffmpeg reading *url* in real time; the newest frame, on demand -- a
     panel's live picture, like a module's (its ``name`` is the url)."""
 
-    def __init__(self, url: str, size: tuple[int, int], fps: int) -> None:
+    def __init__(self, url: str, size: tuple[int, int], fps: int, *,
+                 explain: Callable[[str], str] | None = None) -> None:
         log.info("StreamReader: %s at %dx%d, %d fps", url, *size, fps)
+        #: The tool's reading of a missing codec (``FfmpegTool._explain``),
+        #: asked before this file's own words for a link that holds no video.
+        self._explain = explain
         self.url = self.name = url
         self._size = size
         self._fps = fps
@@ -105,7 +110,8 @@ class StreamReader(FrameSource):
             if self._stop.is_set():
                 return
             if frames == 0:
-                self._error = explain_failure(self.url, stderr)
+                self._error = ((self._explain(stderr) if self._explain else "")
+                               or explain_failure(self.url, stderr))
                 log.warning("StreamReader: %s: no picture (ffmpeg exit %d): %s",
                             self.url, code, stderr)
                 return

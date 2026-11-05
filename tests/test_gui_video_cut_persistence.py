@@ -280,3 +280,53 @@ def test_the_trimmer_takes_the_apps_probe_and_asks_it_for_the_still(qtbot, tmp_p
     failed.load_video(clip, VideoDurationResult(ok=False, path=str(clip),
                                                 message="Could not read the duration"))
     assert (failed._duration_ms, failed._lbl_info.text()) == (0, "Could not read the duration")
+
+
+
+class _FailingPreviewBus(_PreviewBus):
+    """The App's answer when the preview's ffmpeg cannot play the clip."""
+
+    def dispatch(self, cmd: Any) -> Any:
+        from types import SimpleNamespace
+
+        from trcc.core.commands import DeviceCanvas, TickClipPreview
+        from trcc.core.results import ClipPreviewResult
+        self.sent.append(cmd)
+        if isinstance(cmd, DeviceCanvas):
+            return SimpleNamespace(ok=False)
+        if isinstance(cmd, TickClipPreview):
+            return ClipPreviewResult(ok=True, message="this ffmpeg cannot play HEVC video")
+        return ClipPreviewResult(ok=True, active=True)
+
+
+def test_the_gui_trimmer_shows_why_the_preview_is_empty(qtbot) -> None:
+    """Over the empty picture, selectable so the command can be copied.
+
+    MUTATION CHECK: ignore ``ClipPreview.error`` in the tick -- the label
+    stays hidden and the box stays black."""
+    from trcc.ui.gui.uc_video_cut import UCVideoCut
+
+    panel = UCVideoCut(app=_FailingPreviewBus())
+    qtbot.addWidget(panel)
+    panel._video_path = "/clips/IMG_0001.MOV"
+    panel._seek_and_show(0)
+    panel._preview_tick()
+    assert (panel._lbl_preview_error.isVisibleTo(panel),
+            panel._lbl_preview_error.text()) == (True, "this ffmpeg cannot play HEVC video")
+    assert not panel._preview_timer.isActive()
+
+
+def test_the_qtgui_trimmer_shows_why_the_preview_is_empty(qtbot) -> None:
+    """MUTATION CHECK: ignore ``ClipPreview.error`` -- the info line is blank."""
+    from pathlib import Path
+
+    from trcc.ui.bus_bridge import BusBridge
+    from trcc.ui.qtgui.video_crop import VideoCropDialog
+
+    dialog = VideoCropDialog(_FailingPreviewBus(), BusBridge(EventBus()), "0402:3922")
+    qtbot.addWidget(dialog)
+    dialog._video_path = Path("/clips/IMG_0001.MOV")
+    dialog._start_play()
+    dialog._on_play_tick()
+    assert dialog._info.text() == "this ffmpeg cannot play HEVC video"
+    assert not dialog._playing

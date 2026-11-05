@@ -655,3 +655,44 @@ def _exited() -> int:
 
 def _exited_after(timeout: float | None = None) -> int:
     return 1
+
+
+
+def test_a_stream_this_ffmpeg_cannot_decode_says_how_to_get_one_that_can() -> None:
+    """A web stream in HEVC on a stripped ffmpeg: the tool's words, asked
+    before this file's own guesses about the link.
+
+    MUTATION CHECK: hand the reader no ``explain`` -- the raw ffmpeg line is
+    quoted instead."""
+    from tests.test_install_hint_is_the_platforms import _NO_HEVC, _RPM_FUSION, _rpm_fusion
+
+    class _Said(StreamReader):
+        def _one_run(self) -> tuple[int, int, str]:
+            return 0, 234, _NO_HEVC.decode()
+
+    reader = _Said(_URL, (8, 8), 16,
+                   explain=FfmpegTool(full_ffmpeg_hint=_rpm_fusion)._explain)
+    reader._thread.join(5)
+    with pytest.raises(OSError) as caught:
+        reader.latest()
+    assert str(caught.value) == (
+        f"this ffmpeg cannot play HEVC video -- to get one that can: {_RPM_FUSION}")
+
+
+def test_the_tool_hands_its_stream_the_codec_explanation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Through ``FfmpegTool.stream``, as the App opens one.
+
+    MUTATION CHECK: build the reader without ``explain`` -- the raw line."""
+    from tests.test_install_hint_is_the_platforms import _NO_HEVC, _RPM_FUSION, _rpm_fusion
+
+    def said(self: StreamReader) -> tuple[int, int, str]:
+        return 0, 234, _NO_HEVC.decode()
+
+    monkeypatch.setattr(StreamReader, "_one_run", said)
+    reader = FfmpegTool(full_ffmpeg_hint=_rpm_fusion).stream(_URL, (8, 8), 16)
+    assert isinstance(reader, StreamReader)
+    reader._thread.join(5)
+    with pytest.raises(OSError, match=f"to get one that can: {_RPM_FUSION}"):
+        reader.latest()

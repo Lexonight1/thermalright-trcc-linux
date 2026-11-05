@@ -287,7 +287,8 @@ class ClipPreviewResult(Result):
     preview box; ``b""`` means keep the picture on screen.  ``shown`` is that
     frame's 0-based place in the playing range, and ``active`` says whether a
     preview or a still is still in progress -- the window's timer stops when
-    it is not.
+    it is not.  ``message`` says why a preview ended with no picture -- an
+    Apple video on an ffmpeg without HEVC, and how to get one that has it.
     """
     token: str = ""
     image: bytes = field(default=b"", repr=False)

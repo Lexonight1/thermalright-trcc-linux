@@ -413,6 +413,8 @@ class VideoCropDialog(QDialog):
         self._info = QLabel("", self)
         self._info.setStyleSheet("color: #aaa;")
         self._info.setWordWrap(True)
+        # Selectable: a preview that cannot play names a command to copy.
+        self._info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -587,7 +589,11 @@ class VideoCropDialog(QDialog):
                 start, _ = self._timeline.clip_ms()
                 self._current_label.setText(_format_ms(
                     start + self._clip.shown * 1000 // self._fps))
-        if not self._playing and not self._clip.active:
+        if self._clip.error:
+            log.warning("_on_play_tick: %s", self._clip.error)
+            self._info.setText(self._clip.error)
+            self._stop_play()
+        elif not self._playing and not self._clip.active:
             self._play_timer.stop()
 
     # ── Export ───────────────────────────────────────────────────────

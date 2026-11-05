@@ -135,7 +135,7 @@ class FfmpegTool(VideoTool):
     def stream(self, url: str, size: tuple[int, int], fps: int) -> FrameSource:
         """ffmpeg reading *url* live (``StreamReader``)."""
         log.info("FfmpegTool.stream: %s at %dx%d, %d fps", url, *size, fps)
-        return StreamReader(url, size, fps)
+        return StreamReader(url, size, fps, explain=self._explain)
 
     def extract_frames(self, request: VideoExportRequest, out_dir: Path) -> None:
         """The clip as ``%04d.jpg`` in *out_dir*, through the same filter
@@ -221,10 +221,14 @@ class FfmpegTool(VideoTool):
         """ONE ffmpeg writing the preview's frames into a folder of its own."""
         folder = Path(tempfile.mkdtemp(prefix="trcc-preview-"))
         cmd = preview_command(request, folder, box, source_wh, still=still)
+        # ffmpeg's complaints go to a file beside its frames, not a pipe: a
+        # pipe nobody drains fills and stalls ffmpeg, and DEVNULL threw away
+        # why an Apple video showed no picture.
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL,
-                                    creationflags=SUBPROCESS_NO_WINDOW)
+            with (folder / _PREVIEW_ERRORS).open("wb") as errors:
+                proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                        stderr=errors,
+                                        creationflags=SUBPROCESS_NO_WINDOW)
         except OSError as e:
             log.warning("FfmpegTool.preview: cannot run ffmpeg: %s", e)
             shutil.rmtree(folder, ignore_errors=True)
@@ -232,7 +236,7 @@ class FfmpegTool(VideoTool):
         log.info("FfmpegTool.preview: pid %d still=%s %s %d-%d ms into %dx%d",
                  proc.pid, still, request.source.name, request.start_ms,
                  request.end_ms, *box)
-        return FfmpegPreview(proc, folder)
+        return FfmpegPreview(proc, folder, explain=self._explain)
 
 
 def _run_best_effort(cmd: list[str], *, timeout: float, label: str) -> bool:
@@ -629,6 +633,10 @@ def preview_command(
     return cmd
 
 
+#: Where a preview ffmpeg's stderr goes, beside its numbered frames.
+_PREVIEW_ERRORS = "ffmpeg.err"
+
+
 def _frame_name(index: int) -> str:
     """ffmpeg's ``%05d.jpg`` for the 0-based *index* (ffmpeg counts from 1)."""
     frame_log.debug("_frame_name: %d", index)
@@ -638,9 +646,10 @@ def _frame_name(index: int) -> str:
 class FfmpegPreview(PreviewRun):
     """A preview ffmpeg and the folder it writes its numbered JPEGs into."""
 
-    def __init__(self, proc: subprocess.Popen[bytes], folder: Path) -> None:
+    def __init__(self, proc: subprocess.Popen[bytes], folder: Path, *,
+                 explain: Callable[[str], str] | None = None) -> None:
         log.debug("FfmpegPreview: pid %d into %s", proc.pid, folder)
-        self._proc, self._folder = proc, folder
+        self._proc, self._folder, self._explain = proc, folder, explain
 
     def frame(self, index: int) -> bytes | None:
         """Complete = the next file exists, or ffmpeg has exited."""
@@ -659,6 +668,23 @@ class FfmpegPreview(PreviewRun):
     def exit_code(self) -> int | None:
         frame_log.debug("FfmpegPreview.exit_code: %s", self._proc.returncode)
         return self._proc.poll()
+
+    @property
+    def error(self) -> str:
+        """A missing codec in plain words (``FfmpegTool._explain``), else
+        ffmpeg's own last line -- once it has failed; "" otherwise."""
+        code = self._proc.poll()
+        if not code:
+            frame_log.debug("FfmpegPreview.error: none (exit %s)", code)
+            return ""
+        try:
+            said = (self._folder / _PREVIEW_ERRORS).read_text(errors="replace").strip()
+        except OSError:
+            said = ""
+        told = ((self._explain(said) if self._explain else "")
+                or f"ffmpeg exited {code}" + (f": {said.splitlines()[-1]}" if said else ""))
+        log.info("FfmpegPreview.error: %s", told)
+        return told
 
     def close(self) -> None:
         """Kill ffmpeg if it still runs, and remove its files."""

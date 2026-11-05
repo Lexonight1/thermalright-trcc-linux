@@ -203,6 +203,20 @@ class UCVideoCut(QWidget):
         self._lbl_info.setStyleSheet("color: #888; font-size: 9pt; background: transparent;")
         self._lbl_info.setVisible(False)
 
+        # Why the preview shows nothing, over the empty picture: wrapped, as
+        # the way to fix it is a whole command line, and selectable so it can
+        # be copied (an Apple video on an ffmpeg without HEVC).
+        self._lbl_preview_error = QLabel("", self)
+        self._lbl_preview_error.setGeometry(PREVIEW_X + 20, PREVIEW_Y + 20,
+                                            PREVIEW_W - 40, PREVIEW_H - 40)
+        self._lbl_preview_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_preview_error.setWordWrap(True)
+        self._lbl_preview_error.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._lbl_preview_error.setStyleSheet(
+            "color: #ddd; font-size: 10pt; background: transparent;")
+        self._lbl_preview_error.setVisible(False)
+
         # Progress bar
         self._progress = QProgressBar(self)
         self._progress.setGeometry(*PROGRESS_RECT)
@@ -430,6 +444,7 @@ class UCVideoCut(QWidget):
         log.debug("_seek_and_show: ms=%s", ms)
         if self._previewing:
             self._stop_preview()
+        self._lbl_preview_error.setVisible(False)
         self._lbl_current.setText(_format_time(ms))
         self._clip.still(self._request(ms, ms + 1), (PREVIEW_W, PREVIEW_H))
         if not self._preview_timer.isActive():
@@ -501,6 +516,7 @@ class UCVideoCut(QWidget):
         log.info("_start_preview: %s-%s ms at %d fps", self._start_ms,
                  self._end_ms, self._clip_fps)
         self._previewing = True
+        self._lbl_preview_error.setVisible(False)
         self._clip.play(self._request(self._start_ms, self._end_ms),
                         (PREVIEW_W, PREVIEW_H))
         self._preview_timer.start(int(1000 / self._clip_fps))
@@ -521,7 +537,14 @@ class UCVideoCut(QWidget):
             if self._previewing:
                 self._lbl_current.setText(_format_time(
                     self._start_ms + self._clip.shown * 1000 / self._clip_fps))
-        if not self._previewing and not self._clip.active:
+        if self._clip.error:
+            log.warning("_preview_tick: %s", self._clip.error)
+            self._lbl_preview_error.setText(self._clip.error)
+            self._lbl_preview_error.setVisible(True)
+            self._preview_pixmap = None
+            self._stop_preview()
+            self.update()
+        elif not self._previewing and not self._clip.active:
             self._preview_timer.stop()
 
     # =========================================================================

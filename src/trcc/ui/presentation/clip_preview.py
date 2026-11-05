@@ -34,6 +34,7 @@ class ClipPreview:
         self._token = f"clip-{uuid.uuid4().hex[:12]}"
         self._shown = 0
         self._active = False
+        self._error = ""
         log.debug("ClipPreview.__init__: %s", self._token)
 
     @property
@@ -47,6 +48,13 @@ class ClipPreview:
         """Whether a preview or a still was in progress at the last answer."""
         frame_log.debug("ClipPreview.active: %s", self._active)
         return self._active
+
+    @property
+    def error(self) -> str:
+        """Why the preview ended with no picture, for the window to show;
+        "" while all is well."""
+        frame_log.debug("ClipPreview.error: %r", self._error)
+        return self._error
 
     def play(self, req: VideoExportRequest, box: tuple[int, int]) -> None:
         """Decode ``req``'s range at ``req.fps`` into *box*, in the App."""
@@ -62,7 +70,7 @@ class ClipPreview:
     def poll(self) -> bytes | None:
         """The next JPEG to show, or ``None`` to hold the current picture."""
         result = self._app.dispatch(TickClipPreview(token=self._token))
-        self._shown, self._active = result.shown, result.active
+        self._shown, self._active, self._error = result.shown, result.active, result.message
         frame_log.debug("ClipPreview.poll: %d bytes shown=%d active=%s",
                         len(result.image), result.shown, result.active)
         return result.image or None
@@ -80,6 +88,6 @@ class ClipPreview:
             end_ms=req.end_ms, box_w=box[0], box_h=box[1],
             target_w=req.target_w, target_h=req.target_h, rotation=req.rotation,
             fit_mode=req.fit_mode, fps=req.fps, still=still))
-        self._active = result.ok
+        self._active, self._error = result.ok, ""
         if not result.ok:
             log.warning("ClipPreview._start: %s", result.message)

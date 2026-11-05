@@ -47,6 +47,8 @@ class _Preview:
     #: The newest still asked for while one was in flight.
     pending: tuple[VideoExportRequest, tuple[int, int]] | None = field(
         default=None, repr=False)
+    #: Why the last run ended with no picture, for the window to say.
+    error: str = ""
 
     @property
     def active(self) -> bool:
@@ -62,6 +64,8 @@ class PreviewFrame:
     image: bytes | None = field(repr=False)
     shown: int
     active: bool
+    #: Why the preview ended with no picture -- "" while all is well.
+    error: str = ""
 
 
 class ClipPreviews:
@@ -113,7 +117,7 @@ class ClipPreviews:
             image = self._next(preview)
             frame_log.debug("ClipPreviews.tick: %s frame=%s shown=%d active=%s", token,
                             image is not None, preview.shown, preview.active)
-            return PreviewFrame(image, preview.shown, preview.active)
+            return PreviewFrame(image, preview.shown, preview.active, preview.error)
 
     def stop(self, token: str) -> None:
         """End *token*'s run, forget any waiting still, remove its files."""
@@ -153,8 +157,9 @@ class ClipPreviews:
                 preview.index = 0
                 return self._next(preview)
             if ended and preview.index == 0:
-                log.warning("ClipPreviews._next: ffmpeg exited %s with no frame",
-                            run.exit_code)
+                preview.error = run.error
+                log.warning("ClipPreviews._next: ffmpeg exited %s with no frame: %s",
+                            run.exit_code, preview.error)
                 self._end(preview)
                 self._next_still(preview)
             return None
@@ -185,7 +190,7 @@ class ClipPreviews:
     def _start(self, preview: _Preview, req: VideoExportRequest,
                box: tuple[int, int], *, still: bool) -> None:
         self._end(preview)
-        preview.still, preview.index = still, 0
+        preview.still, preview.index, preview.error = still, 0, ""
         preview.run = self._tool.preview(req, box, self._size(req.source), still=still)
         log.debug("ClipPreviews._start: still=%s started=%s", still,
                   preview.run is not None)

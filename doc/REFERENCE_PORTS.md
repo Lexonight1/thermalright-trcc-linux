@@ -80,13 +80,13 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`PackageManager`](#packagemanager) | 4 | 0 | 3 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
 | [`Paths`](#paths) | 4 | 15 | 5 |
-| [`PreviewRun`](#previewrun) | 4 | 0 | 1 |
 | [`SendTask`](#sendtask) | 4 | 1 | 5 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
 | [`BulkTransport`](#bulktransport) | 5 | 2 | 2 |
 | [`DdpListener`](#ddplistener) | 5 | 0 | 1 |
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
+| [`PreviewRun`](#previewrun) | 5 | 0 | 1 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
 | [`SettingsPort`](#settingsport) | 5 | 0 | 1 |
@@ -1239,23 +1239,6 @@ user_content_dir() -> Path
 
 **Implementations (5):** `BSDPaths` · `BasePaths` · `LinuxPaths` · `MacOSPaths` · `WindowsPaths`
 
-## PreviewRun
-
-`core/ports.py`
-
-One run of the trimmer's preview: the :class:`VideoTool` writing a clip's frames -- composed as the export encodes them, shrunk into the preview box -- in the background, as the C#'s ``UCVideoCut`` does (``UCVideoCut.cs:1507-1537``).
-
-**You implement (4):**
-
-```python
-close() -> None
-ended() -> bool
-exit_code() -> int | None
-frame(index: 'int') -> bytes | None
-```
-
-**Implementations (1):** `FfmpegPreview`
-
 ## SendTask
 
 `core/ports.py`
@@ -1365,6 +1348,24 @@ render() -> RawFrame
 ```
 
 **Implementations (2):** `KarmaViz` · `TrccPipes`
+
+## PreviewRun
+
+`core/ports.py`
+
+One run of the trimmer's preview: the :class:`VideoTool` writing a clip's frames -- composed as the export encodes them, shrunk into the preview box -- in the background, as the C#'s ``UCVideoCut`` does (``UCVideoCut.cs:1507-1537``).
+
+**You implement (5):**
+
+```python
+close() -> None
+ended() -> bool
+error() -> str
+exit_code() -> int | None
+frame(index: 'int') -> bytes | None
+```
+
+**Implementations (1):** `FfmpegPreview`
 
 ## RamLights
 

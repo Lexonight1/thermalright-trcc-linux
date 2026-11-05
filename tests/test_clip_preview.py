@@ -169,6 +169,10 @@ class _NothingWritten(PreviewRun):
     def exit_code(self) -> int | None:
         return 234
 
+    @property
+    def error(self) -> str:
+        return "ffmpeg exited 234"
+
     def close(self) -> None:
         return None
 
@@ -182,7 +186,7 @@ class _Empty(FfmpegTool):
 def test_ffmpeg_that_writes_nothing_ends_the_preview(tmp_path: Path) -> None:
     previews = ClipPreviews(video_tool=_Empty())
     previews.play(T, _req(tmp_path / "x.mp4", 0, 1000), BOX)
-    assert previews.tick(T) == PreviewFrame(None, 0, False)
+    assert previews.tick(T) == PreviewFrame(None, 0, False, "ffmpeg exited 234")
 
 
 class _Recording(FfmpegTool):
@@ -325,6 +329,10 @@ class _FinishesWhileLooked(PreviewRun):
     def exit_code(self) -> int | None:
         return 0 if self._ended else None
 
+    @property
+    def error(self) -> str:
+        return ""
+
     def close(self) -> None:
         return None
 
@@ -347,3 +355,43 @@ def test_a_still_finished_between_two_looks_is_still_shown(tmp_path: Path) -> No
     first = previews.tick(T)
     assert (first.image, first.active) == (None, True)
     assert previews.tick(T).image == b"\xff\xd8still\xff\xd9"
+
+
+def test_a_preview_that_cannot_play_says_why_and_the_next_one_forgets_it(
+        tmp_path: Path) -> None:
+    """Why a run ended with no picture reaches the window; a new preview
+    starts clean.
+
+    MUTATION CHECK: drop ``preview.error = run.error`` -- the window hears
+    nothing and shows an empty box."""
+    previews = ClipPreviews(video_tool=_Empty())
+    previews.still(T, _req(tmp_path / "x.mp4", 0, 1), BOX)
+    assert previews.tick(T).error == "ffmpeg exited 234"
+    previews._tool = _OneRun()
+    previews.still(T, _req(tmp_path / "x.mp4", 0, 1), BOX)
+    assert previews.tick(T).error == ""
+
+
+def test_a_preview_names_the_missing_codec_from_what_ffmpeg_said(tmp_path: Path) -> None:
+    """The run reads ffmpeg's stderr, which it keeps beside its frames, and
+    the tool words a missing codec -- as a playing video and an export do.
+
+    MUTATION CHECK: send the preview's stderr to DEVNULL again -- the reason
+    is gone and only the exit code is left."""
+    from tests.test_install_hint_is_the_platforms import _NO_HEVC, _RPM_FUSION, _rpm_fusion
+
+    (tmp_path / "ffmpeg.err").write_bytes(_NO_HEVC)
+    proc = _Proc()
+    proc.returncode = 234
+    run = FfmpegPreview(cast("subprocess.Popen[bytes]", proc), tmp_path,
+                        explain=FfmpegTool(full_ffmpeg_hint=_rpm_fusion)._explain)
+    assert run.error == f"this ffmpeg cannot play HEVC video -- to get one that can: {_RPM_FUSION}"
+
+
+@needs_ffmpeg
+def test_a_real_ffmpeg_failure_reaches_the_window(tmp_path: Path) -> None:
+    """The real program, a file that is not there: its own last line."""
+    previews = ClipPreviews(video_tool=FfmpegTool())
+    previews.still(T, _req(tmp_path / "gone.mp4", 0, 1), BOX)
+    _, last = _drain(previews, _idle)
+    assert "No such file or directory" in last.error
