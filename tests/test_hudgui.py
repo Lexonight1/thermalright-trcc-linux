@@ -231,7 +231,7 @@ def test_the_settings_switches_change_the_app_and_show_what_it_holds(
     from trcc.core.commands import LcdSnapshot
 
     snap = lambda: window._app.dispatch(LcdSnapshot(key=_KEY))  # noqa: E731
-    page = _tab(window, qtbot, "Settings")
+    page = _tab(window, qtbot, "Settings").sources
     assert page.mask_switch.isChecked() == snap().mask_visible
     page.mask_switch.click()
     assert snap().mask_visible is page.mask_switch.isChecked() is False
@@ -267,3 +267,55 @@ def test_show_background_on_ends_the_media_player_and_restores_the_mode(
     assert app.dispatch(ShowBackground(key=_KEY, shown=True)).ok
     snap = app.dispatch(LcdSnapshot(key=_KEY))
     assert (snap.display_source, snap.background_mode) == ("background", "theme")
+
+
+# ── The overlay editor (Settings tab) ────────────────────────────────────
+
+
+def _layout(window: Any) -> list[tuple[str, str, int, int]]:
+    from trcc.core.commands import ResolveOverlay
+
+    return [(e.type, e.text or e.metric or e.source, e.x, e.y)
+            for e in window._app.dispatch(ResolveOverlay(key=_KEY)).elements]
+
+
+def _add(editor: Any, label: str) -> None:
+    from PySide6.QtWidgets import QPushButton
+
+    next(b for b in editor.findChildren(QPushButton) if b.text() == f"+ {label}").click()
+
+
+def test_the_overlay_editor_adds_edits_and_deletes_through_the_app(
+        window: Any, qtbot: Any) -> None:
+    """Add selects the new element; an edit sends ONE field; the list and form
+    are the App's layout afterwards.  MUTATION CHECK: send ``x`` from
+    ``_on_text`` and the text never changes."""
+    editor = _tab(window, qtbot, "Settings").overlay
+    _add(editor, "Text")
+    assert _layout(window) == [("text", "Text", 20, 20)] and editor._picked_id()
+    editor.text_box.setText("Hello HUD")
+    editor.text_box.editingFinished.emit()
+    editor.x_box.setValue(120)
+    editor.x_box.editingFinished.emit()
+    assert _layout(window) == [("text", "Hello HUD", 120, 20)]
+    _add(editor, "Metric")
+    editor.metric_box.setCurrentIndex(editor.metric_box.findData("cpu:temp"))
+    editor.metric_box.activated.emit(editor.metric_box.currentIndex())
+    _add(editor, "Date")
+    assert [e[:2] for e in _layout(window)] == [("text", "Hello HUD"),
+                                               ("metric", "cpu:temp"), ("clock", "date")]
+    editor.list.setCurrentRow(0)
+    editor.delete.click()
+    assert [e[0] for e in _layout(window)] == ["metric", "clock"]
+    assert [editor.list.item(i).text() for i in range(editor.list.count())] == [
+        "Metric: cpu:temp", "Clock: date"]
+
+
+def test_the_overlay_switch_is_the_apps(window: Any, qtbot: Any) -> None:
+    from trcc.core.commands import ResolveOverlay
+
+    editor = _tab(window, qtbot, "Settings").overlay
+    assert window._app.dispatch(ResolveOverlay(key=_KEY)).enabled is True
+    editor.on_switch.click()
+    assert window._app.dispatch(ResolveOverlay(key=_KEY)).enabled is False
+    assert editor.on_switch.isChecked() is False

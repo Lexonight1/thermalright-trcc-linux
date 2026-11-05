@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -34,6 +35,7 @@ from ..presentation.device_symbols import device_symbols
 from ..qt_assets import Assets
 from ..qt_preview import FRAME_EDGE, PreviewSurface
 from .chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, TabBar
+from .overlay import OverlayEditor
 from .sources import DeviceControls, SourcesPanel
 from .themes import CloudBackgrounds, CloudMasks, LocalThemes
 
@@ -157,7 +159,7 @@ class DevicePanel(QWidget):
         self.pages: dict[str, QWidget] = {}
         grids = {"Local Themes": LocalThemes, "Cloud Masks": CloudMasks,
                  "Cloud Backgrounds": CloudBackgrounds,
-                 DEVICE_SETTINGS_TAB: SourcesPanel}
+                 DEVICE_SETTINGS_TAB: SettingsPage}
         for name in (*DEVICE_TABS, DEVICE_SETTINGS_TAB):
             grid = grids.get(name)
             page = grid(app, bus, selection) if grid is not None else _coming(name)
@@ -211,3 +213,28 @@ def _coming(name: str) -> QLabel:
     label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
     label.setStyleSheet("color: #dfe5ea; font-size: 12pt;")
     return label
+
+
+class SettingsPage(QScrollArea):
+    """The Settings tab, as the gui's: the overlay editor, then the four
+    display sources -- one column, scrolled."""
+
+    def __init__(self, app: CommandBus, bus: BusBridge, selection: DeviceSelection,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        log.info("SettingsPage: overlay + sources")
+        self.setWidgetResizable(True)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget "
+                           "{ background: transparent; }")
+        body = QWidget()
+        column = QVBoxLayout(body)
+        column.setContentsMargins(0, 0, 8, 0)
+        column.setSpacing(16)
+        self.overlay = OverlayEditor(app, bus, selection, body)
+        self.sources = SourcesPanel(app, bus, selection, body)
+        column.addWidget(self.overlay)
+        column.addWidget(self.sources)
+        column.addStretch(1)
+        self.setWidget(body)
