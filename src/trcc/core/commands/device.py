@@ -1668,10 +1668,12 @@ class StartScreencast(Command[ScreencastResult]):
         # stays chosen under the cast, for the off to restore.
         app.dispatch(StopVideo(key=self.key, keep_override=True))
 
-        # Persist the region as the active display source (clears any
-        # background/video override — the toggles are mutually exclusive) so
-        # SaveTheme can bake it into a theme's ``screencast`` ref and a reload
-        # can resume it.
+        # Persist the region as the active display source, so SaveTheme can
+        # bake it into a theme's ``screencast`` ref and a reload can resume
+        # it.  The cast goes ON TOP: the background choice stays under it
+        # (the off restores it, his decision 2026-11-04); the region drops
+        # only a theme background still waiting for its module.  This said
+        # the cast cleared the override, as the old one-source rule did.
         app.settings.set_screencast_region(self.key, (x, y, w, h, self.audio))
         if box == given and device.profile is not None:
             # The C# has ONE Jp*: what was cast is what a save keeps.
