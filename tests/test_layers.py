@@ -184,3 +184,107 @@ def test_building_frames_never_draws_into_the_cached_background(tmp_path: Path) 
     # the cached surface too, so a "before" taken after it proves nothing.
     clean = app.display._build_bg_mask(device.info, theme, (320, 320))
     assert app.renderer.encode_png(cached) == app.renderer.encode_png(clean)
+
+
+# ── A module's picture in a box over the theme (item 23, #328) ─────────────
+
+
+class _Alternates:
+    """A module's source: red, then blue, then red ... one frame each ask --
+    or, *gone*, a source that has failed for good."""
+    name = "alternates"
+
+    def __init__(self, gone: bool = False) -> None:
+        self.asked, self.closed, self._gone = 0, 0, gone
+
+    def latest(self) -> Any:
+        from trcc.core.models import RawFrame
+
+        self.asked += 1
+        if self._gone:
+            raise OSError("module stopped")
+        rgb = (255, 0, 0) if self.asked % 2 else (0, 0, 255)
+        return RawFrame(bytes(rgb) * (8 * 6), 8, 6)
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def _boxed(tmp_path: Path, source: _Alternates) -> tuple[Any, Any, Any]:
+    """A 320x320 panel with *source* in a medium box, bottom right."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.models import InsetChoice
+
+    from .conftest import renderable_theme
+    from .mock_platform import MockPlatform
+
+    key = "0402:3922"
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path),
+              renderer=QtRenderer())
+    app.discover_and_connect()
+    app.settings.for_device(key).inset = InsetChoice("viz")
+    app.media.open_inset(key, cast(Any, source))
+    theme = app.themes.load(renderable_theme(tmp_path / "themes", "T"))
+    return app, app.devices[key], theme
+
+
+def test_a_boxed_picture_reaches_the_panel_every_frame(tmp_path: Path) -> None:
+    """Each frame carries the box's newest picture, in its corner, with the
+    theme around it.  The whole frame is cached on a key; a box left out of
+    it sends the first picture forever.  MUTATION CHECK: drop the inset
+    keys from ``frame_key`` in ``build_frame``."""
+    from trcc.core.geometry import inset_rect
+
+    source = _Alternates()
+    app, device, theme = _boxed(tmp_path, source)
+    sent, inside, outside = [], [], []
+    for _ in range(2):
+        sent.append(app.display.build_frame(info=device.info, theme=theme,
+                                            sensors={}, profile=device.profile))
+        img = app.display.rendered_surface(device.info.key)
+        box = inset_rect((320, 320), app.settings.for_device(device.info.key).inset)
+        inside.append(img.pixelColor(box.x + box.width // 2,
+                                     box.y + box.height // 2).getRgb()[:3])
+        outside.append(img.pixelColor(box.x - 5, box.y - 5).getRgb()[:3])
+    assert sent[0] != sent[1], "the second frame was the first one again"
+    assert inside == [(255, 0, 0), (0, 0, 255)]
+    assert outside[0] == outside[1] and outside[0] not in inside
+
+
+def test_a_boxed_picture_that_is_gone_is_closed_once(tmp_path: Path) -> None:
+    """A source failed for good is closed -- one WARNING, not one a frame --
+    and the next frames are the theme alone.  MUTATION CHECK: drop the
+    ``close_inset`` in ``DisplayService._inset``."""
+    source = _Alternates(gone=True)
+    app, device, theme = _boxed(tmp_path, source)
+    for _ in range(3):
+        app.display.build_frame(info=device.info, theme=theme, sensors={},
+                                profile=device.profile)
+    assert (source.asked, source.closed) == (1, 1)
+    assert app.media.inset(device.info.key) is None
+
+
+def test_a_box_choice_survives_being_saved() -> None:
+    """Through trcc.json's own writer and reader."""
+    import json
+
+    from trcc.core.models import DeviceSettings, InsetChoice, InsetCorner, InsetSize
+    from trcc.services.settings import _device_json, _device_settings_from_dict
+
+    choice = InsetChoice("viz", InsetCorner.TOP_LEFT, InsetSize.LARGE)
+    saved = json.loads(json.dumps(_device_json(DeviceSettings(inset=choice))))
+    assert _device_settings_from_dict(saved).inset == choice
+    assert _device_settings_from_dict(json.loads(json.dumps(
+        _device_json(DeviceSettings())))).inset is None
+
+
+@pytest.mark.parametrize("saved", [
+    {"module": "viz", "corner": "middle", "size": "small"},   # a newer TRCC's corner
+    {"module": "viz"},                                        # fields missing
+    "junk",
+])
+def test_an_unreadable_box_is_no_box(saved: Any) -> None:
+    from trcc.services.settings import _device_settings_from_dict
+
+    assert _device_settings_from_dict({"inset": saved}).inset is None

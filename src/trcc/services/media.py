@@ -324,6 +324,9 @@ class MediaService:
         #: whose it is.  One slot, so opening one ends the last: the sources
         #: are exclusive here, as they are in Settings.
         self._live: dict[str, tuple[PanelSource, FrameSource]] = {}
+        #: Each panel's boxed picture over its theme (``InsetChoice``) --
+        #: beside the live picture, never instead of it.
+        self._insets: dict[str, FrameSource] = {}
         #: The decodes still filling a playback, by device (#264).
         self._decodes: dict[str, VideoDecode] = {}
 
@@ -484,6 +487,26 @@ class MediaService:
         log.info("close_live: %s (%s %s)", device_key, entry[0].value,
                  entry[1].name)
         entry[1].close()
+
+    def open_inset(self, device_key: str, source: FrameSource) -> None:
+        """*source* is *device_key*'s boxed picture now; the last is closed."""
+        log.info("open_inset: %s <- %s", device_key, source.name)
+        self.close_inset(device_key)
+        self._insets[device_key] = source
+
+    def inset(self, device_key: str) -> FrameSource | None:
+        """*device_key*'s boxed picture, if one is open."""
+        found = self._insets.get(device_key)
+        frame_log.debug("inset: %s -> %s", device_key, found and found.name)
+        return found
+
+    def close_inset(self, device_key: str) -> None:
+        """Stop *device_key*'s boxed picture (idempotent)."""
+        if (source := self._insets.pop(device_key, None)) is None:
+            frame_log.debug("close_inset: %s has none", device_key)
+            return
+        log.info("close_inset: %s (%s)", device_key, source.name)
+        source.close()
 
     def unload(self, device_key: str) -> None:
         """Drop a playback, freeing its frame buffers -- and end a stream

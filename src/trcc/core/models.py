@@ -890,6 +890,38 @@ def background_choice_from_fields(
     return found
 
 
+class InsetCorner(str, Enum):
+    """Which corner of the panel a module's boxed picture sits in."""
+    TOP_LEFT = "top-left"
+    TOP_RIGHT = "top-right"
+    BOTTOM_LEFT = "bottom-left"
+    BOTTOM_RIGHT = "bottom-right"
+
+
+class InsetSize(str, Enum):
+    """How big that box is (:data:`INSET_SHARES`)."""
+    SMALL = "small"
+    MEDIUM = "medium"
+    LARGE = "large"
+
+
+#: Each box size's share of the panel's width and of its height -- the box
+#: keeps the panel's shape, so a module draws the same picture, smaller.
+INSET_SHARES: Mapping[InsetSize, float] = {
+    InsetSize.SMALL: 1 / 4, InsetSize.MEDIUM: 1 / 3, InsetSize.LARGE: 1 / 2}
+
+
+@dataclass(frozen=True)
+class InsetChoice:
+    """A module's picture in a box over the panel's theme (#328) -- the
+    theme stays: its background, mask and metrics, with the box between the
+    background and the metrics.  The panel's own, not a theme's: a theme
+    load keeps it."""
+    module: str
+    corner: InsetCorner = InsetCorner.BOTTOM_RIGHT
+    size: InsetSize = InsetSize.MEDIUM
+
+
 @dataclass
 class DeviceSettings:
     """User prefs for one device.  Persisted to trcc.json."""
@@ -925,6 +957,9 @@ class DeviceSettings:
     # resume it.  It goes ON TOP of ``background``, which survives it; choosing
     # a background ends it (``Settings.set_background``).
     screencast_region: tuple[int, int, int, int, bool] | None = None
+    # A module's picture in a box over the theme (``InsetChoice``), or
+    # ``None``.  Beside ``background``, never instead of it.
+    inset: InsetChoice | None = None
     # The device's screencast REGION, cast or not -- the C#'s JpX, JpY, JpW,
     # JpH, kept as the theme's DC stores them (``core.geometry.screencast_axes``
     # turns them into a screen box).  Seeded from every theme and mask DC the

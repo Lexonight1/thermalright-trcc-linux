@@ -19,11 +19,12 @@ from trcc.core.geometry import (
     content_is_portrait,
     fit_rect_for_mode,
     fit_source_to_panel,
+    inset_rect,
     largest_fit_size,
     lock_region_to_panel,
     plan_orientation,
 )
-from trcc.core.models import FitMode, Theme
+from trcc.core.models import INSET_SHARES, FitMode, InsetChoice, InsetCorner, InsetSize, Theme
 from trcc.core.protocol import FBL_PROFILES, DeviceProfile
 
 ANGLES = (0, 90, 180, 270)
@@ -580,3 +581,17 @@ def test_a_smaller_decode_lands_where_the_native_one_does(
     assert max(abs(native.width - scaled.width), abs(native.height - scaled.height),
                abs(native.x - scaled.x), abs(native.y - scaled.y)) <= 1
     assert scaled.width <= small[0] + 1 and scaled.height <= small[1] + 1
+
+
+@pytest.mark.parametrize("corner", list(InsetCorner))
+@pytest.mark.parametrize("size", list(InsetSize))
+def test_a_box_sits_flush_in_its_corner_at_its_share(corner: InsetCorner,
+                                                     size: InsetSize) -> None:
+    """On a non-square canvas: the box keeps the canvas's shape at its
+    share, inside the canvas, touching the two edges its corner names."""
+    canvas = (854, 480)
+    box = inset_rect(canvas, InsetChoice("viz", corner, size))
+    share = INSET_SHARES[size]
+    assert (box.width, box.height) == (round(854 * share), round(480 * share))
+    assert box.x == (854 - box.width if "right" in corner.value else 0)
+    assert box.y == (480 - box.height if "bottom" in corner.value else 0)

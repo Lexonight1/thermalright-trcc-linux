@@ -27,7 +27,14 @@ from pathlib import Path
 from typing import Literal
 
 from .logs import per_frame
-from .models import FitMode, Theme, oriented_resolution
+from .models import (
+    INSET_SHARES,
+    FitMode,
+    InsetChoice,
+    InsetCorner,
+    Theme,
+    oriented_resolution,
+)
 from .protocol import DeviceProfile
 
 log = logging.getLogger(__name__)
@@ -304,6 +311,20 @@ class FitRect:
     height: int
     x: int
     y: int
+
+
+def inset_rect(canvas: tuple[int, int], choice: InsetChoice) -> FitRect:
+    """Where *choice*'s box sits on an upright *canvas*: its share of the
+    canvas's width and height (:data:`INSET_SHARES`), flush in its corner."""
+    cw, ch = canvas
+    share = INSET_SHARES[choice.size]
+    w, h = max(1, round(cw * share)), max(1, round(ch * share))
+    right = choice.corner in (InsetCorner.TOP_RIGHT, InsetCorner.BOTTOM_RIGHT)
+    bottom = choice.corner in (InsetCorner.BOTTOM_LEFT, InsetCorner.BOTTOM_RIGHT)
+    rect = FitRect(w, h, cw - w if right else 0, ch - h if bottom else 0)
+    frame_log.debug("inset_rect: %s %s on %dx%d -> %s", choice.corner.value,
+                    choice.size.value, cw, ch, rect)
+    return rect
 
 
 def largest_fit_size(source: tuple[int, int], panel: tuple[int, int]) -> tuple[int, int]:

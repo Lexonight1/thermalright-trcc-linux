@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..core.geometry import fit_rect_for_mode
+from ..core.geometry import FitRect, fit_rect_for_mode
 from ..core.logs import per_frame
 from ..core.models import FitMode, RawFrame, RenderContent
 from ..core.ports import Renderer
@@ -147,6 +147,27 @@ class LivePicture(BackgroundLayer):
                             self.frame.width, self.frame.height, *size)
             surface = renderer.resize(surface, *size)
         return surface
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Inset(Layer):
+    """A live picture in a box over the background -- a module drawing in a
+    corner of the theme (#328).  Never equal to another, as
+    :class:`LivePicture`: each frame is a new picture."""
+
+    frame: RawFrame = field(repr=False)
+    rect: FitRect
+
+    def key(self) -> Hashable:
+        frame_log.debug("Inset.key")
+        return self
+
+    def draw(self, canvas: Any, renderer: Renderer) -> Any:
+        frame_log.debug("Inset.draw: %dx%d into %s", self.frame.width,
+                        self.frame.height, self.rect)
+        box = LivePicture(self.frame).canvas((self.rect.width, self.rect.height),
+                                             renderer)
+        return renderer.composite(canvas, box, position=(self.rect.x, self.rect.y))
 
 
 @dataclass(frozen=True, slots=True)

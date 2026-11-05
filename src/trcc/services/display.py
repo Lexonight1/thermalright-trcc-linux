@@ -27,6 +27,7 @@ from typing import Any
 
 from ..core.geometry import (
     content_is_portrait,
+    inset_rect,
     oriented_canvas,
     plan_orientation,
 )
@@ -42,7 +43,7 @@ from ..core.models import (
     RenderContent,
     Theme,
 )
-from ..core.ports import ContentStore, Paths, Renderer
+from ..core.ports import CaptureFailed, CaptureNotReady, ContentStore, Paths, Renderer
 from ..core.protocol import (
     DEFAULT_PROFILE,
     DeviceProfile,
@@ -54,6 +55,7 @@ from .background import Background, BackgroundSlot
 from .bg_cache import BgMaskCache
 from .layers import (
     BackgroundLayer,
+    Inset,
     Layer,
     LivePicture,
     Mask,
@@ -343,11 +345,16 @@ class DisplayService:
         # final wire bytes matches the last tick, return the cached
         # bytes directly.  Lifts the legacy ``OverlayService.would_change``
         # optimisation (skip on no-op tick) up to the byte level.
+        # A boxed live picture is new every frame, so its key (itself) keeps
+        # this cache from handing back the last frame; with none, () -- the
+        # key is what it always was.
+        insets = self._inset(info.key, s, visual_size)
         frame_key = (
             bg_key, overlay_key,
             s.brightness, s.orientation, s.split_mode,
             resolved_profile.rotate,
             id(resolved_profile),
+            tuple(layer.key() for layer in insets),
         )
         if (
             scene is not None
@@ -367,8 +374,8 @@ class DisplayService:
         # overlay (Dynamic Island) -- 1600x720 widescreen only, an asset picked
         # by (split_mode, rotation, SUB byte) as the C# does.  ``composite``
         # copies its base, so the cached bg+mask is never drawn into.
-        layers = self._layers_over_background(
-            info, s, overlay_key, overlay_surface, visual_size, profile)
+        layers = [*insets, *self._layers_over_background(
+            info, s, overlay_key, overlay_surface, visual_size, profile)]
         surface = draw_all(bg_surface, layers, self._r)
 
         # Brightness dim (before rotation — matches C# order)
@@ -1543,6 +1550,30 @@ class DisplayService:
                 user_sig, s.temp_unit)
 
     # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
+
+    def _inset(self, key: str, s: DeviceSettings,
+               visual_size: tuple[int, int]) -> list[Layer]:
+        """The panel's boxed picture over its background (``InsetChoice``),
+        drawn under the metrics -- or nothing: no box chosen, its source not
+        open, or no frame yet.  Only ``build_frame``: the box is the panel's,
+        not the theme's, so a theme's own still (``build_preview_surface``)
+        never carries it."""
+        if s.inset is None or (source := self._media.inset(key)) is None:
+            frame_log.debug("_inset: %s none (chosen=%s)", key, s.inset is not None)
+            return []
+        try:
+            frame = source.latest()
+        except (CaptureNotReady, CaptureFailed) as e:
+            frame_log.debug("_inset: %s no frame this tick: %s", key, e)
+            return []
+        except OSError as e:
+            # Gone for good: closed, so this is said once, not every frame.
+            # The choice stays saved -- a resume opens it again.
+            log.warning("_inset: %s's boxed picture %s is gone (%s) -- closing it",
+                        key, source.name, e)
+            self._media.close_inset(key)
+            return []
+        return [Inset(frame, inset_rect(visual_size, s.inset))]
 
     def _layers_over_background(
         self, info: ProductInfo, s: DeviceSettings, overlay_key: Any,

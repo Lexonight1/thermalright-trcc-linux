@@ -46,6 +46,9 @@ from ..core.models import (
     BackgroundMode,
     DeviceSettings,
     FitMode,
+    InsetChoice,
+    InsetCorner,
+    InsetSize,
     ModuleAsks,
     ModuleInstall,
     OrientationState,
@@ -1615,6 +1618,21 @@ def _screencast_region(value: Any) -> Any:
     return value
 
 
+def _inset(value: Any) -> Any:
+    """``{"module", "corner", "size"}`` -> ``InsetChoice``; anything
+    unreadable is no box, never a failed load."""
+    log.debug("_inset: %r", value)
+    if value is None:
+        return None
+    try:
+        return InsetChoice(module=str(value["module"]),
+                           corner=InsetCorner(value["corner"]),
+                           size=InsetSize(value["size"]))
+    except (KeyError, TypeError, ValueError) as e:
+        log.warning("_inset: %r unreadable (%s) -- no box", value, e)
+        return _DROP
+
+
 def _overlay_elements(value: Any) -> Any:
     log.debug("_overlay_elements: %d", len(value) if isinstance(value, list) else -1)
     if not isinstance(value, list):
@@ -1655,6 +1673,7 @@ _FROM_JSON: dict[str, Callable[[Any], Any]] = {
     "overlay_background": _tuple_of(3),
     "recent_colors": _rgb_list,
     "screencast_region": _screencast_region,
+    "inset": _inset,
     "screencast_rect": _tuple_of(4, int),
     "user_overlay_elements": _overlay_elements,
     "entered_with": _orientation_state,
