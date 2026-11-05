@@ -145,6 +145,7 @@ The Modules page lists a module from this file alone.
 | `network_hosts` | the internet sites it fetches from, as public hostnames (`api.open-meteo.com`) — required with the `network` capability, refused without it; never `localhost` or an IP address |
 | `author` | who wrote it, by name — shown on its tile and by `trcc system modules list`; for a module from the index it must be the name TRCC reviewed, and only TRCC's own modules say `Lexonight` |
 | `devices` | the USB devices it needs you to reach, as `lsusb` prints their ids (`0b05:19af`) — needs the `hardware` capability; see [USB devices](#usb-devices) |
+| `metrics` | the readings it adds, each `{"name", "label", "unit", "explanation"}` — `name` is lowercase letters, digits and `_`; `label` is what a picker shows; `explanation` says in plain words what it measures (a picker's tooltip) — required with the `metrics` capability, refused without it |
 
 ### When each hook runs
 
@@ -177,12 +178,15 @@ A module never gets the App itself. It gets a **host** that offers only what its
 | `files` | reads its own files in TRCC's data folder, and makes PNG pictures |
 | `frames` | sees the picture each LCD panel shows |
 | `readings` | reads the computer's sensor readings |
+| `metrics` | adds its own readings, which a theme shows like any sensor's |
 | `hardware` | reaches lighting chips: memory, the motherboard, OpenRGB |
 | `password` | may ask for your password, to reach hardware the system guards |
 | `network` | fetches from the internet sites its module.json names, and no others |
 | `lights` | shows colours another program sends on a cooler's LEDs, over the cooler's own effect, while they arrive |
 
 `host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds — and only when the site's name resolves to an address on the public internet, never this computer or the local network. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
+
+`host.metrics.publish(name, value)` sets one of the readings its `module.json` declares; `None` means it has no value right now, and it is left out until one comes. A theme shows it with the ordinary metric element, by its id: `<module>:<name>` — or `<module>:<name>:temp` when its `unit` is `°C`, which is what makes it show in °F for a user who chose Fahrenheit, exactly like `cpu:temp`. Publish in °C; TRCC converts. A name the manifest does not declare is refused, and switching the module off takes every reading it added away.
 
 `host.settings.preferences()` gives the user's temperature unit (`"C"` or `"F"`) and language, read-only — the ones TRCC's own overlays use, so a picture the module draws agrees with the readings on top of it. Subscribe to `TempUnitChanged` and `LanguageChanged` (the `events` capability) to redraw when the user changes either.
 

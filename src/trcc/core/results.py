@@ -179,6 +179,9 @@ class SensorInfoEntry:
     category: str
     unit: str
     label: str = ""
+    #: What it measures, in plain words -- a picker's tooltip
+    #: (``SensorReading.explanation``).
+    explanation: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -3532,12 +3532,12 @@ _ENUMERATOR_LOGGERS: dict[str, frozenset[str]] = {
     "gpus": frozenset({"frame_log"}),
     "fans": frozenset({"frame_log"}),
     "disks": frozenset({"frame_log"}),
-    "read_all": frozenset({"frame_log"}),
+    "_read_all": frozenset({"frame_log"}),
     "_refresh_if_stale": frozenset({"frame_log"}),
     "_gpu_prefixes": frozenset({"frame_log"}),        # every poll, every GPU
     # Per-tick too, and NOT one-shot: qtgui's SensorPickerWidget dispatches
     # ReadSensors() on a 2-second QTimer.
-    "discover": frozenset({"frame_log"}),
+    "_discover": frozenset({"frame_log"}),
     # Both, by design: the entry/value line is per-tick (frame), the
     # first-failure warning is the diagnostic a reporter needs (ordinary).
     "_read": frozenset({"frame_log", "log"}),
@@ -3571,10 +3571,11 @@ _ENUMERATOR_LOGGERS: dict[str, frozenset[str]] = {
     # rate.  (``set_interval`` itself is concrete ON THE PORT and so is not a
     # member of this class — this record covers the override only.)
     "_interval_changed": frozenset({"log"}),
-    # DEAD, not lifecycle — recorded as such so the disposition is not lost:
-    # abstract on the port, one implementation, ZERO callers in src/.  Retire
-    # it, or wire the single-sensor Query it implies; do not quietly classify.
-    "read_one": frozenset({"log"}),
+    # The OS half of ``read_one`` (the port merges module readings over it,
+    # 2026-11-05).  Recorded DEAD on 2026-09-01 -- zero callers then; one now:
+    # ``TickGameMode`` reads its row this way before the first sweep only
+    # (``device.py``), so it stays on the ordinary logger.
+    "_read_one": frozenset({"log"}),
     # An empty extension hook called EVERY TICK from _poll_once.  A stub today,
     # so the ratchet exempts it and it logs nothing.  The moment an OS
     # overrides it, THE RULE demands a line and this entry says which logger.

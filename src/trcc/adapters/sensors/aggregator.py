@@ -384,7 +384,7 @@ class BaselineSensors(SensorEnumerator):
                          "that reads it")
         return self._unsupported
 
-    def discover(self) -> list[SensorReading]:
+    def _discover(self) -> list[SensorReading]:
         """One SensorReading per normalized key this host CAN read.
 
         The catalog is static — the same 25 CPU / memory / IO / time keys are
@@ -472,14 +472,14 @@ class BaselineSensors(SensorEnumerator):
                         len(advertised), len(readings) - len(advertised))
         return advertised
 
-    def read_all(self) -> dict[str, float]:
+    def _read_all(self) -> dict[str, float]:
         """Every current reading, refreshing the cache first if it is stale."""
         frame_log.debug("read_all: cached=%d", len(self._readings))
         self._refresh_if_stale()
         with self._lock:
             return dict(self._readings)
 
-    def read_one(self, sensor_id: str) -> float | None:
+    def _read_one(self, sensor_id: str) -> float | None:
         """One current reading, refreshing the cache first if it is stale."""
         log.debug("read_one: sensor_id=%s", sensor_id)
         self._refresh_if_stale()

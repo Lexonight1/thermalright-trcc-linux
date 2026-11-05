@@ -68,10 +68,12 @@ from .core.models import (
     HardwareMetrics,
     InsetChoice,
     ModuleBackground,
+    ModuleMetric,
     PanelPicture,
     PanelSource,
     Preferences,
     RawFrame,
+    SensorReading,
     Theme,
     WantedModule,
     Wire,
@@ -1373,6 +1375,22 @@ class App(CommandBus, ModuleServices):
         raw = self.last_raw_readings
         frame_log.debug("App.latest_readings: %s", raw is not None)
         return None if raw is None else MappingProxyType(raw)
+
+    def publish_metric(self, module: str, metric: ModuleMetric,
+                       value: float | None) -> None:
+        """*module*'s *metric* reads *value* now -- in the one enumerator
+        every reader asks, so the render, the pickers and the report see it."""
+        frame_log.debug("publish_metric: %s %s = %s", module, metric.name, value)
+        reading = SensorReading(sensor_id=metric.sensor_id(module),
+                                category=f"module:{module}", value=value or 0.0,
+                                unit=metric.unit, label=metric.label,
+                                explanation=metric.explanation)
+        self.platform.sensors().add_reading(module, reading, value)
+
+    def withdraw_metrics(self, module: str) -> None:
+        """Every reading *module* added is gone -- it was switched off."""
+        log.info("withdraw_metrics: %s", module)
+        self.platform.sensors().withdraw_readings(module)
 
     def smbuses(self) -> tuple[SmBus, ...]:
         log.debug("smbuses")

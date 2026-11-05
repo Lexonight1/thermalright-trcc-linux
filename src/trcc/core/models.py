@@ -737,6 +737,9 @@ class SensorReading:
     value: float
     unit: str
     label: str = ""
+    #: What it measures, in plain words -- a module's own reading says so
+    #: (``ModuleMetric.explanation``); a picker shows it as the tooltip.
+    explanation: str = ""
 
 
 # =========================================================================
@@ -1648,6 +1651,7 @@ MODULE_CAPABILITIES: dict[str, str] = {
     "files": "reads its own files in TRCC's data folder, and makes PNG pictures",
     "frames": "sees the picture each LCD panel shows",
     "readings": "reads the computer's sensor readings",
+    "metrics": "adds its own readings, which a theme shows like any sensor's",
     "hardware": "reaches lighting chips: memory, the motherboard, OpenRGB",
     "password": "may ask for your password, to reach hardware the system guards",
     "network": "fetches from the internet sites its module.json names, and no others",
@@ -1708,6 +1712,30 @@ class Preferences:
 #: A module's key, which is also its folder's and its Python package's name:
 #: 2-31 lowercase letters, digits or _.
 MODULE_KEY = re.compile(r"[a-z][a-z0-9_]{1,30}")
+#: A module metric's name (``ModuleMetric``): 1-31 lowercase letters, digits
+#: or _, starting with a letter -- the middle of its sensor id.
+MODULE_METRIC_NAME = re.compile(r"[a-z][a-z0-9_]{0,30}")
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleMetric:
+    """A reading a module adds (the ``metrics`` capability), as its
+    ``module.json`` declares it.  Its sensor id is ``<module>:<name>`` --
+    and ``<module>:<name>:temp`` for a °C one, because ``:temp`` is THE mark
+    of a temperature: it is what converts the value to °F and labels it,
+    exactly as for ``cpu:temp`` (``services/metrics_personalize``)."""
+    name: str
+    label: str
+    unit: str = ""
+    explanation: str = ""
+
+    def sensor_id(self, module: str) -> str:
+        """This metric's id when *module* adds it."""
+        found = f"{module}:{self.name}" + (":temp" if self.unit == "°C" else "")
+        log.debug("ModuleMetric.sensor_id: %s %s -> %s", module, self.name, found)
+        return found
+
+
 #: The author every module that ships with TRCC names -- TRCC's maintainer --
 #: and no other module may.
 MODULE_BUILT_IN_AUTHOR = "Lexonight"
@@ -1772,6 +1800,8 @@ class ModuleManifest:
     author: str = ""
     #: The USB devices it needs this user to reach (``MODULE_DEVICE``).
     devices: tuple[str, ...] = ()
+    #: The readings it adds (the ``metrics`` capability).
+    metrics: tuple[ModuleMetric, ...] = ()
 
     @property
     def asks(self) -> ModuleAsks:

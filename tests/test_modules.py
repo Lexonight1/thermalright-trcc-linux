@@ -1184,3 +1184,80 @@ def test_the_api_unlocks(fake_platform: FakePlatform, registered: str) -> None:
         statuses = (client.post(f"/system/modules/{registered}/unlock").status_code,
                     client.post("/system/modules/no-such/unlock").status_code)
     assert statuses == (409, 404)
+
+
+# ── A module's own readings (the ``metrics`` capability, item 10 A1) ───────
+
+
+def _weather(tmp_path: Path) -> tuple[App, Any]:
+    """A real App on the mock, and a module adding Outside (°C) and Wind."""
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.models import ModuleManifest, ModuleMetric
+    from trcc.services.modules import ModuleScope
+
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path),
+              renderer=QtRenderer())
+    host = ModuleScope(app, ModuleManifest(
+        key="weather", title="Weather", summary="s", capabilities=("metrics",),
+        metrics=(ModuleMetric("outside", "Outside", "°C", "The air outside"),
+                 ModuleMetric("wind", "Wind", "km/h", "Wind speed"))))
+    return app, host
+
+
+def test_a_modules_reading_reaches_every_reader(tmp_path: Path) -> None:
+    """Published once, a module's reading is in the render's readings, in
+    the user's unit when it is a °C one (its id ends ``:temp``), and in both
+    sensor lists with its explanation; with no value it is not offered;
+    switched off, it is gone.  MUTATION CHECKS: drop ``:temp`` from
+    ``ModuleMetric.sensor_id``; drop ``withdraw_metrics`` from
+    ``ModuleScope.release``."""
+    from trcc.core.commands import ListSensors, ReadSensors, SetTempUnit
+    from trcc.core.commands._helpers import _live_sensors
+
+    app, host = _weather(tmp_path)
+    try:
+        host.metrics.publish("outside", 20)
+        host.metrics.publish("wind", 15.5)
+        assert app.dispatch(SetTempUnit(unit="F")).ok
+        live = _live_sensors(app)
+        assert (live["weather:outside:temp"], live["weather:wind"]) == (68.0, 15.5)
+        listed = {e.sensor_id: e for e in app.dispatch(ListSensors()).sensors}
+        assert (listed["weather:outside:temp"].unit,
+                listed["weather:outside:temp"].explanation) == ("°C", "The air outside")
+        read = {r.sensor_id: r for r in app.dispatch(ReadSensors()).readings}
+        assert (read["weather:outside:temp"].unit,
+                read["weather:outside:temp"].explanation) == ("°F", "The air outside")
+        host.metrics.publish("wind", None)
+        assert "weather:wind" not in _live_sensors(app)
+        with pytest.raises(ValueError, match="declares no metric 'rain'"):
+            host.metrics.publish("rain", 1.0)
+        host.release()
+        assert "weather:outside:temp" not in _live_sensors(app)
+    finally:
+        app.close()
+
+
+def test_a_metric_element_draws_a_modules_reading(tmp_path: Path) -> None:
+    """The panel's own metric element shows it -- nothing new to draw with:
+    a new value is a new frame on the wire."""
+    from tests.conftest import renderable_theme
+    from trcc.core.commands import ConnectDevice, RenderAndSend
+    from trcc.core.models import OverlayElement
+
+    app, host = _weather(tmp_path)
+    try:
+        key = "0402:3922"
+        assert app.dispatch(ConnectDevice(key=key)).ok
+        app.active_themes[key] = app.themes.load(renderable_theme(tmp_path / "t", "T"))
+        app.settings.for_device(key).user_overlay_elements = [OverlayElement(
+            id="w", type="metric", metric="weather:outside:temp", x=40, y=40, size=40)]
+        frames = []
+        for value in (20.0, 35.0):
+            host.metrics.publish("outside", value)
+            app.display.invalidate(key)
+            assert app.dispatch(RenderAndSend(key=key)).ok
+            frames.append(app.renderer.encode_png(app.display.rendered_surface(key)))
+        assert frames[0] != frames[1], "the element did not follow the reading"
+    finally:
+        app.close()

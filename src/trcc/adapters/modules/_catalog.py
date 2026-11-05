@@ -23,8 +23,10 @@ from ...core.models import (
     MODULE_CAPABILITIES,
     MODULE_DEVICE,
     MODULE_HOST,
+    MODULE_METRIC_NAME,
     MODULE_TRCC_VERSION,
     ModuleManifest,
+    ModuleMetric,
 )
 from ...core.ports import Module
 from ...services.modules import ModuleSpec
@@ -49,6 +51,35 @@ def _names(data: dict[str, Any], field: str, path: Path, wanted: str,
             isinstance(v, str) and (valid is None or valid(v)) for v in value):
         raise ManifestError(f"{path}: {field} must be {wanted}")
     return tuple(value)
+
+
+def _metrics(data: dict[str, Any], path: Path) -> tuple[ModuleMetric, ...]:
+    """Manifest ``metrics``: the readings a module adds, each an object with
+    a ``name`` (``MODULE_METRIC_NAME``, unique), a ``label`` and optionally a
+    ``unit`` and an ``explanation`` -- or ``ManifestError`` saying what."""
+    value = data.get("metrics", [])
+    log.debug("read_manifest: metrics %s", value)
+    wanted = (f"{path}: metrics must be a list of objects, each with a name "
+              "(lowercase letters, digits or _), a label, and optionally a unit "
+              "and an explanation")
+    if not isinstance(value, list):
+        raise ManifestError(wanted)
+    found: list[ModuleMetric] = []
+    for entry in value:
+        if not (isinstance(entry, dict)
+                and isinstance(entry.get("name"), str)
+                and MODULE_METRIC_NAME.fullmatch(entry["name"])
+                and isinstance(entry.get("label"), str) and entry["label"]
+                and all(isinstance(entry.get(f, ""), str)
+                        for f in ("unit", "explanation"))):
+            raise ManifestError(wanted)
+        found.append(ModuleMetric(name=entry["name"], label=entry["label"],
+                                  unit=entry.get("unit", ""),
+                                  explanation=entry.get("explanation", "")))
+    names = [m.name for m in found]
+    if len(set(names)) != len(names):
+        raise ManifestError(f"{path}: metrics names must differ")
+    return tuple(found)
 
 
 def read_manifest(path: Path) -> ModuleManifest:
@@ -80,6 +111,10 @@ def read_manifest(path: Path) -> ModuleManifest:
                             "go together -- name the sites it fetches from")
     devices = _names(data, "devices", path, "a list of USB ids, lowercase "
                      "vvvv:pppp as lsusb prints them", MODULE_DEVICE.fullmatch)
+    metrics = _metrics(data, path)
+    if bool(metrics) != ("metrics" in caps):
+        raise ManifestError(f"{path}: the metrics capability and metrics go "
+                            "together -- declare the readings it adds")
     if devices and "hardware" not in caps:
         raise ManifestError(f"{path}: devices needs the hardware capability -- it "
                             "is how a module reaches them")
@@ -99,7 +134,7 @@ def read_manifest(path: Path) -> ModuleManifest:
         icon=str(path.parent / icon) if icon else "",
         guide=str(data.get("guide", "")), capabilities=caps,
         backgrounds=backgrounds, network_hosts=hosts, author=author, devices=devices,
-        min_trcc=min_trcc)
+        min_trcc=min_trcc, metrics=metrics)
 
 
 #: Why a workspace module does not run while developer mode is off.

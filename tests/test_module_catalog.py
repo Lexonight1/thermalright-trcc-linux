@@ -92,6 +92,20 @@ def test_a_key_must_be_a_package_name(tmp_path: Path) -> None:
      "devices needs the hardware capability -- it is how a module reaches them"),
     *[({"min_trcc": bad}, "min_trcc must be the oldest TRCC it runs on, as X.Y.Z (9.12.0)")
       for bad in ("9.12", "v9.12.0", "9.12.0-rc1", 9)],
+    ({"metrics": [{"name": "outside", "label": "Outside"}]},
+     "the metrics capability and metrics go together -- declare the readings it adds"),
+    ({"capabilities": ["metrics"]},
+     "the metrics capability and metrics go together -- declare the readings it adds"),
+    *[({"capabilities": ["metrics"], "metrics": bad}, "metrics must be a list of "
+       "objects, each with a name (lowercase letters, digits or _), a label, and "
+       "optionally a unit and an explanation")
+      for bad in ({"name": "x"}, ["outside"], [{"name": "Outside", "label": "O"}],
+                  [{"name": "outside"}], [{"name": "outside", "label": ""}],
+                  [{"name": "outside", "label": "O", "unit": 1}],
+                  [{"name": "9lives", "label": "O"}])],
+    ({"capabilities": ["metrics"], "metrics": [{"name": "a", "label": "A"},
+                                               {"name": "a", "label": "B"}]},
+     "metrics names must differ"),
 ])
 def test_a_bad_manifest_says_what_is_wrong(
         tmp_path: Path, change: dict[str, Any], reason: str) -> None:
@@ -112,6 +126,19 @@ def test_a_module_names_the_usb_devices_it_needs(tmp_path: Path) -> None:
     manifest = read_manifest(_manifest(tmp_path / "lazy", capabilities=["hardware"],
                                        devices=["0b05:19af", "0b05:1aa6"]))
     assert manifest.asks.devices == ("0b05:19af", "0b05:1aa6")
+
+
+def test_a_module_declares_the_readings_it_adds(tmp_path: Path) -> None:
+    from trcc.core.models import ModuleMetric
+
+    manifest = read_manifest(_manifest(
+        tmp_path / "lazy", capabilities=["metrics"],
+        metrics=[{"name": "outside", "label": "Outside", "unit": "°C",
+                  "explanation": "The air outside"},
+                 {"name": "wind", "label": "Wind"}]))
+    assert manifest.metrics == (
+        ModuleMetric("outside", "Outside", "°C", "The air outside"),
+        ModuleMetric("wind", "Wind"))
 
 
 def test_a_broken_manifest_never_hides_the_others(lazy: Path) -> None:

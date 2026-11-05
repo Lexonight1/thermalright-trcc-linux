@@ -48,6 +48,7 @@ from ..core.ports import (
     HardwarePort,
     LedSource,
     LightsPort,
+    MetricsPort,
     Module,
     ModuleDevices,
     ModuleHost,
@@ -255,6 +256,24 @@ class _Readings(ReadingsPort):
         return self._services.latest_readings()
 
 
+class _Metrics(MetricsPort):
+    """The readings a module adds -- only those its manifest declares."""
+
+    def __init__(self, services: ModuleServices, manifest: ModuleManifest) -> None:
+        log.debug("_Metrics.__init__: %s %s", manifest.key,
+                  [m.name for m in manifest.metrics])
+        self._services, self._module = services, manifest.key
+        self._declared = {m.name: m for m in manifest.metrics}
+
+    def publish(self, name: str, value: float | None) -> None:
+        frame_log.debug("_Metrics.publish: %s %s = %s", self._module, name, value)
+        if (metric := self._declared.get(name)) is None:
+            raise ValueError(f"{self._module} declares no metric {name!r} in its "
+                             "module.json")
+        self._services.publish_metric(self._module, metric,
+                                      None if value is None else float(value))
+
+
 class _Hardware(HardwarePort):
     """Lighting hardware -- never one of TRCC's own panels, which the App
     drives: a module opening one would be a second writer on its wire."""
@@ -380,6 +399,7 @@ class ModuleScope(ModuleHost):
             "files": _Files(services),
             "frames": _Frames(self),
             "readings": _Readings(services),
+            "metrics": _Metrics(services, manifest),
             "hardware": _Hardware(services, manifest),
             "password": _Password(services),
             "network": _Network(services, manifest),
@@ -403,71 +423,6 @@ class ModuleScope(ModuleHost):
         self._services.unsubscribe(event_type, handler)
         if (event_type, handler) in self._subscriptions:
             self._subscriptions.remove((event_type, handler))
-
-    @property
-    def panels(self) -> PanelsPort:
-        log.debug("ModuleScope.panels")
-        return self._port("panels")
-
-    @property
-    def background(self) -> BackgroundPort:
-        log.debug("ModuleScope.background")
-        return self._port("background")
-
-    @property
-    def settings(self) -> SettingsPort:
-        log.debug("ModuleScope.settings")
-        return self._port("settings")
-
-    @property
-    def themes(self) -> ThemesPort:
-        log.debug("ModuleScope.themes")
-        return self._port("themes")
-
-    @property
-    def sound(self) -> SoundPort:
-        log.debug("ModuleScope.sound")
-        return self._port("sound")
-
-    @property
-    def gpu(self) -> GpuPort:
-        log.debug("ModuleScope.gpu")
-        return self._port("gpu")
-
-    @property
-    def files(self) -> FilesPort:
-        log.debug("ModuleScope.files")
-        return self._port("files")
-
-    @property
-    def frames(self) -> FramesPort:
-        log.debug("ModuleScope.frames")
-        return self._port("frames")
-
-    @property
-    def readings(self) -> ReadingsPort:
-        log.debug("ModuleScope.readings")
-        return self._port("readings")
-
-    @property
-    def hardware(self) -> HardwarePort:
-        log.debug("ModuleScope.hardware")
-        return self._port("hardware")
-
-    @property
-    def password(self) -> PasswordPort:
-        log.debug("ModuleScope.password")
-        return self._port("password")
-
-    @property
-    def network(self) -> NetworkPort:
-        log.debug("ModuleScope.network")
-        return self._port("network")
-
-    @property
-    def lights(self) -> LightsPort:
-        log.debug("ModuleScope.lights")
-        return self._port("lights")
 
     def _watch(self, handler: Callable[[PanelPicture], None]) -> None:
         """A frame watcher the module holds -- taken back on switch-off."""
@@ -519,6 +474,8 @@ class ModuleScope(ModuleHost):
             self._services.remove_background_kind(prefix)
         self._kinds.clear()
         self._ports["lights"].release()
+        if "metrics" in self._manifest.capabilities:
+            self._services.withdraw_metrics(self._key)
         if end_sources:
             for key in self._services.panel_keys():
                 if (self._services.draws(self._key, key)

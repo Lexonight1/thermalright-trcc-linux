@@ -9,9 +9,11 @@ from __future__ import annotations
 import builtins
 import logging
 import os
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, NoReturn, TypeVar
 
@@ -27,6 +29,7 @@ from .models import (
     CoolerLights,
     HidInterface,
     ModuleManifest,
+    ModuleMetric,
     PanelPicture,
     Preferences,
     RamAccessState,
@@ -1329,17 +1332,91 @@ class SensorEnumerator(ABC):
         self._warned_missing_fan_pins = frozenset()
 
     # ── Flat dict view (for overlay lookups) ────────────────────────
-    @abstractmethod
+    #
+    # Template Method: the three public reads are the OS's own readings
+    # (``_discover`` / ``_read_all`` / ``_read_one``) with every module's
+    # added ones over them (the ``metrics`` capability), so every consumer
+    # -- the render, the metrics loop, the pickers, the CLI and API, the
+    # report -- sees a module's readings without knowing they are one's.
+
+    #: Module readings by sensor id: (the module, its reading, its latest
+    #: value -- None until it publishes one).  Made on first use, per
+    #: instance; guarded by ``_added_lock``, since a module publishes from
+    #: its own thread while the metrics loop reads.
+    _added: dict[str, tuple[str, SensorReading, float | None]] | None = None
+    _added_lock: threading.Lock | None = None
+
+    def _added_readings(self) -> tuple[threading.Lock,
+                                       dict[str, tuple[str, SensorReading, float | None]]]:
+        """The module readings and their lock, made on first use."""
+        if self._added is None or self._added_lock is None:
+            log.debug("%s._added_readings: first use", type(self).__name__)
+            self._added, self._added_lock = {}, threading.Lock()
+        return self._added_lock, self._added
+
+    def add_reading(self, module: str, reading: SensorReading,
+                    value: float | None) -> None:
+        """*module*'s *reading* now reads *value* -- None: no value now, and it
+        is left out of every read until one comes."""
+        frame_log.debug("%s.add_reading: %s %s = %s", type(self).__name__, module,
+                        reading.sensor_id, value)
+        lock, added = self._added_readings()
+        with lock:
+            added[reading.sensor_id] = (module, reading, value)
+
+    def withdraw_readings(self, module: str) -> None:
+        """Every reading *module* added is gone (it was switched off)."""
+        lock, added = self._added_readings()
+        with lock:
+            gone = [sid for sid, (owner, _, _) in added.items() if owner == module]
+            for sid in gone:
+                del added[sid]
+        log.info("%s.withdraw_readings: %s -> %s", type(self).__name__, module,
+                 gone or "none")
+
     def discover(self) -> list[SensorReading]:
-        """One SensorReading per normalized key.  Snapshot at call time."""
+        """One SensorReading per normalized key -- the OS's, then each module
+        reading that has a value.  Snapshot at call time."""
+        lock, added = self._added_readings()
+        with lock:
+            extra = [replace(reading, value=value)
+                     for _, reading, value in added.values() if value is not None]
+        log.debug("%s.discover: +%d module reading(s)", type(self).__name__, len(extra))
+        return [*self._discover(), *extra]
 
-    @abstractmethod
     def read_all(self) -> dict[str, float]:
-        """Current readings keyed by normalized name.  Omits None values."""
+        """Current readings keyed by normalized name, module readings over
+        the OS's.  Omits None values."""
+        lock, added = self._added_readings()
+        with lock:
+            extra = {sid: value for sid, (_, _, value) in added.items()
+                     if value is not None}
+        frame_log.debug("%s.read_all: +%d module reading(s)", type(self).__name__,
+                        len(extra))
+        return {**self._read_all(), **extra}
+
+    def read_one(self, sensor_id: str) -> float | None:
+        """Read a single normalized key -- a module's, or the OS's."""
+        lock, added = self._added_readings()
+        with lock:
+            entry = added.get(sensor_id)
+        if entry is not None:
+            log.debug("%s.read_one: %s is %s's -> %s", type(self).__name__,
+                      sensor_id, entry[0], entry[2])
+            return entry[2]
+        return self._read_one(sensor_id)
 
     @abstractmethod
-    def read_one(self, sensor_id: str) -> float | None:
-        """Read a single normalized key."""
+    def _discover(self) -> list[SensorReading]:
+        """The OS's readings: one SensorReading per normalized key."""
+
+    @abstractmethod
+    def _read_all(self) -> dict[str, float]:
+        """The OS's current readings by normalized name.  Omits None values."""
+
+    @abstractmethod
+    def _read_one(self, sensor_id: str) -> float | None:
+        """The OS's reading of a single normalized key."""
 
     @abstractmethod
     def unsupported(self) -> frozenset[str]:
@@ -2975,6 +3052,18 @@ class ReadingsPort(ABC):
         (``cpu:temp``, ``gpu:primary:usage``); None before the first."""
 
 
+class MetricsPort(ABC):
+    """The ``metrics`` capability: readings the module adds, each declared in
+    its ``module.json`` (``ModuleMetric``).  A theme shows one like any
+    sensor's, by its id: ``<module>:<name>``, or ``<module>:<name>:temp`` for
+    a °C one -- which then shows in °F for a user who chose it."""
+
+    @abstractmethod
+    def publish(self, name: str, value: float | None) -> None:
+        """Metric *name* reads *value* now; None: it has no value now.  A
+        name the manifest does not declare is refused (``ValueError``)."""
+
+
 class HardwarePort(ABC):
     """The ``hardware`` capability: lighting chips TRCC does not drive as a
     panel -- each reached through the OS, so a stand-in platform's scripted
@@ -3048,6 +3137,13 @@ class ModuleHost(ABC):
     that knows which module asks (``services/modules.py``).
     """
 
+    def _port(self, capability: str) -> Any:
+        """The port for *capability* -- "not offered" here.  Every port
+        property asks this one method, so a host that offers ports overrides
+        it alone (``ModuleScope``) rather than each property."""
+        log.debug("%s._port: %s", type(self).__name__, capability)
+        self._not_offered(capability)
+
     def _not_offered(self, what: str) -> NoReturn:
         log.debug("%s: %s is not offered", type(self).__name__, what)
         raise UnsupportedOperationError(f"this host does not offer {what}")
@@ -3068,67 +3164,72 @@ class ModuleHost(ABC):
     @property
     def panels(self) -> PanelsPort:
         log.debug("ModuleHost.panels")
-        self._not_offered("panels")
+        return self._port("panels")
 
     @property
     def background(self) -> BackgroundPort:
         log.debug("ModuleHost.background")
-        self._not_offered("background")
+        return self._port("background")
 
     @property
     def settings(self) -> SettingsPort:
         log.debug("ModuleHost.settings")
-        self._not_offered("settings")
+        return self._port("settings")
 
     @property
     def themes(self) -> ThemesPort:
         log.debug("ModuleHost.themes")
-        self._not_offered("themes")
+        return self._port("themes")
 
     @property
     def sound(self) -> SoundPort:
         log.debug("ModuleHost.sound")
-        self._not_offered("sound")
+        return self._port("sound")
 
     @property
     def gpu(self) -> GpuPort:
         log.debug("ModuleHost.gpu")
-        self._not_offered("gpu")
+        return self._port("gpu")
 
     @property
     def files(self) -> FilesPort:
         log.debug("ModuleHost.files")
-        self._not_offered("files")
+        return self._port("files")
 
     @property
     def frames(self) -> FramesPort:
         log.debug("ModuleHost.frames")
-        self._not_offered("frames")
+        return self._port("frames")
 
     @property
     def readings(self) -> ReadingsPort:
         log.debug("ModuleHost.readings")
-        self._not_offered("readings")
+        return self._port("readings")
+
+    @property
+    def metrics(self) -> MetricsPort:
+        log.debug("ModuleHost.metrics")
+        return self._port("metrics")
 
     @property
     def hardware(self) -> HardwarePort:
         log.debug("ModuleHost.hardware")
-        self._not_offered("hardware")
+        return self._port("hardware")
 
     @property
     def password(self) -> PasswordPort:
         log.debug("ModuleHost.password")
-        self._not_offered("password")
+        return self._port("password")
 
     @property
     def lights(self) -> LightsPort:
         log.debug("ModuleHost.lights")
-        self._not_offered("lights")
+        return self._port("lights")
 
     @property
     def network(self) -> NetworkPort:
         log.debug("ModuleHost.network")
-        self._not_offered("network")
+        return self._port("network")
 
 
 class ModuleServices(ABC):
@@ -3245,6 +3346,15 @@ class ModuleServices(ABC):
 
     @abstractmethod
     def latest_readings(self) -> Mapping[str, float] | None: ...
+
+    @abstractmethod
+    def publish_metric(self, module: str, metric: ModuleMetric,
+                       value: float | None) -> None:
+        """*module*'s *metric* reads *value* now (None: no value now)."""
+
+    @abstractmethod
+    def withdraw_metrics(self, module: str) -> None:
+        """Every reading *module* added is gone."""
 
     @abstractmethod
     def smbuses(self) -> tuple[SmBus, ...]: ...

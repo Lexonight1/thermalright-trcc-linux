@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-94 ports.
+95 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -15,6 +15,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
+| [`MetricsPort`](#metricsport) | 1 | 0 | 1 |
 | [`MissPolicy`](#misspolicy) | 1 | 0 | 2 |
 | [`ModuleCommand`](#modulecommand) | 1 | 1 | 18 |
 | [`ModuleQuery`](#modulequery) | 1 | 0 | 6 |
@@ -61,7 +62,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`ModuleDevices`](#moduledevices) | 3 | 0 | 4 |
-| [`ModuleHost`](#modulehost) | 3 | 13 | 1 |
+| [`ModuleHost`](#modulehost) | 3 | 14 | 1 |
 | [`RamAccess`](#ramaccess) | 3 | 0 | 3 |
 | [`RgbMirror`](#rgbmirror) | 3 | 1 | 3 |
 | [`SendScheduler`](#sendscheduler) | 3 | 0 | 2 |
@@ -98,12 +99,12 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
 | [`VideoTool`](#videotool) | 8 | 0 | 1 |
 | [`RgbSkin`](#rgbskin) | 9 | 0 | 2 |
-| [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
+| [`SensorEnumerator`](#sensorenumerator) | 11 | 13 | 1 |
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 11 | 8 |
 | [`ContentStore`](#contentstore) | 33 | 0 | 1 |
-| [`ModuleServices`](#moduleservices) | 37 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 39 | 0 | 1 |
 
 ---
 
@@ -182,6 +183,20 @@ fetch(url: 'str', timeout_s: 'float' = 30.0, max_bytes: 'int | None' = None, all
 ```
 
 **Implementations (2):** `OfflineHttpFetcher` · `UrllibHttpFetcher`
+
+## MetricsPort
+
+`core/ports.py`
+
+The ``metrics`` capability: readings the module adds, each declared in its ``module.json`` (``ModuleMetric``).  A theme shows one like any sensor's, by its id: ``<module>:<name>``, or ``<module>:<name>:temp`` for a °C one -- which then shows in °F for a user who chose it.
+
+**You implement (1):**
+
+```python
+publish(name: 'str', value: 'float | None') -> None
+```
+
+**Implementations (1):** `_Metrics`
 
 ## MissPolicy
 
@@ -926,7 +941,7 @@ subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 ```
 
-**You inherit (13):** `background` · `files` · `frames` · `gpu` · `hardware` · `lights` · `network` · `panels` · `password` · `readings` · `settings` · `sound` · `themes`
+**You inherit (14):** `background` · `files` · `frames` · `gpu` · `hardware` · `lights` · `metrics` · `network` · `panels` · `password` · `readings` · `settings` · `sound` · `themes`
 
 **Implementations (1):** `ModuleScope`
 
@@ -1587,20 +1602,20 @@ OS-level sensor root.  Each OS has one implementation.
 **You implement (11):**
 
 ```python
+_discover() -> list[SensorReading]
+_read_all() -> dict[str, float]
+_read_one(sensor_id: 'str') -> float | None
 cpu() -> CpuSource
-discover() -> list[SensorReading]
 disks() -> list[DiskSource]
 fans() -> list[FanSource]
 gpus() -> list[GpuSource]
 memory() -> MemorySource
-read_all() -> dict[str, float]
-read_one(sensor_id: 'str') -> float | None
 start_polling(interval_s: 'float' = 2.0, on_sweep: 'Callable[[], None] | None' = None) -> None
 stop_polling() -> None
 unsupported() -> frozenset[str]
 ```
 
-**You inherit (8):** `fan_slots` · `preferred_disk` · `primary_gpu` · `set_fan_slot_pins` · `set_interval` · `set_preferred_disk` · `set_preferred_gpu` · `snapshot`
+**You inherit (13):** `add_reading` · `discover` · `fan_slots` · `preferred_disk` · `primary_gpu` · `read_all` · `read_one` · `set_fan_slot_pins` · `set_interval` · `set_preferred_disk` · `set_preferred_gpu` · `snapshot` · `withdraw_readings`
 
 **Implementations (1):** `BaselineSensors`
 
@@ -1759,7 +1774,7 @@ write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 
 The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
 
-**You implement (37):**
+**You implement (39):**
 
 ```python
 add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
@@ -1783,6 +1798,7 @@ panel_size(key: 'str', module: 'str | None' = None) -> tuple[int, int] | None
 panel_source(key: 'str') -> str | None
 preferences() -> Preferences
 publish(event: 'Event') -> None
+publish_metric(module: 'str', metric: 'ModuleMetric', value: 'float | None') -> None
 remove_background_kind(prefix: 'str') -> None
 remove_led_source(module: 'str') -> None
 resume_backgrounds(module: 'str') -> None
@@ -1798,6 +1814,7 @@ substitute(cls: '_C') -> _C
 unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 unwatch_frames(handler: 'Callable[[PanelPicture], None]') -> None
 watch_frames(handler: 'Callable[[PanelPicture], None]') -> None
+withdraw_metrics(module: 'str') -> None
 worker_thread() -> AbstractContextManager[None]
 ```
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -434,14 +434,11 @@ class ReadSensors(Query[SensorsResult]):
         # broadcast, so both paths have to label a reading identically or
         # one of them renders "122.0 °C".
         readings: list[SensorReading] = [
-            SensorReading(
-                sensor_id=d.sensor_id,
-                category=d.category,
-                value=personalized[d.sensor_id],
-                unit=personalize_unit(d.sensor_id, d.unit,
-                                      temp_unit=s.temp_unit),
-                label=d.label,
-            )
+            # ``replace``: every field of the reading, the explanation a
+            # module gave it included -- built field by field it was lost.
+            replace(d, value=personalized[d.sensor_id],
+                    unit=personalize_unit(d.sensor_id, d.unit,
+                                          temp_unit=s.temp_unit))
             for d in descriptors if d.sensor_id in personalized
         ]
         # The gap between descriptors and readings is where a metric goes
@@ -486,6 +483,7 @@ class ListSensors(Query[SensorsListResult]):
                 category=d.category,
                 unit=d.unit,
                 label=d.label,
+                explanation=d.explanation,
             )
             for d in descriptors
         ]
