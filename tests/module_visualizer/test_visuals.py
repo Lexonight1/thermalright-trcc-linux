@@ -52,7 +52,7 @@ from trcc.modules.visualizer.core.commands import (
 )
 from trcc.modules.visualizer.core.models import VISUAL_FPS, VisualSpec
 from trcc.modules.visualizer.core.ports import ranked_visuals
-from trcc.services.source_driver import task_key
+from trcc.services.source_driver import cadence_owner, task_key
 
 _E = TypeVar("_E", bound=Event)
 
@@ -388,8 +388,7 @@ def test_a_visual_plays_as_the_panel_s_background(app: App, tasks: list[str]) ->
     assert (snapshot.display_source, snapshot.module_title) == (
         "module", "Audio Visualizer")
     assert tasks == [task_key(_KEY, PanelSource.MODULE)]
-    observer = app._render_observer
-    assert observer._cadence_owner(_KEY) == "module"
+    assert cadence_owner(app, _KEY) == "module"
 
 
 @pytest.mark.parametrize(("visual", "preset", "problem"), [

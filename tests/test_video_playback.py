@@ -51,6 +51,7 @@ from trcc.services.media import (
 )
 from trcc.services.overlay import OverlayService
 from trcc.services.settings import Settings
+from trcc.services.source_driver import cadence_owner
 
 from .conftest import FakePaths, FakePlatform, renderable_theme, show_a_theme
 
@@ -1462,7 +1463,7 @@ def test_a_playing_video_suppresses_the_reactive_theme_render(
     Measured on the mock 320x320 panel before the fix: 40 composites and 40
     sends per 40 ``SensorsUpdated``, identical with and without a video.
 
-    MUTATION CHECK: drop the ``video`` arm of ``_cadence_owner`` and this
+    MUTATION CHECK: drop the ``video`` arm of ``cadence_owner`` and this
     fails having composited.
     """
     from trcc.core.events import SensorsUpdated
@@ -1506,7 +1507,7 @@ def test_a_PAUSED_video_still_gets_the_reactive_render(
     Found by driving it, not by reading it: the naive predicate looks right in
     the source and is wrong on the glass.
 
-    MUTATION CHECK: change ``_cadence_owner``'s video arm to
+    MUTATION CHECK: change ``cadence_owner``'s video arm to
     ``playback is not None`` and this fails having composited nothing.
     """
     from trcc.core.events import SensorsUpdated
@@ -1538,14 +1539,14 @@ def test_the_cadence_owner_names_the_video_exactly_when_the_loop_moves_it(
     no empty playback is registered -- so every combination is pinned here,
     the one that cannot happen today included.
 
-    MUTATION CHECK: give ``_cadence_owner`` back ``not playback.paused`` and
+    MUTATION CHECK: give ``cadence_owner`` back ``not playback.paused`` and
     the empty, unpaused case fails."""
     theme = _write_video_theme(tmp_home, "fact")
     rendering_app.active_themes[_KEY] = FileContentStore().load(theme)
     playback = _playback_for(rendering_app, theme / "Theme.mp4")
     playback.frames, playback.paused = list(frames), paused
 
-    owned = rendering_app._render_observer._cadence_owner(_KEY) == "video"
+    owned = cadence_owner(rendering_app, _KEY) == "video"
 
     assert owned == (_KEY in rendering_app.media.playing()) == (
         bool(frames) and not paused)

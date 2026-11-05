@@ -40,7 +40,7 @@ from trcc.core.events import ErrorOccurred
 from trcc.core.models import PanelSource, RawFrame, ThemeBackground
 from trcc.core.ports import CaptureNotReady, FrameSource
 from trcc.services.media import MediaService
-from trcc.services.source_driver import task_key
+from trcc.services.source_driver import cadence_owner, task_key
 
 _KEY = "0402:3922"
 _SPEC = {"vid": "0402", "pid": "3922", "fbl": 100}
@@ -246,8 +246,7 @@ def test_a_pushed_image_holds_the_stream_off_the_panel(app: App) -> None:
 def test_a_stream_owns_the_panel_s_cadence(app: App) -> None:
     """So the metrics tick does not render the theme over it."""
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
-    observer = app._render_observer
-    assert observer._cadence_owner(_KEY) == "media"
+    assert cadence_owner(app, _KEY) == "media"
 
 
 def test_restore_resumes_the_stream(app: App) -> None:

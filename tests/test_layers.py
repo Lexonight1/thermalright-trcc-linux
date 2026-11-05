@@ -325,3 +325,47 @@ def test_a_module_draws_in_its_box_through_its_own_host_calls(tmp_path: Path) ->
     host.background.show(key, cast(Any, second), 30)
     host.background.end(key)
     assert (second.closed, s.inset, host.background.draws(key)) == (1, None, False)
+
+
+def test_the_box_sends_only_when_nothing_else_drives_the_panel(tmp_path: Path) -> None:
+    """A box on a still theme sends at its module's rate; under anything
+    that already sends this panel's frames it sends nothing -- two producers
+    on one panel is the "blinking metrics mask" (2026-09-14).  MUTATION
+    CHECK: drop the owner test from ``InsetDriver._run``."""
+    from trcc.core.events import FrameSent
+    from trcc.core.models import PanelSource
+    from trcc.services.source_driver import BOX_OWNER, InsetDriver, cadence_owner
+
+    app, device, theme = _boxed(tmp_path, _Alternates())
+    key = device.info.key
+    app.active_themes[key] = theme
+    sent: list[FrameSent] = []
+    app.events.subscribe(FrameSent, sent.append)
+    driver = InsetDriver(app, key, 1 / 30)
+    assert cadence_owner(app, key) == BOX_OWNER
+    driver._run(0.0)
+    assert len(sent) == 1
+    app.media.open_live(key, PanelSource.MODULE, cast(Any, _Alternates()))
+    assert cadence_owner(app, key) == "module"
+    driver._run(0.0)
+    assert len(sent) == 1, "the box sent over a live picture"
+
+
+def test_letting_the_panel_go_stops_its_box(tmp_path: Path) -> None:
+    """A disconnect stops the box's driver and closes its source -- and
+    keeps the choice, as every source's.  MUTATION CHECK: drop the box key
+    from ``live_task_keys``."""
+    from trcc.core.models import InsetChoice, ModuleManifest
+    from trcc.services.modules import ModuleScope
+    from trcc.services.source_driver import inset_task_key, live_task_keys
+
+    source = _Alternates()
+    app, device, _ = _boxed(tmp_path, _Alternates())
+    key = device.info.key
+    host = ModuleScope(app, ModuleManifest(key="viz", title="Viz", summary="s",
+                                           capabilities=("panels", "background")))
+    host.background.show(key, cast(Any, source), 30)
+    assert inset_task_key(key) in live_task_keys(key)
+    app.stop_sources(key)
+    assert (source.closed, app.media.inset(key)) == (1, None)
+    assert app.settings.for_device(key).inset == InsetChoice("viz")

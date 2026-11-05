@@ -647,11 +647,12 @@ class App(CommandBus, ModuleServices):
         theme -- its video too -- plays on under it."""
         from .core.commands import StopVideo
         from .core.commands.device import _publish_background
-        from .services.source_driver import SourceDriver
+        from .services.source_driver import InsetDriver, SourceDriver
         if self._box(key, module) is not None:
             log.info("show_source: %s's box <- %s (%s, %g fps)", key,
                      source.name, module, fps)
             self.media.open_inset(key, source)
+            self.add_task(InsetDriver(self, key, 1.0 / fps))
             return
         log.info("show_source: %s <- %s (%s, %g fps)", key, source.name,
                  module, fps)
@@ -669,11 +670,12 @@ class App(CommandBus, ModuleServices):
         has *module* in a box, the box closes instead -- and without
         *keep_choice* it is no longer chosen."""
         from .core.commands.device import _theme_background_returns
-        from .services.source_driver import task_key
+        from .services.source_driver import inset_task_key, task_key
         if self._box(key, module) is not None:
             log.info("end_source: %s's box (%s) keep_choice=%s", key, module,
                      keep_choice)
             self.media.close_inset(key)
+            self.remove_task(inset_task_key(key))
             if not keep_choice:
                 self.settings.set_inset(key, None)
             return
@@ -1922,6 +1924,7 @@ class App(CommandBus, ModuleServices):
         # (``background``, ``screencast_region``) stays
         # saved: only the running parts stop.
         self.media.close_live(key)
+        self.media.close_inset(key)
 
     def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:
         """Submit a frame to a device's send worker.
@@ -2242,7 +2245,8 @@ class _DeviceRenderObserver:
                     type(event).__name__, key,
                 )
                 continue
-            owner = self._cadence_owner(key)
+            from .services.source_driver import cadence_owner
+            owner = cadence_owner(self._app, key)
             if owner is not None:
                 frame_log.debug(
                     "DeviceRenderObserver: skip %s for %s (%s owns the panel; "
@@ -2256,52 +2260,3 @@ class _DeviceRenderObserver:
             )
             self._app.dispatch(self._RenderAndSend(key=key))
 
-    def _cadence_owner(self, key: str) -> str | None:
-        """Which OTHER producer already drives this panel, if any.
-
-        A reactive render is only worth dispatching when nothing else is
-        writing the device.  When something is, the extra frame is at best
-        redundant and at worst visible:
-
-        * **game** — game mode holds the panel; its own task draws the only
-          frames it shows, as the C#'s ``Timer_event`` draws nothing else
-          (FormCZTV.cs:2988).
-        * **screencast** — its tick composes background + mask + metrics at
-          capture rate, and its background is the captured region while this
-          one's is the theme.  Two DIFFERENT pictures, so at ~7 fps capture
-          against a 2 s sensor tick the panel alternated ~13 screen frames
-          with one theme frame: the "blinking metrics mask" (2026-09-14).
-        * **video** — the animation tick already sends at the video's fps.
-        * **stream / module** — a web source or a module's source (an audio
-          visual): its driver
-          sends at its own rate, the theme's overlay composited on top.
-          Measured on the mock 320x320 panel: 40 composites and 40 wire writes
-          per 40 ``SensorsUpdated``, on top of the tick's own.
-
-        ``paused`` is load-bearing, not a detail.  ``lcd_handler.play_pause``
-        stops the animation timer while ``PauseVideo`` leaves the ``Playback``
-        in place, so a paused video has a playback and NO producer.  Keying
-        off the playback's existence would freeze a paused panel's clock and
-        metrics — which is why this reads the flag and not the object.
-
-        Gating the PRODUCER, not the send: metrics still refresh, and sooner,
-        because the owning tick composes them faster than the sensor cadence.
-
-        The LED animation loop deliberately does NOT appear here.  It answers
-        a different question: its devices are filtered out of the device-wide
-        branch above, because a reactive LED render is not a duplicate but a
-        deliberately different one — ``RenderLed(advance=False)`` HOLDS the
-        carousel so a slider drag cannot race the metric page forward (#193 /
-        #202).  Folding it in would be duplication removal that changes
-        behaviour.
-        """
-        if self._app.game_engaged(key):
-            return "game"
-        # A cast, a stream, a module's picture: whichever holds the slot.
-        if (live := self._app.media.live_kind(key)) is not None:
-            return live.value
-        playback = self._app.media.playback(key)
-        if playback is not None and playback.advancing:
-            return "video"
-        frame_log.debug("_cadence_owner: %s — nothing else owns this panel", key)
-        return None
