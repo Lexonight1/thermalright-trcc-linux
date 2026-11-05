@@ -41,9 +41,10 @@ frame_log = per_frame(__name__)
 PROBE_TIMEOUT_S = 10
 #: An export decodes up to ``ZT_MAX_DURATION_MS`` of video at any source size.
 EXPORT_TIMEOUT_S = 600
-#: ffmpeg's words for a codec its build leaves out -- the same in 7.1 and 8.1
-#: (Fedora 42 and 44 ffmpeg-free on an HEVC clip, measured 2026-11-05).
-_NO_DECODER = re.compile(r"no decoder found for: (\w+)")
+#: ffmpeg's words for a codec its build leaves out, measured 2026-11-05 on an
+#: HEVC clip: upstream's, the same in 7.1 and 8.1 (Fedora 42 and 44
+#: ffmpeg-free), then openSUSE's own (Tumbleweed 9.0.2, Leap 16 7.1.5).
+_NO_DECODER = re.compile(r'no decoder found for: (\w+)|does not include a "(\w+)" decoder')
 
 #: The cloud tiles: one frame, then a 120x120 GIF of the whole (short) video.
 STILL_TIMEOUT_S = 10
@@ -79,7 +80,7 @@ class FfmpegTool(VideoTool):
         if (found := _NO_DECODER.search(stderr)) is None:
             log.debug("FfmpegTool._explain: not a missing codec")
             return ""
-        codec = found.group(1).upper()
+        codec = (found.group(1) or found.group(2)).upper()
         hint = self._full_ffmpeg_hint() if self._full_ffmpeg_hint else ""
         told = (f"this ffmpeg cannot play {codec} video -- "
                 + (f"to get one that can: {hint}" if hint

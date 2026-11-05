@@ -258,3 +258,16 @@ def test_the_decoder_list_is_read_by_name(monkeypatch: pytest.MonkeyPatch) -> No
 def test_this_machines_ffmpeg_answers_for_itself() -> None:
     """The real program: a build with every decoder lacks none of these."""
     assert FfmpegTool().lacks_decoders(("h264",)) == ()
+
+
+@pytest.mark.parametrize("said", [
+    _NO_HEVC.decode(),                                    # upstream: Fedora ffmpeg-free 7.1 / 8.1
+    '[vist#0:0/hevc @ 0x559c965428c0] Decoding was requested, but this build of '
+    'ffmpeg does not include a "hevc" decoder',          # openSUSE TW 9.0.2, Leap 16 7.1.5
+], ids=["upstream", "opensuse"])
+def test_both_measured_wordings_of_a_missing_codec_are_read(said: str) -> None:
+    """openSUSE patches the words; measured in containers 2026-11-05.
+
+    MUTATION CHECK: drop the openSUSE arm -- its users get the raw error."""
+    assert FfmpegTool(full_ffmpeg_hint=_rpm_fusion)._explain(said) == (
+        f"this ffmpeg cannot play HEVC video -- to get one that can: {_RPM_FUSION}")

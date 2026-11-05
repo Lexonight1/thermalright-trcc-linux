@@ -4026,10 +4026,11 @@ class Platform(ABC):
         """One line that swaps this OS's ffmpeg for a build that decodes every
         format, or "" where the usual one already does.
 
-        "" by default: Windows and macOS ship a full build in the installer,
-        Debian, Ubuntu and Arch package one.  Fedora's stock ``ffmpeg-free``
-        leaves out HEVC -- an iPhone's video -- so the Linux Fedora family
-        names RPM Fusion's (measured 2026-11-05, Fedora 42 and 44).
+        "" by default: Windows and macOS ship a full build in the installer;
+        Debian, Ubuntu, Arch, Alpine and Void package one (measured 2026-11-05).
+        Three Linux families' stock ffmpeg leaves out HEVC -- an iPhone's
+        video -- and each names its own way to a full one: Fedora and EL
+        RPM Fusion's, openSUSE ``opi codecs``.
         """
         log.debug("%s.full_ffmpeg_hint: %r", type(self).__name__, self._full_ffmpeg)
         return self._full_ffmpeg

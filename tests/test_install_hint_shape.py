@@ -37,7 +37,7 @@ from __future__ import annotations
 import pytest
 
 from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
-from trcc.adapters.system.linux import _FAMILIES, _GENERIC_FAMILY, LinuxOS
+from trcc.adapters.system.linux import _EL_FAMILY, _FAMILIES, _GENERIC_FAMILY, LinuxOS
 from trcc.adapters.system.macos import MacOSPlatform
 from trcc.adapters.system.windows import WindowsPlatform
 from trcc.core.ports import Platform
@@ -102,15 +102,23 @@ def test_the_full_ffmpeg_hint_is_one_line_or_none(os_obj: Platform) -> None:
     assert "\n" not in hint and "\r" not in hint and hint == hint.strip()
 
 
-def test_only_fedora_names_a_fuller_ffmpeg() -> None:
-    """Fedora's stock ffmpeg-free cannot decode HEVC (measured 2026-11-05,
-    Fedora 42 and 44); RPM Fusion's two documented steps get the full one.
-    Everywhere else the usual ffmpeg already decodes it.
+def test_only_the_stripped_families_name_a_fuller_ffmpeg() -> None:
+    """Measured in containers 2026-11-05 on an iPhone-style HEVC clip: stock
+    ffmpeg cannot play it on Fedora 42/44, Rocky 9 (EPEL) and openSUSE
+    Tumbleweed / Leap 16; it can on Debian 13, Ubuntu 24.04, Arch, Alpine and
+    Void.  Each stripped family names the route measured to fix it.
 
-    MUTATION CHECK: give every family the line -- Debian's is not "" and
-    this names it."""
+    MUTATION CHECK: give every family a line -- Debian's is not "" and this
+    names it."""
     named = {_os_id(o): o.full_ffmpeg_hint() for o in ALL_OS if o.full_ffmpeg_hint()}
-    assert named == {"LinuxOS[Fedora-family]": (
-        "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/"
-        "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
-        " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing")}
+    assert named == {
+        "LinuxOS[Fedora-family]": (
+            "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/"
+            "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+            " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing"),
+        "LinuxOS[SUSE-family]": "sudo zypper install opi && opi codecs",
+    }
+    assert LinuxOS(_EL_FAMILY).full_ffmpeg_hint() == (
+        "sudo dnf install --nogpgcheck https://mirrors.rpmfusion.org/free/el/"
+        "rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm"
+        " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing")

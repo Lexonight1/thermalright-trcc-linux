@@ -487,9 +487,8 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
                   # By name: Fedora ships it in /usr/bin, EL in /usr/sbin.
                   "sensors-detect": "lm_sensors"},
         # Stock ffmpeg-free cannot decode HEVC (measured 2026-11-05, Fedora
-        # 44: "no decoder found for: hevc").  RPM Fusion's own two steps,
-        # rpmfusion.org/Configuration and /Howto/Multimedia.  Not on EL: its
-        # URL and EPEL ordering differ, and that has not been tried.
+        # 42 and 44: "no decoder found for: hevc").  RPM Fusion's own two
+        # steps, rpmfusion.org/Configuration and /Howto/Multimedia.
         full_ffmpeg=("sudo dnf install https://mirrors.rpmfusion.org/free/fedora/"
                      "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
                      " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing"),
@@ -517,6 +516,12 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         name="SUSE-family", manager="zypper",
         install_cmd="sudo zypper install {pkg}",
         packages={"pynvml": "python3-pynvml", "sensors-detect": "sensors"},
+        # Stock ffmpeg leaves out HEVC on Tumbleweed (9.0.2) and Leap 16
+        # (7.1.5).  openSUSE's own route, doc.opensuse.org/.../codecs: opi
+        # adds Packman for this release and swaps ffmpeg; measured to play
+        # HEVC on both, 2026-11-05.  opi, not Packman's URL: Packman is
+        # reported to close on 2026-12-31, and opi is what openSUSE keeps.
+        full_ffmpeg="sudo zypper install opi && opi codecs",
     ),
     LinuxFamily(
         name="Void", manager="xbps-install",
@@ -551,6 +556,13 @@ _EL_FAMILY = LinuxFamily(
               "7z": "/usr/bin/7z",
               "ffmpeg": "/usr/bin/ffmpeg",
               "sensors-detect": "lm_sensors"},     # AppStream, /usr/sbin
+    # EPEL's ffmpeg-free leaves out HEVC as Fedora's does.  RPM Fusion's EL
+    # repo (rpmfusion.org/Configuration) and the same swap; measured on Rocky
+    # 9 to play HEVC, 2026-11-05.  EPEL and CRB are already on wherever
+    # ffmpeg-free is installed -- it does not install without them.
+    full_ffmpeg=("sudo dnf install --nogpgcheck https://mirrors.rpmfusion.org/free/el/"
+                 "rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm"
+                 " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing"),
 )
 
 #: ``ID=`` values that mean Enterprise Linux, and the ``ID_LIKE`` token that
