@@ -26,8 +26,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
 | [`SignatureChecker`](#signaturechecker) | 1 | 0 | 1 |
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
-| [`UserInterface`](#userinterface) | 1 | 11 | 5 |
-| [`_QtUI`](#_qtui) | 1 | 4 | 2 |
+| [`UserInterface`](#userinterface) | 1 | 11 | 6 |
+| [`_QtUI`](#_qtui) | 1 | 4 | 3 |
 | [`BackgroundLayer`](#backgroundlayer) | 2 | 1 | 4 |
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
 | [`BaseModule`](#basemodule) | 2 | 0 | 2 |
@@ -52,7 +52,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseBulkDevice`](#basebulkdevice) | 3 | 0 | 4 |
 | [`BaseDevice`](#basedevice) | 3 | 4 | 5 |
 | [`BoardTempSource`](#boardtempsource) | 3 | 0 | 2 |
-| [`CommandBus`](#commandbus) | 3 | 1 | 7 |
+| [`CommandBus`](#commandbus) | 3 | 1 | 8 |
 | [`Device`](#device) | 3 | 15 | 5 |
 | [`DiskSource`](#disksource) | 3 | 0 | 3 |
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
@@ -356,7 +356,7 @@ run() -> int
 
 **You inherit (11):** `announce` · `bring_up` · `compose` · `dispatch` · `events` · `on_app_gone` · `preflight` · `remote` · `start` · `stop` · `teardown`
 
-**Implementations (5):** `ApiUI` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
+**Implementations (6):** `ApiUI` · `CliUI` · `DaemonUI` · `GuiUI` · `HudUI` · `QtGuiUI`
 
 ## _QtUI
 
@@ -372,7 +372,7 @@ run() -> int
 
 **You inherit (4):** `announce` · `compose` · `stop` · `teardown`
 
-**Implementations (2):** `GuiUI` · `QtGuiUI`
+**Implementations (3):** `GuiUI` · `HudUI` · `QtGuiUI`
 
 ## BackgroundLayer
 
@@ -765,7 +765,7 @@ remote() -> bool
 
 **You inherit (1):** `on_app_gone`
 
-**Implementations (7):** `ApiUI` · `App` · `AppProxy` · `CliUI` · `DaemonUI` · `GuiUI` · `QtGuiUI`
+**Implementations (8):** `ApiUI` · `App` · `AppProxy` · `CliUI` · `DaemonUI` · `GuiUI` · `HudUI` · `QtGuiUI`
 
 ## Device
 

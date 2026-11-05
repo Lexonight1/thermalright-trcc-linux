@@ -1843,6 +1843,9 @@ _UI_ADAPTER_COMPOSITION_ROOTS: frozenset[tuple[str, str]] = frozenset({
     # qtgui's launcher, the twin of the gui's above: it turns "this host" into a
     # Platform, which ``run`` needs to end the process (``hard_exit``).
     ("trcc/ui/qtgui/__init__.py", "trcc.adapters.system"),
+    # hudgui's launcher, the third twin -- on its face in the composition root
+    # (``HudUI.launch``), so ``trcc hud`` reaches no skin to start one.
+    ("trcc/ui/_uis.py", "trcc.adapters.system"),
     ("trcc/ui/cli/main.py", "trcc.adapters.infra.logging"),
     # 2026-10-16: ``trcc service`` is the entry point of ANOTHER process --
     # Windows' SYSTEM service (SCSI + PawnIO for a non-elevated App).  It

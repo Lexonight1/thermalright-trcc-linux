@@ -52,7 +52,9 @@ from ...core.events import (
 )
 from ..bus_bridge import BusBridge
 from ..device_selection import DeviceSelection
+from ..qt_assets import Assets
 from ..qt_file_drop import FileDropTarget
+from ..qt_preview import FRAME_EDGE, PreviewSurface
 from ..qt_tray import TrayController
 from ..viewfinder import ViewfinderFleet
 from .panels import (
@@ -72,7 +74,6 @@ from .panels import (
     StatusPanel,
     SystemPanel,
 )
-from .preview_surface import FRAME_EDGE, PreviewSurface
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -271,7 +272,7 @@ class MainWindow(QMainWindow):
         """
         log.info("_build_chrome: rail | preview | content")
         self._preview_surface = PreviewSurface(
-            app, self._bus, self._lcd_selection, self,
+            app, self._bus, self._lcd_selection, Assets.pixmap, self,
         )
         self._preview_surface.setFixedWidth(FRAME_EDGE + 16)
         # The state read-out reports the size of the render the surface just

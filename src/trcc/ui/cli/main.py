@@ -208,6 +208,16 @@ def qtgui(
     raise SystemExit(launch(start_hidden=start_hidden))
 
 
+@app.command("hud")
+def hud() -> None:
+    """Launch hudgui -- the gui redesigned as a HUD: a chrome menu bar, the
+    live panel preview, and panels that drop down over it."""
+    _ensure_logging()   # same reason as gui() -- a direct entry point too
+    log.info("cli hud")
+    from .._uis import HudUI
+    raise SystemExit(HudUI.launch())
+
+
 @app.command("gui")
 def gui(
     resume: bool = typer.Option(

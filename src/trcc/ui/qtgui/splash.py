@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .assets import Assets
+from ..qt_assets import Assets
 
 log = logging.getLogger(__name__)
 

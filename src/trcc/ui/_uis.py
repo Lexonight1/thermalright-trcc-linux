@@ -491,6 +491,35 @@ class QtGuiUI(_QtUI, key="qtgui"):
         return self._exec()
 
 
+class HudUI(_QtUI, key="hud"):
+    """hudgui -- the gui redesigned as a HUD: a chrome menu bar, the live
+    panel preview, one menu panel at a time dropping down over it."""
+
+    def __init__(self) -> None:
+        log.info("HudUI.__init__")
+
+    @classmethod
+    def launch(cls, *, force_exit: bool = True) -> int:
+        """``trcc hud``'s entry: this host's platform, then the UI bus's
+        launch sequence.  Here, on the composition root that names every
+        face, so the CLI reaches no skin to start one."""
+        log.info("HudUI.launch")
+        from functools import partial
+
+        from ..adapters.system import current_platform
+        from ._base import reap_after
+        platform = current_platform()
+        return reap_after(platform, partial(cls().start, platform), force_exit=force_exit)
+
+    def run(self) -> int:
+        log.info("HudUI.run: building the window")
+        from .hudgui.window import HudWindow
+
+        window = self._window = HudWindow(self)
+        window.show()
+        return self._exec()
+
+
 class CliUI(UserInterface, key="cli"):
     """The terminal face.  ``_ctx.get_app()`` returns one, so every CLI command
     body dispatches through it and the log reads ``[cli] dispatch …``.

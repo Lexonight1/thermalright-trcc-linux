@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from ....core.commands import ListCloudThemes, LoadCloudTheme
-from ..assets import thumbnail_icon
+from ...qt_assets import thumbnail_icon
 from ..device_picker import DevicePickerWidget
 from ._browser_base import AssetBrowserPanel
 

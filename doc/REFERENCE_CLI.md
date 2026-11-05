@@ -29,6 +29,7 @@ trcc [OPTIONS] COMMAND [ARGS]...
 - [`trcc dispatch`](#trcc-dispatch)
 - [`trcc doctor`](#trcc-doctor)
 - [`trcc gui`](#trcc-gui)
+- [`trcc hud`](#trcc-hud)
 - [`trcc kill`](#trcc-kill)
 - [`trcc qtgui`](#trcc-qtgui)
 - [`trcc quickstart`](#trcc-quickstart)
@@ -129,6 +130,14 @@ trcc gui [OPTIONS]
 |---|---|
 | `--resume`, `--tray`, `--minimized` | Start hidden in the system tray instead of showing the window — used by XDG autostart on login. The last-used theme is restored automatically. |
 | `--decorated` | Draw the window with your desktop's normal title bar and borders instead of the frameless Windows-style shell. Use it if the window will not move or your window manager does not decorate frameless windows. |
+
+### `trcc hud`
+
+Launch hudgui -- the gui redesigned as a HUD: a chrome menu bar, the live panel preview, and panels that drop down over it.
+
+```bash
+trcc hud
+```
 
 ### `trcc kill`
 

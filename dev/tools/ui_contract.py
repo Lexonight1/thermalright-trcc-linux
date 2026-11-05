@@ -68,6 +68,7 @@ _UIS = {
     "api": _UI_ROOT / "api",
     "gui": _UI_ROOT / "gui",
     "qtgui": _UI_ROOT / "qtgui",
+    "hudgui": _UI_ROOT / "hudgui",
 }
 
 

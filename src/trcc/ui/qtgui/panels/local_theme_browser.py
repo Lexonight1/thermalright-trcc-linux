@@ -39,7 +39,7 @@ from ....core.commands import (
     SaveTheme,
 )
 from ....core.models import MEDIA, MediaKind
-from ..assets import thumbnail_icon
+from ...qt_assets import thumbnail_icon
 from ..device_picker import DevicePickerWidget
 from ._browser_base import AssetBrowserPanel
 

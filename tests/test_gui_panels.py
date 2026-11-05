@@ -696,7 +696,7 @@ def test_base_panel_requires_setup_ui() -> None:
 
 def test_assets_resolve_missing_returns_placeholder(qapp: object) -> None:
     """Missing asset names produce a 1×1 transparent placeholder."""
-    from trcc.ui.qtgui.assets import Assets
+    from trcc.ui.qt_assets import Assets
 
     pix = Assets.pixmap("definitely-not-an-asset-xyz")
     assert not pix.isNull()
@@ -1150,10 +1150,11 @@ def test_preview_surface_unknown_key_shows_placeholder(gui_app: App) -> None:
     a silent black rectangle is the one outcome that tells the user nothing.
     """
     from trcc.ui.device_selection import DeviceSelection
-    from trcc.ui.qtgui.preview_surface import PreviewSurface
+    from trcc.ui.qt_assets import Assets
+    from trcc.ui.qt_preview import PreviewSurface
 
     selection = DeviceSelection()
-    surface = PreviewSurface(gui_app, _bus(gui_app), selection)
+    surface = PreviewSurface(gui_app, _bus(gui_app), selection, Assets.pixmap)
     selection.set_key("dead:beef")
     surface.refresh()
     text = surface._label.text()
@@ -3656,7 +3657,7 @@ def test_greyscale_desaturates_and_keeps_alpha(qtbot) -> None:
     """
     from PySide6.QtGui import QColor, QPixmap
 
-    from trcc.ui.qtgui.assets import _greyscale
+    from trcc.ui.qt_assets import _greyscale
 
     for rgba in ((255, 0, 0, 255), (0, 255, 0, 128), (100, 150, 200, 64)):
         src = QPixmap(4, 4)
@@ -4071,7 +4072,7 @@ def test_the_preview_is_not_rendered_twice(make_window,
     explicitly rules out.
     """
     del qapp
-    from trcc.ui.qtgui.preview_surface import PreviewSurface
+    from trcc.ui.qt_preview import PreviewSurface
 
     app = _two_device_app(tmp_path)
     try:
@@ -4128,11 +4129,12 @@ def test_the_preview_wears_the_panel_s_bezel(qapp: object, tmp_path: Path) -> No
     del qapp
     from trcc.ui.device_selection import DeviceSelection
     from trcc.ui.presentation.lcd_panel import lcd_panel_for
-    from trcc.ui.qtgui.preview_surface import FRAME_EDGE, PreviewSurface
+    from trcc.ui.qt_assets import Assets
+    from trcc.ui.qt_preview import FRAME_EDGE, PreviewSurface
 
     app = _two_device_app(tmp_path)
     try:
-        surface = PreviewSurface(app, _bus(app), DeviceSelection())
+        surface = PreviewSurface(app, _bus(app), DeviceSelection(), Assets.pixmap)
         assert surface._frame.size().toTuple() == (FRAME_EDGE, FRAME_EDGE)
 
         for resolution in ((320, 320), (360, 360), (854, 480)):
@@ -4526,10 +4528,11 @@ def test_qtgui_shows_the_sent_frame_without_rendering_another(gui_app: App) -> N
     from trcc.adapters.render.qt import QtRenderer
     from trcc.core.events import FrameSent
     from trcc.ui.device_selection import DeviceSelection
-    from trcc.ui.qtgui.preview_surface import PreviewSurface
+    from trcc.ui.qt_assets import Assets
+    from trcc.ui.qt_preview import PreviewSurface
 
     selection = DeviceSelection()
-    surface = PreviewSurface(gui_app, _bus(gui_app), selection)
+    surface = PreviewSurface(gui_app, _bus(gui_app), selection, Assets.pixmap)
     selection.set_key("0402:3922")
     surface._label.setFixedSize(320, 320)
     frame = QImage(320, 320, QImage.Format.Format_RGB888)

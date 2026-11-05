@@ -1,4 +1,8 @@
-"""AssetService — single point of asset (image) path resolution.
+"""The Qt skins' chrome assets -- the gui's asset tree, greyscaled -- and content
+thumbnails.  Moved here from ``ui/qtgui/assets.py`` (2026-11-05): qtgui and
+hudgui both draw with it.
+
+AssetService — single point of asset (image) path resolution.
 
 Architectural role: replaces legacy ``gui/assets.py``'s global state +
 100-line constant table with a small service that:

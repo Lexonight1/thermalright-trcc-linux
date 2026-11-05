@@ -1,4 +1,7 @@
-"""PreviewSurface — the device preview, as persistent chrome.
+"""PreviewSurface — the device preview, as persistent chrome, for every Qt skin.
+
+Moved here from ``ui/qtgui/preview_surface.py`` (2026-11-05) when hudgui needed
+the same preview: one implementation, the bezel picture handed in by each skin.
 
 **Why this is a widget and not a panel.**  ``ui/gui`` keeps the preview on
 screen at all times next to whatever tool the user is holding: the preview
@@ -27,17 +30,18 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QImage, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from ...core.commands import BuildPreview
-from ...core.logs import per_frame
-from ..presentation.lcd_panel import lcd_panel_for
-from ..qt_periodic import PeriodicUpdater
-from .assets import Assets
-from .base import TicksWhileShown
+from ..core.commands import BuildPreview
+from ..core.logs import per_frame
+from .presentation.lcd_panel import lcd_panel_for
+from .qt_periodic import PeriodicUpdater
+from .qt_shown import TicksWhileShown
 
 if TYPE_CHECKING:
-    from ...core.ports import CommandBus
-    from ..bus_bridge import BusBridge
-    from ..device_selection import DeviceSelection
+    from collections.abc import Callable
+
+    from ..core.ports import CommandBus
+    from .bus_bridge import BusBridge
+    from .device_selection import DeviceSelection
 
 log = logging.getLogger(__name__)
 #: Fires once per frame the device sends — TRACE rung, never the -v rung.
@@ -72,6 +76,7 @@ class PreviewSurface(TicksWhileShown, QWidget):
         app: CommandBus,
         bus: BusBridge,
         selection: DeviceSelection,
+        bezel: Callable[[str], QPixmap],
         parent: QWidget | None = None,
     ) -> None:
         log.debug("PreviewSurface.__init__: selection=%s", selection)
@@ -79,6 +84,9 @@ class PreviewSurface(TicksWhileShown, QWidget):
         self._app = app
         self._bus = bus
         self._selection = selection
+        # The bezel picture by asset name -- each skin's own look of the same
+        # frame (qtgui greyscales the gui's; hudgui has its own).
+        self._bezel = bezel
         self._updates = PeriodicUpdater(self)
 
         # The BEZEL: a fixed 500x500 container carrying that panel's frame
@@ -120,7 +128,7 @@ class PreviewSurface(TicksWhileShown, QWidget):
         left, top, width, height, asset = lcd_panel_for(resolution).offset_info
         log.info("_apply_panel: %dx%d — frame=%s render at (%d,%d) %dx%d",
                  *resolution, asset, left, top, width, height)
-        pixmap = Assets.pixmap(asset)
+        pixmap = self._bezel(asset)
         if not pixmap.isNull():
             self._frame.setPixmap(pixmap.scaled(
                 FRAME_EDGE, FRAME_EDGE,
