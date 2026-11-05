@@ -121,3 +121,18 @@ def test_a_dict_with_only_an_id_reads_back_as_the_spec_defaults() -> None:
     spec = dataclasses.asdict(OverlayElement(id="e1"))
     differ = {k: (read[k], spec[k]) for k in spec if read[k] != spec[k]}
     assert not differ, f"from_dict fills (its default, the spec's) -- {differ}"
+
+
+def test_the_dc_file_saves_a_missing_size_as_the_renderer_draws_it() -> None:
+    """The DC writer is a reader of element dicts too.  It wrote 24 for an
+    element with no ``size``, which the renderer draws at 16 -- so a save and
+    a reload would have grown it.  Dormant today (every producer sets a size),
+    pinned so it stays that way.
+
+    MUTATION CHECK -- put 24.0 back in ``_write_dd_font``: this fails."""
+    from trcc.core.models import OVERLAY_DEFAULT_SIZE
+    from trcc.services._dc import Reader, Writer
+
+    bare = {"type": "text", "x": 50, "y": 50, "text": "no size given"}
+    back = Reader().parse(Writer().serialize({"elements": [bare]}), "probe")
+    assert back["elements"][0]["size"] == OVERLAY_DEFAULT_SIZE

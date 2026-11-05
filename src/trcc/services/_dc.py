@@ -27,6 +27,9 @@ from ..core.logs import Blob, per_frame
 from ..core.models import (
     DATE_FORMATS,
     METRICS,
+    OVERLAY_DEFAULT_CLOCK_SOURCE,
+    OVERLAY_DEFAULT_COLOR,
+    OVERLAY_DEFAULT_SIZE,
     THEME_FONT,
     TIME_FORMATS,
     DisplaySource,
@@ -814,7 +817,9 @@ def _write_dd_font(w: _Writer, element: dict[str, Any]) -> None:
     # writes.  This read ``font_name``, which no element dict carries, so
     # every DC TRCC wrote dropped the element's font for THEME_FONT.
     w.write_string(str(element.get("name") or THEME_FONT))
-    w.write_float(float(element.get("size", 24.0)))
+    # The element default, so a file saves what the renderer draws: this
+    # wrote 24 for an element with no size, which the renderer draws at 16.
+    w.write_float(float(element.get("size", OVERLAY_DEFAULT_SIZE)))
     style = 0
     if element.get("bold"):
         style |= 0x01
@@ -823,7 +828,7 @@ def _write_dd_font(w: _Writer, element: dict[str, Any]) -> None:
     w.write_byte(style)
     w.write_byte(_DEFAULT_FONT_UNIT)
     w.write_byte(_DEFAULT_FONT_CHARSET)
-    a, r, g, b = _hex_to_argb(str(element.get("color", "#ffffff")))
+    a, r, g, b = _hex_to_argb(str(element.get("color", OVERLAY_DEFAULT_COLOR)))
     w.write_byte(a)
     w.write_byte(r)
     w.write_byte(g)
@@ -872,7 +877,8 @@ def _element_to_legacy(
             "time": (_MODE_TIME, TIME_FORMATS),
             "weekday": (_MODE_WEEKDAY, {}),
             "date": (_MODE_DATE, DATE_FORMATS),
-        }.get(element.get("source", "time"), (_MODE_TIME, TIME_FORMATS))
+        }.get(element.get("source", OVERLAY_DEFAULT_CLOCK_SOURCE),
+              (_MODE_TIME, TIME_FORMATS))
         # The element's own format, as the C# writes myModeSub per element.
         return (mode, format_index(table, str(element.get("format", ""))),
                 0, 0, "")
