@@ -132,28 +132,35 @@ def _themes(app: App, *names: str) -> list[Path]:
     return made
 
 
-def _local_themes(window: Any, qtbot: Any) -> Any:
+def _tab(window: Any, qtbot: Any, name: str) -> Any:
+    """The picked device's tab *name*, shown."""
     window.bar.buttons["Devices"].click()
     devices = window.panel("Devices")
     devices.menu.buttons[_KEY].click()
     qtbot.waitUntil(devices.panel.isVisible)
-    return devices.panel.pages["Local Themes"]
+    devices.panel.tabs.tabs[name].click()
+    return devices.panel.pages[name]
+
+
+def _local_themes(window: Any, qtbot: Any) -> Any:
+    return _tab(window, qtbot, "Local Themes")
+
+
+def _lit_names(grid: Any) -> list[str]:
+    return [Path(tile_id).name for tile_id, t in grid.tiles.items() if t.isChecked()]
 
 
 def test_local_themes_lists_the_devices_themes_and_a_click_loads_one(
         window: Any, qtbot: Any) -> None:
     """The gui's way: one click loads it onto the panel, and it lights.
-    MUTATION CHECK: drop the ``LoadTheme`` dispatch in ``ThemeGrid._on_tile``."""
-    from trcc.core.commands import LcdSnapshot
-
+    MUTATION CHECK: return a query from ``LocalThemes._pick`` instead of
+    ``LoadTheme`` and nothing loads."""
     one, two, three = _themes(window._app, "One", "Two", "Three")
     grid = _local_themes(window, qtbot)
     grid.refresh()
-    assert {p.name for p in grid.tiles} >= {"One", "Two", "Three"}
-    grid.tiles[two.resolve()].click()
-    shown = window._app.dispatch(LcdSnapshot(key=_KEY)).current_theme
-    assert shown is not None and Path(shown).resolve() == two.resolve()
-    assert [p.name for p, t in grid.tiles.items() if t.isChecked()] == ["Two"]
+    assert {Path(p).name for p in grid.tiles} >= {"One", "Two", "Three"}
+    grid.tiles[str(two.resolve())].click()
+    qtbot.waitUntil(lambda: _lit_names(grid) == ["Two"], timeout=3000)
 
 
 def test_the_light_follows_a_theme_loaded_from_another_ui(
@@ -166,4 +173,50 @@ def test_the_light_follows_a_theme_loaded_from_another_ui(
     grid = _local_themes(window, qtbot)
     grid.refresh()
     assert window._app.dispatch(LoadTheme(key=_KEY, path=one)).ok   # e.g. the CLI
-    qtbot.waitUntil(lambda: grid.tiles[one.resolve()].isChecked(), timeout=2000)
+    qtbot.waitUntil(lambda: grid.tiles[str(one.resolve())].isChecked(), timeout=2000)
+
+
+def test_cloud_masks_lays_one_over_the_theme_and_lights_it(
+        window: Any, qtbot: Any) -> None:
+    """The App names the mask's FILE; the tile is its folder -- it lights.
+    MUTATION CHECK: compare ``mask_path`` itself in ``CloudMasks._current``."""
+    from PySide6.QtGui import QColor, QImage
+
+    folder = window._app.platform.paths().cloud_mask_dir(320, 320)
+    for name in ("001a", "002a"):
+        (folder / name).mkdir(parents=True)
+        img = QImage(320, 320, QImage.Format.Format_ARGB32)
+        img.fill(QColor(0, 200, 0, 120))
+        assert img.save(str(folder / name / "01.png"))
+    grid = _tab(window, qtbot, "Cloud Masks")
+    grid.refresh()
+    assert sorted(Path(t).name for t in grid.tiles) == ["001a", "002a"]
+    grid.tiles[str((folder / "002a").resolve())].click()
+    qtbot.waitUntil(lambda: _lit_names(grid) == ["002a"], timeout=3000)
+
+
+def test_cloud_backgrounds_by_category_and_a_failed_download_says_why(
+        window: Any, qtbot: Any) -> None:
+    """The catalog's categories, All first; one shows its own only.  A click
+    downloads -- offline here, so the tab SAYS it failed, never silently."""
+    grid = _tab(window, qtbot, "Cloud Backgrounds")
+    every = len(grid.tiles)
+    assert list(grid._pills)[0] == "all" and len(grid._pills) > 1 and every
+    other = list(grid._pills)[1]
+    grid._pills[other].click()
+    assert 0 < len(grid.tiles) < every
+    assert all(tile_id.startswith(other) for tile_id in grid.tiles)
+    next(iter(grid.tiles.values())).click()
+    qtbot.waitUntil(lambda: grid.note.text() != "", timeout=5000)
+
+
+def test_the_snapshot_says_which_background_file_the_user_chose(window: Any) -> None:
+    """What lights a cloud background in every UI: the file the user chose
+    (a cloud one is ``<id>.mp4``) -- None for the theme's own."""
+    from trcc.core.commands import LcdSnapshot
+    from trcc.core.models import VideoBackground
+
+    app = window._app
+    assert app.dispatch(LcdSnapshot(key=_KEY)).background_file is None
+    app.settings.set_background(_KEY, VideoBackground("/data/web/320320/a017.mp4"))
+    assert app.dispatch(LcdSnapshot(key=_KEY)).background_file == "/data/web/320320/a017.mp4"

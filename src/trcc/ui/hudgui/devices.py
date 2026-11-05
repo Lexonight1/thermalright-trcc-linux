@@ -34,7 +34,7 @@ from ..presentation.device_symbols import device_symbols
 from ..qt_assets import Assets
 from ..qt_preview import FRAME_EDGE, PreviewSurface
 from .chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, TabBar
-from .themes import ThemeGrid
+from .themes import CloudBackgrounds, CloudMasks, LocalThemes
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
@@ -142,13 +142,14 @@ class DevicePanel(QWidget):
         self.preview = PreviewSurface(app, bus, selection, Assets.pixmap, self)
         self.preview.setFixedWidth(FRAME_EDGE + 16)
         row.addWidget(self.preview, alignment=Qt.AlignmentFlag.AlignTop)
-        #: Each tab's area, by name: Local Themes is built, the rest are
-        #: placeholders until theirs are.
+        #: Each tab's area, by name -- Settings a placeholder until it is built.
         self.area = QStackedWidget(self)
         self.pages: dict[str, QWidget] = {}
+        grids = {"Local Themes": LocalThemes, "Cloud Masks": CloudMasks,
+                 "Cloud Backgrounds": CloudBackgrounds}
         for name in (*DEVICE_TABS, DEVICE_SETTINGS_TAB):
-            page = (ThemeGrid(app, bus, selection) if name == "Local Themes"
-                    else _coming(name))
+            grid = grids.get(name)
+            page = grid(app, bus, selection) if grid is not None else _coming(name)
             self.pages[name] = page
             self.area.addWidget(page)
         row.addWidget(self.area, stretch=1)

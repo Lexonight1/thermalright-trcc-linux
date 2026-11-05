@@ -3750,6 +3750,7 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             inset_title=_module_title(app, s.inset.module if s.inset else None),
             inset_corner=s.inset.corner.value if s.inset else "",
             inset_size=s.inset.size.value if s.inset else "",
+            background_file=s.chosen_file,
             media_player_uri=s.chosen_media,
             screencast_rect=screencast_box(app, self.key),
             screencast_hide_border=s.screencast_hide_border,

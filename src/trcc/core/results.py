@@ -863,6 +863,10 @@ class LcdSnapshotResult(Result):
     inset_title: str = ""
     inset_corner: str = ""
     inset_size: str = ""
+    #: The picture or video the user chose to fill the panel (a cloud
+    #: background is one), or None -- the theme's own, the media player and a
+    #: module are not a file.  Every UI's background browser lights it.
+    background_file: str | None = None
     #: What the media player plays -- a local file or a web URL -- or None.
     media_player_uri: str | None = None
     #: The device's screencast region on screen, cast or not (the theme's, or
