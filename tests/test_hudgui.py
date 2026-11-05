@@ -496,7 +496,7 @@ def test_sensors_follow_the_broadcast_in_the_users_unit(window: Any, qtbot: Any)
         readings={"cpu:temp": 150.0, "cpu:usage": 7.5}, temp_unit="F",
         reading_count=2, metrics=HardwareMetrics()))
     qtbot.waitUntil(lambda: view.values["cpu:temp"].text() == "150°F", timeout=2000)
-    assert view.values["cpu:usage"].text() == "7.5%"
+    assert view.values["cpu:usage"].text() == "8%"
 
 
 def test_a_reading_not_seen_before_lists_the_sensors_again(window: Any, qtbot: Any) -> None:
@@ -510,12 +510,24 @@ def test_a_reading_not_seen_before_lists_the_sensors_again(window: Any, qtbot: A
     assert view.cards["CPU"] is not before
 
 
-def test_shown_reads_as_a_person_does() -> None:
-    from trcc.ui.hudgui.sensors import group_of, shown
+def test_sensors_write_a_value_as_the_guis_picker_and_follow_the_unit_back(
+        window: Any, qtbot: Any) -> None:
+    """One format for both windows (``sensor_display.format_sensor_value``);
+    a temperature read under °F reads °C again when the unit goes back.
+    MUTATION CHECK: keep the reading's own unit in ``_card``."""
+    from trcc.core.commands import SetTempUnit
+    from trcc.core.events import SensorsUpdated
+    from trcc.core.models import HardwareMetrics
+    from trcc.ui.presentation.sensor_display import format_sensor_value
 
-    assert [shown(42.4, "°C"), shown(7.25, "%"), shown(3200.0, "MHz"), shown(3.0, "")] == \
-        ["42°C", "7.2%", "3200 MHz", "3"]
-    assert [group_of("gpu:primary:temp"), group_of("my_module:x")] == ["GPU", "My Module"]
+    assert window._app.dispatch(SetTempUnit(unit="F")).ok
+    view = _sensors(window, qtbot)
+    assert window._app.dispatch(SetTempUnit(unit="C")).ok
+    view._on_sensors(SensorsUpdated(readings={"cpu:temp": 41.0, "memory:used": 8192.0},
+                                    temp_unit="C", reading_count=2,
+                                    metrics=HardwareMetrics()))
+    assert view.values["cpu:temp"].text() == "41°C"
+    assert view.values["memory:used"].text() == format_sensor_value(8192.0, "MB")
 
 
 # ── Modules ──────────────────────────────────────────────────────────────

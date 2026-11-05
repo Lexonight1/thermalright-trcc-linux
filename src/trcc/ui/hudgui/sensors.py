@@ -1,18 +1,17 @@
 """hudgui's Sensors panel: every reading the App has, grouped, live.
 
-A card per group -- CPU, GPU, Memory, Disks, Network, Fans, then any other
-source (a module's readings) -- each listing its readings by name.  The
-names, units and groups come from ``ReadSensors`` once; the values follow
+A card per group, in the gui's order and names -- the grouping and the
+value format are the gui sensor picker's own (``ui/presentation/
+sensor_display``), so both windows show a reading the same way.  The names,
+units and groups come from ``ReadSensors`` once; the values follow
 ``SensorsUpdated``, the broadcast every UI hears, and only while the panel is
 on screen.  A reading the panel has not seen yet (a module switched on, a
-disk plugged in) lists everything again.
-
-Clocks are left out: the time and date are not sensors.
+disk plugged in) lists everything again.  Clocks are not sensors and are
+left out.
 """
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
@@ -26,57 +25,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...core.commands import ReadSensors
+from ...core.commands import ControlCenterSnapshot, ReadSensors
 from ...core.logs import per_frame
+from ..presentation.sensor_display import format_sensor_value, group_sensors
 
 if TYPE_CHECKING:
     from ...core.events import SensorsUpdated
-    from ...core.models import SensorReading
+    from ...core.models import SensorInfo
     from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
-#: A sensor's source (its id up to the first ``:``) -> the card it goes on,
-#: in the order the cards stand.  Any other source gets a card of its own,
-#: after these, named after it.
-GROUPS = {"cpu": "CPU", "gpu": "GPU", "memory": "Memory", "disk": "Disks",
-          "net": "Network", "fan": "Fans"}
-#: Sources that are not sensors.
-_NOT_SENSORS = frozenset({"time", "date"})
 #: A card's width.
 CARD_WIDTH = 300
 _CARD_STYLE = ("QWidget#card { background: rgba(255, 255, 255, 14); "
                "border: 1px solid rgba(255, 255, 255, 30); border-radius: 8px; }"
                "QLabel { color: #dfe5ea; background: transparent; border: none; }")
-
-
-def group_of(sensor_id: str) -> str:
-    """The card *sensor_id* goes on."""
-    source = sensor_id.split(":", 1)[0]
-    card = GROUPS.get(source, source.replace("_", " ").title())
-    frame_log.debug("group_of: %s -> %s", sensor_id, card)
-    return card
-
-
-def grouped(readings: Iterable[SensorReading]) -> dict[str, list[SensorReading]]:
-    """*readings* by card, the known cards first in their order, clocks out."""
-    cards: dict[str, list[SensorReading]] = {name: [] for name in GROUPS.values()}
-    for reading in readings:
-        if reading.sensor_id.split(":", 1)[0] not in _NOT_SENSORS:
-            cards.setdefault(group_of(reading.sensor_id), []).append(reading)
-    found = {name: rows for name, rows in cards.items() if rows}
-    log.debug("grouped: %s", {name: len(rows) for name, rows in found.items()})
-    return found
-
-
-def shown(value: float, unit: str) -> str:
-    """*value* in *unit*, as a person reads it: whole numbers from ten up."""
-    number = f"{value:.0f}" if abs(value) >= 10 or value == int(value) else f"{value:.1f}"
-    joined = f"{number}{unit}" if unit in ("%", "°C", "°F") else f"{number} {unit}".strip()
-    frame_log.debug("shown: %s %s -> %s", value, unit, joined)
-    return joined
 
 
 class SensorsView(QWidget):
@@ -90,6 +56,8 @@ class SensorsView(QWidget):
         #: Each reading's value label, and its unit, by sensor id.
         self.values: dict[str, QLabel] = {}
         self._units: dict[str, str] = {}
+        #: Every id the App listed, clocks too -- what is not new.
+        self._known: set[str] = set()
         #: The cards, by name.
         self.cards: dict[str, QWidget] = {}
         column = QVBoxLayout(self)
@@ -110,7 +78,8 @@ class SensorsView(QWidget):
     def refresh(self) -> None:
         """Every reading again, from the App: the cards rebuilt."""
         readings = self._app.dispatch(ReadSensors()).readings
-        cards = grouped(readings)
+        self._known = {reading.sensor_id for reading in readings}
+        cards = group_sensors(readings)
         log.info("SensorsView.refresh: %d reading(s) on %d card(s)", len(readings), len(cards))
         body = QWidget()
         row = QHBoxLayout(body)
@@ -118,14 +87,16 @@ class SensorsView(QWidget):
         row.setSpacing(10)
         row.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.values, self._units = {}, {}
-        self.cards = {name: self._card(name, rows, body) for name, rows in cards.items()}
+        self.cards = {name: self._card(name, rows, body) for name, rows in cards}
         for card in self.cards.values():
             row.addWidget(card, alignment=Qt.AlignmentFlag.AlignTop)
         row.addStretch(1)
         self._scroll.setWidget(body)        # the old body goes with it
+        self._show_values({r.sensor_id: r.value for r in readings},
+                          self._app.dispatch(ControlCenterSnapshot()).temp_unit)
         self.note.setText("" if cards else "No sensors found.")
 
-    def _card(self, name: str, readings: list[SensorReading], parent: QWidget) -> QWidget:
+    def _card(self, name: str, readings: list[SensorInfo], parent: QWidget) -> QWidget:
         """One card: its name, then a line per reading -- name, value."""
         log.debug("SensorsView._card: %s (%d)", name, len(readings))
         card = QWidget(parent)
@@ -140,14 +111,16 @@ class SensorsView(QWidget):
         title.setStyleSheet("font-size: 12pt; font-weight: bold; color: #a9e6ff;")
         grid.addWidget(title, 0, 0, 1, 2)
         for line, reading in enumerate(readings, 1):
-            label = QLabel(reading.label or reading.sensor_id, card)
-            label.setToolTip(reading.explanation or reading.sensor_id)
-            value = QLabel(shown(reading.value, reading.unit), card)
+            label = QLabel(reading.name, card)
+            label.setToolTip(reading.explanation or reading.id)
+            value = QLabel("--", card)
             value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(label, line, 0)
             grid.addWidget(value, line, 1)
-            self.values[reading.sensor_id] = value
-            self._units[reading.sensor_id] = reading.unit
+            self.values[reading.id] = value
+            # A temperature's symbol is the App's unit NOW, not the one it
+            # was read under: format_sensor_value keeps a "°F" unit as °F.
+            self._units[reading.id] = "°C" if reading.unit in ("°C", "°F") else reading.unit
         grid.setColumnStretch(0, 1)
         return card
 
@@ -157,15 +130,19 @@ class SensorsView(QWidget):
         if not self.isVisible():
             return
         frame_log.debug("SensorsView._on_sensors: %d", len(event.readings))
-        if not event.readings.keys() <= self.values.keys() | _clocks(event.readings):
+        if not event.readings.keys() <= self._known:
             log.info("SensorsView._on_sensors: a new reading -- listing again")
             self.refresh()
             return
-        temp = f"°{event.temp_unit}"
-        for sensor_id, value in event.readings.items():
+        self._show_values(event.readings, event.temp_unit)
+
+    def _show_values(self, values: dict[str, float], temp_unit: str) -> None:
+        """*values* on their lines, as the gui's picker writes them."""
+        frame_log.debug("SensorsView._show_values: %d in °%s", len(values), temp_unit)
+        fahrenheit = int(temp_unit == "F")
+        for sensor_id, value in values.items():
             if (label := self.values.get(sensor_id)) is not None:
-                unit = self._units[sensor_id]
-                label.setText(shown(value, temp if unit in ("°C", "°F") else unit))
+                label.setText(format_sensor_value(value, self._units[sensor_id], fahrenheit))
 
     def showEvent(self, event: QShowEvent) -> None:
         """Dropped down: fresh values at once, not at the next broadcast."""
@@ -173,9 +150,3 @@ class SensorsView(QWidget):
         super().showEvent(event)
         self.refresh()
 
-
-def _clocks(readings: dict[str, float]) -> set[str]:
-    """The ids in *readings* that are clocks, not sensors."""
-    found = {sid for sid in readings if sid.split(":", 1)[0] in _NOT_SENSORS}
-    frame_log.debug("_clocks: %d", len(found))
-    return found
