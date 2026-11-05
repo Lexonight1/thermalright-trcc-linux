@@ -12,10 +12,11 @@ layer only draws.  Rotation, brightness and the wire encode are not layers:
 they turn the finished picture into what a panel receives, and stay in the
 service's output step.
 
-Increments L1-L3 of the Layer plan (memory: project_layer_abc_trace): the
+Increments L1-L4 of the Layer plan (memory: project_layer_abc_trace): the
 mask, the overlay, the split overlay, the spectrum, and the two ways a
 background is drawn -- a picture, a solid colour, or a live picture (a
-screencast, a web stream, a module's visual).  WHICH picture (a
+screencast, a web stream, a module's visual), or a pushed image.  Every
+frame builder hands its stack to :func:`draw_all`.  WHICH picture (a
 playing video, an override, the theme's own) is still chosen in one place,
 ``DisplayService._resolve_background`` with its one identity token: a layer
 draws what it is given.
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Hashable
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -49,7 +50,9 @@ class Layer(ABC):
 
     @abstractmethod
     def draw(self, canvas: Any, renderer: Renderer) -> Any:
-        """*canvas* with this layer drawn on top."""
+        """*canvas* with this layer drawn on top.  A layer MAY paint in place
+        (the spectrum does), so it is only ever handed a canvas its frame
+        owns -- never a cached one."""
 
 
 class BackgroundLayer(Layer):
@@ -147,6 +150,26 @@ class LivePicture(BackgroundLayer):
 
 
 @dataclass(frozen=True, slots=True)
+class StillImage(BackgroundLayer):
+    """A pushed image (``SendImage``): the picture IS the panel, stretched to
+    it like a live frame."""
+
+    path: Path
+    surface: Any = field(compare=False, repr=False)
+
+    def key(self) -> Hashable:
+        frame_log.debug("StillImage.key: %s", self.path)
+        return self.path
+
+    def canvas(self, size: tuple[int, int], renderer: Renderer) -> Any:
+        if renderer.surface_size(self.surface) == size:
+            return self.surface
+        frame_log.debug("StillImage.canvas: %s stretched to %dx%d",
+                        self.path.name, *size)
+        return renderer.resize(self.surface, *size)
+
+
+@dataclass(frozen=True, slots=True)
 class Mask(Layer):
     """The theme's mask (``01.png``) or the user's own, at *position*.
     *source* None: no mask -- hidden, or none resolved -- and the canvas is
@@ -228,3 +251,13 @@ class Split(Layer):
                         self.asset, type(e).__name__, e)
             return canvas
 
+
+def draw_all(canvas: Any, layers: Sequence[Layer], renderer: Renderer) -> Any:
+    """*canvas* with each of *layers* drawn on it, bottom to top -- every
+    frame builder's one compose step."""
+    # The count, not the names: arguments are built even when the line is
+    # not logged, and each layer logs its own name as it draws.
+    frame_log.debug("draw_all: %d layer(s)", len(layers))
+    for layer in layers:
+        canvas = layer.draw(canvas, renderer)
+    return canvas

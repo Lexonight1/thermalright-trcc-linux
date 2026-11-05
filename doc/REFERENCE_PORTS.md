@@ -27,7 +27,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 4 | 2 |
-| [`BackgroundLayer`](#backgroundlayer) | 2 | 1 | 3 |
+| [`BackgroundLayer`](#backgroundlayer) | 2 | 1 | 4 |
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
 | [`BaseModule`](#basemodule) | 2 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
@@ -36,7 +36,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`Layer`](#layer) | 2 | 0 | 7 |
+| [`Layer`](#layer) | 2 | 0 | 8 |
 | [`LedSource`](#ledsource) | 2 | 0 | 1 |
 | [`LightsPort`](#lightsport) | 2 | 0 | 1 |
 | [`Module`](#module) | 2 | 10 | 2 |
@@ -370,7 +370,7 @@ key() -> Hashable
 
 **You inherit (1):** `draw`
 
-**Implementations (3):** `LivePicture` · `Picture` · `SolidColor`
+**Implementations (4):** `LivePicture` · `Picture` · `SolidColor` · `StillImage`
 
 ## BaseGlSurface
 
@@ -507,7 +507,7 @@ draw(canvas: 'Any', renderer: 'Renderer') -> Any
 key() -> Hashable
 ```
 
-**Implementations (7):** `LivePicture` · `Mask` · `Overlay` · `Picture` · `SolidColor` · `Spectrum` · `Split`
+**Implementations (8):** `LivePicture` · `Mask` · `Overlay` · `Picture` · `SolidColor` · `Spectrum` · `Split` · `StillImage`
 
 ## LedSource
 

@@ -298,7 +298,7 @@ def test_a_screencast_decodes_its_mask_once_not_every_frame(
     or after the Commands that change a mask invalidate.  Decoding it every
     frame cost 1.7 M instructions a frame for a 1.3 KB mask (measured
     2026-10-13).  Every frame still carries it.
-    MUTATION CHECK: call ``open_image`` in ``_composite_mask`` again."""
+    MUTATION CHECK: call ``open_image`` in ``_mask_layer`` again."""
     fbl = sorted(FBL_PROFILES)[0]
     profile = get_profile(fbl, 0)
     info = _info(fbl, profile.resolution)

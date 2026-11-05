@@ -152,3 +152,35 @@ def test_a_live_frame_is_stretched_to_the_canvas() -> None:
     drawn = LivePicture(small).canvas((8, 6), r)
     assert r.surface_size(drawn) == (8, 6)
     assert drawn.pixelColor(7, 5).getRgb()[:3] == (255, 0, 0)
+
+
+def test_building_frames_never_draws_into_the_cached_background(tmp_path: Path) -> None:
+    """The bg+mask surface is cached and reused frame after frame; a layer
+    may paint in place (the spectrum does), so drawing over the cached one
+    would burn the overlay into every later frame.  ``composite`` copies its
+    base, which is what keeps it clean.  MUTATION CHECK: make
+    ``Overlay.draw`` paint a pixel onto the canvas it is given."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+
+    from .conftest import renderable_theme
+    from .mock_platform import MockPlatform
+
+    key = "0402:3922"
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path),
+              renderer=QtRenderer())
+    app.discover_and_connect()
+    device = app.devices[key]
+    theme = app.themes.load(renderable_theme(tmp_path / "themes", "T"))
+    app.display.build_frame(info=device.info, theme=theme,
+                            sensors={"cpu:temp": 40.0}, profile=device.profile)
+    cached = app.display.background_surface(key)
+    assert cached is not None
+    for temp in (41.0, 42.0, 43.0):                  # each rebuilds the overlay
+        app.display.build_frame(info=device.info, theme=theme,
+                                sensors={"cpu:temp": temp}, profile=device.profile)
+    assert app.display.background_surface(key) is cached, "the cache was rebuilt"
+    # Against one built fresh, outside the cache -- the first frame drew over
+    # the cached surface too, so a "before" taken after it proves nothing.
+    clean = app.display._build_bg_mask(device.info, theme, (320, 320))
+    assert app.renderer.encode_png(cached) == app.renderer.encode_png(clean)

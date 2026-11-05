@@ -54,6 +54,7 @@ from .background import Background, BackgroundSlot
 from .bg_cache import BgMaskCache
 from .layers import (
     BackgroundLayer,
+    Layer,
     LivePicture,
     Mask,
     Overlay,
@@ -61,6 +62,8 @@ from .layers import (
     SolidColor,
     Spectrum,
     Split,
+    StillImage,
+    draw_all,
 )
 from .media import MediaService
 from .overlay import OverlayService, overlay_source, resolve_overlay_elements
@@ -89,7 +92,7 @@ _NO_BACKGROUND = RenderContent(None, None)
 
 def _is_widescreen_split(visual_size: tuple[int, int]) -> bool:
     """True when ``visual_size`` is a widescreen panel that supports
-    the Dynamic Island split overlay.  Gates ``_composite_split_overlay``
+    the Dynamic Island split overlay.  Gates ``_split_layer``
     so non-widescreen devices skip the load+composite entirely.
 
     Per-frame logger: it ran only while ``split_mode`` was non-zero until the
@@ -360,17 +363,17 @@ class DisplayService:
             scene, bg_key, overlay_key,
         )
 
-        # Compose: bg+mask below, overlay on top
-        surface = Overlay(overlay_key, overlay_surface).draw(bg_surface, self._r)
-
-        # Split-mode overlay (Dynamic Island) — 1600x720 widescreen only.
-        # Picks an asset by (split_mode, rotation, SUB byte), as the C# does.
-        # No-op when split_mode==0 or the LCD isn't widescreen.
+        # Compose: bg+mask (cached) below, the overlay on top, then the split
+        # overlay (Dynamic Island) -- 1600x720 widescreen only, an asset picked
+        # by (split_mode, rotation, SUB byte) as the C# does.  ``composite``
+        # copies its base, so the cached bg+mask is never drawn into.
+        layers: list[Layer] = [Overlay(overlay_key, overlay_surface)]
         if s.split_mode and _is_widescreen_split(visual_size):
-            surface = self._composite_split_overlay(
-                info, s.split_mode, s.orientation,
-                profile.sub if profile is not None else 0, surface,
-            )
+            split = self._split_layer(info, s.split_mode, s.orientation,
+                                      profile.sub if profile is not None else 0)
+            if split is not None:
+                layers.append(split)
+        surface = draw_all(bg_surface, layers, self._r)
 
         # Brightness dim (before rotation — matches C# order)
         if s.brightness != 100:
@@ -502,7 +505,8 @@ class DisplayService:
             background=bg_surface,
         )
 
-        surface = Overlay(overlay_key, overlay_surface).draw(bg_surface, self._r)
+        surface = draw_all(bg_surface, [Overlay(overlay_key, overlay_surface)],
+                           self._r)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         if post_rotate:
@@ -646,9 +650,7 @@ class DisplayService:
         # The ORIENTED canvas, not the native one — the canvas and the wire
         # angle are one pair (see ``_orient_for_wire``).
         target_w, target_h = oriented_canvas(resolved, s.orientation)
-        # Surface is opaque RGB; alpha not needed for solid fill.
-        surface = self._r.create_surface(
-            target_w, target_h, color=(*color, 255))
+        surface = SolidColor(color).canvas((target_w, target_h), self._r)
         # SendColor holds the panel like an image push, so the preview is this
         # colour — without it /preview showed the dropped theme's last frame.
         self._remember_preview(info.key, surface)
@@ -701,12 +703,11 @@ class DisplayService:
         s = self._settings.for_device(info.key)
         target_w, target_h = oriented_canvas(resolved, s.orientation)
 
-        surface = LivePicture(frame).canvas((target_w, target_h), self._r)
-
+        layers: list[Layer] = []
         if theme is not None:
-            surface = self._composite_mask(info, s, theme, surface)
-            surface = self._scene_overlay(
-                info, theme, (target_w, target_h), sensors).draw(surface, self._r)
+            layers += [self._mask_layer(info, s, theme),
+                       self._scene_overlay(info, theme, (target_w, target_h),
+                                           sensors)]
 
         # Audio spectrum LAST, over everything, because it is a live meter
         # rather than part of the picture — the same order the gui's tick drew
@@ -715,7 +716,9 @@ class DisplayService:
         if len(spectrum):
             frame_log.debug("build_screencast_frame: %d spectrum bands",
                             len(spectrum))
-            surface = Spectrum(tuple(spectrum)).draw(surface, self._r)
+            layers.append(Spectrum(tuple(spectrum)))
+        surface = draw_all(LivePicture(frame).canvas((target_w, target_h), self._r),
+                           layers, self._r)
 
         # PREVIEW = the composite, captured BEFORE the wire rotation, which is
         # the same point and the same rule ``build_frame`` uses: the display
@@ -756,10 +759,12 @@ class DisplayService:
         resolved = self._resolve_profile(info, profile)
         s = self._settings.for_device(info.key)
         size = oriented_canvas(resolved, s.orientation)
-        surface = self._r.create_surface(*size, color=(0, 0, 0, 255))
-        if theme is not None:
-            surface = self._scene_overlay(
-                info, theme, size, sensors).draw(surface, self._r)
+        # The C# turns the background and mask off and its canvas starts
+        # black (UCScreenImage.cs:903): black, and the overlay alone.
+        surface = draw_all(
+            SolidColor((0, 0, 0)).canvas(size, self._r),
+            [self._scene_overlay(info, theme, size, sensors)] if theme is not None
+            else [], self._r)
         self._remember_preview(info.key, surface)
         surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
@@ -851,9 +856,8 @@ class DisplayService:
         # The ORIENTED canvas, not the native one — see ``_orient_for_wire``.
         target_w, target_h = oriented_canvas(resolved, s0.orientation)
 
-        surface = self._r.open_image(path)
-        if self._r.surface_size(surface) != (target_w, target_h):
-            surface = self._r.resize(surface, target_w, target_h)
+        surface = StillImage(path, self._r.open_image(path)).canvas(
+            (target_w, target_h), self._r)
         # The pushed image IS the panel now (SendImage drops the active theme),
         # so the preview is this surface — parked where the screencast frame
         # parks its own, before the wire-only brightness and rotation.
@@ -1101,7 +1105,7 @@ class DisplayService:
         background = self._background_layer(info, theme, s, visual_size)
         canvas = (background.canvas(visual_size, self._r) if background is not None
                   else self._r.create_surface(*visual_size, color=(0, 0, 0, 255)))
-        return self._composite_mask(info, s, theme, canvas)
+        return self._mask_layer(info, s, theme).draw(canvas, self._r)
 
     def _background_layer(
         self, info: ProductInfo, theme: Theme, s: DeviceSettings,
@@ -1139,14 +1143,13 @@ class DisplayService:
                                 s.background_mode)
                 return None
 
-    def _composite_mask(
+    def _mask_layer(
         self,
         info: ProductInfo,
         s: DeviceSettings,
         theme: Theme,
-        canvas: Any,
-    ) -> Any:
-        """Lay the mask over *canvas*, or return it untouched.
+    ) -> Mask:
+        """The mask layer -- which draws nothing when there is no mask.
 
         Extracted so the SCREENCAST path composites the identical layer: the
         C# has exactly ONE mask draw per compose half and both are gated the
@@ -1171,7 +1174,7 @@ class DisplayService:
             mask_source, s.mask_position or (0, 0),
             self._mask_surface(info.key, mask_source)
             if mask_source is not None else None,
-        ).draw(canvas, self._r)
+        )
 
     def _mask_surface(self, key: str, source: Path) -> Any:
         """*source* decoded, kept for *key* until it names another file or
@@ -1535,15 +1538,14 @@ class DisplayService:
 
     # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
 
-    def _composite_split_overlay(
+    def _split_layer(
         self,
         info: ProductInfo,
         split_mode: int,
         rotation: int,
         sub: int,
-        surface: Any,
-    ) -> Any:
-        """Composite the Dynamic Island PNG over ``surface`` (in place).
+    ) -> Split | None:
+        """The Dynamic Island layer, or None when there is no asset for it.
 
         Picks the asset by ``(split_mode, rotation)`` from
         ``SPLIT_OVERLAY_MAP`` — with the C#'s one exception: style 2 on a
@@ -1564,16 +1566,16 @@ class DisplayService:
                 "split overlay %s: no asset for (style=%d, rotation=%d)",
                 info.key, split_mode, rotation,
             )
-            return surface
+            return None
         overlay = self._split_cache.get(asset_name)
         if overlay is None:
             overlay = self._load_split_asset(asset_name)
             if overlay is None:
-                return surface
+                return None
             self._split_cache[asset_name] = overlay
             log.info("split overlay %s: cached %s (style=%d sub=%d)",
                      info.key, asset_name, split_mode, sub)
-        return Split(asset_name, overlay).draw(surface, self._r)
+        return Split(asset_name, overlay)
 
     def _load_split_asset(self, asset_name: str) -> Any | None:
         """Load a split-overlay PNG from ``ui/gui/assets/``.
