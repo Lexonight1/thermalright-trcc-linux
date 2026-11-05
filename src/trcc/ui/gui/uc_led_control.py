@@ -13,6 +13,7 @@ FormLED.cs which is one form for all LED device types.
 """
 
 import logging
+from functools import partial
 
 from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIntValidator, QPainter, QPalette, QPixmap
@@ -48,6 +49,7 @@ from ..presentation.led_metrics_format import (
 )
 from ..presentation.led_panel import led_panel_for
 from ..presentation.led_zone_model import LedZoneModel
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -537,7 +539,7 @@ class UCLedControl(QWidget):
             "QSlider::sub-page:horizontal { background: rgba(170, 170, 170, "
             "180); border-radius: 4px; }"
         )
-        self._brightness_slider.setToolTip("LED brightness")
+        say_tip(self._brightness_slider, "LED brightness")
 
         self._brightness_label = QLabel("100%", self)
         self._brightness_label.setGeometry(
@@ -563,7 +565,7 @@ class UCLedControl(QWidget):
             "QCheckBox::indicator:checked { border: 1px solid #FF9800; "
             "background: #FF9800; }"
         )
-        self._test_cb.setToolTip("LED test mode — cycles white/red/green/blue")
+        say_tip(self._test_cb, "LED test mode — cycles white/red/green/blue")
         self._test_cb.toggled.connect(self.test_mode_changed.emit)
         self._test_cb.setVisible(False)  # C# checkBox1.Visible = false
 
@@ -575,7 +577,7 @@ class UCLedControl(QWidget):
             btn.setGeometry(x, ZONE_Y, ZONE_W, ZONE_H)
             btn.setCheckable(True)
             btn.setFlat(True)
-            btn.setToolTip(f"Select zone {i + 1}")
+            say_tip(btn, f"Select zone {i + 1}")
             btn.setStyleSheet(_STYLE_FLAT_CHECKABLE_BTN)
             btn.setProperty(_INDEX_PROPERTY, i)
             btn.clicked.connect(self._on_zone_button)
@@ -612,7 +614,7 @@ class UCLedControl(QWidget):
                 f"QPushButton:checked {{ "
                 f"background-image: url({_cb_active}); }}"
             )
-        self._carousel_btn.setToolTip("Cycle through selected zones")
+        say_tip(self._carousel_btn, "Cycle through selected zones")
         self._carousel_btn.toggled.connect(self._on_sync_toggled)
         self._carousel_btn.setVisible(False)
 
@@ -626,7 +628,7 @@ class UCLedControl(QWidget):
         self._carousel_interval.setStyleSheet(
             "QLineEdit { background: rgb(67, 67, 67); color: white; "
             "border: none; font-size: 11px; }")
-        self._carousel_interval.setToolTip("Carousel rotation interval (seconds)")
+        say_tip(self._carousel_interval, "Carousel rotation interval (seconds)")
         self._carousel_interval.textChanged.connect(
             self._on_carousel_interval_changed)
         self._carousel_interval.setVisible(False)
@@ -669,7 +671,7 @@ class UCLedControl(QWidget):
         self._btn_24h.setChecked(True)
         self._btn_24h.setFlat(True)
         self._btn_24h.setStyleSheet(_cb_style)
-        self._btn_24h.setToolTip("24-hour format")
+        say_tip(self._btn_24h, "24-hour format")
         self._btn_24h.setProperty(_FLAG_PROPERTY, True)
         self._btn_24h.clicked.connect(self._on_clock_format_button)
         self._btn_24h.setVisible(False)
@@ -679,7 +681,7 @@ class UCLedControl(QWidget):
         self._btn_12h.setCheckable(True)
         self._btn_12h.setFlat(True)
         self._btn_12h.setStyleSheet(_cb_style)
-        self._btn_12h.setToolTip("12-hour format")
+        say_tip(self._btn_12h, "12-hour format")
         self._btn_12h.setProperty(_FLAG_PROPERTY, False)
         self._btn_12h.clicked.connect(self._on_clock_format_button)
         self._btn_12h.setVisible(False)
@@ -702,7 +704,7 @@ class UCLedControl(QWidget):
         self._btn_sun.setCheckable(True)
         self._btn_sun.setFlat(True)
         self._btn_sun.setStyleSheet(_cb_style)
-        self._btn_sun.setToolTip("Week starts on Sunday")
+        say_tip(self._btn_sun, "Week starts on Sunday")
         self._btn_sun.setProperty(_FLAG_PROPERTY, True)
         self._btn_sun.clicked.connect(self._on_week_start_button)
         self._btn_sun.setVisible(False)
@@ -713,7 +715,7 @@ class UCLedControl(QWidget):
         self._btn_mon.setChecked(True)
         self._btn_mon.setFlat(True)
         self._btn_mon.setStyleSheet(_cb_style)
-        self._btn_mon.setToolTip("Week starts on Monday")
+        say_tip(self._btn_mon, "Week starts on Monday")
         self._btn_mon.clicked.connect(self._on_mon_clicked)
         self._btn_mon.setVisible(False)
 
@@ -753,7 +755,7 @@ class UCLedControl(QWidget):
         self._btn_celsius.setChecked(True)
         self._btn_celsius.setFlat(True)
         self._btn_celsius.setStyleSheet(_cb_style)
-        self._btn_celsius.setToolTip("Celsius")
+        say_tip(self._btn_celsius, "Celsius")
         self._btn_celsius.clicked.connect(self._on_celsius_clicked)
         self._btn_celsius.setVisible(False)
 
@@ -763,7 +765,7 @@ class UCLedControl(QWidget):
         self._btn_fahrenheit.setCheckable(True)
         self._btn_fahrenheit.setFlat(True)
         self._btn_fahrenheit.setStyleSheet(_cb_style)
-        self._btn_fahrenheit.setToolTip("Fahrenheit")
+        say_tip(self._btn_fahrenheit, "Fahrenheit")
         self._btn_fahrenheit.clicked.connect(self._on_fahrenheit_clicked)
         self._btn_fahrenheit.setVisible(False)
 
@@ -1019,10 +1021,11 @@ class UCLedControl(QWidget):
         has_selector = selector is not LedSelector.NONE
         is_page = selector is LedSelector.PAGE
         self._carousel_btn.setVisible(has_selector)
-        self._carousel_btn.setToolTip(
-            "Select all zones" if self._is_select_all_style
-            else "Cycle through selected pages"
-        )
+        # Set per style, after the window last translated: said now.
+        say_tip(self._carousel_btn,
+                "Select all zones" if self._is_select_all_style
+                else "Cycle through selected pages",
+                partial(tr, lang=self._language))
         self._carousel_interval.setVisible(is_page)
         self._display_selection_label.setVisible(has_selector)
         self._circulate_label.setText(tr(self._selector_word(), self._language))
@@ -1085,8 +1088,9 @@ class UCLedControl(QWidget):
             else:
                 btn.setText("")          # colour-zone / NONE: no metric text
         if disp.selector is LedSelector.PAGE:
-            self._display_selection_label.setToolTip(
-                "Pick which metric the LED display shows")
+            say_tip(self._display_selection_label,
+                    "Pick which metric the LED display shows",
+                    partial(tr, lang=self._language))
 
     def set_led_colors(self, colors: list[tuple[int, int, int]]) -> None:
         """Update LED preview from controller tick."""

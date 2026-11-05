@@ -16,6 +16,7 @@ from ...core.logs import per_frame
 from ..presentation.lcd_panel import lcd_panel_for
 from ..presentation.preview_geometry import widget_to_lcd
 from ..presentation.video_clock import playback_clock
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import BasePanel, ImageLabel, SkinButton, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -160,7 +161,7 @@ class UCPreview(BasePanel):
         btn.setFlat(True)
         btn.setStyleSheet(Styles.FLAT_BUTTON)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setToolTip(tooltip)
+        say_tip(btn, tooltip)
         btn.clicked.connect(handler)
         return btn
 

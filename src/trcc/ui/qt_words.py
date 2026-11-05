@@ -42,11 +42,13 @@ def say(widget: _W, text: str) -> _W:
     return widget
 
 
-def say_tip(widget: QWidget, text: str) -> QWidget:
-    """*widget*'s tooltip, kept like :func:`say`'s labels."""
+def say_tip(widget: QWidget, text: str, tr: Tr = str) -> QWidget:
+    """*widget*'s tooltip, kept like :func:`say`'s labels -- said with *tr*
+    now when the widget is made after the window last translated (a list
+    rebuilt on every refresh), English otherwise."""
     log.debug("say_tip: %s %r", type(widget).__name__, text[:40])
     widget.setProperty(_EN_TIP, text)
-    widget.setToolTip(text)
+    widget.setToolTip(tr(text))
     return widget
 
 
@@ -75,3 +77,4 @@ def retranslate(root: QWidget, tr: Tr) -> None:
                 english = widget.itemData(index, EN_ROLE)
                 if isinstance(english, str):
                     widget.setItemText(index, tr(english))
+

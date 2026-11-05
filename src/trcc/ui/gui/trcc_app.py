@@ -91,6 +91,7 @@ from ..bus_bridge import BusBridge, DeviceSettingsEvent
 from ..device_selection import DeviceSelection
 from ..presentation import presentation_for
 from ..qt_tray import TrayController
+from ..qt_words import retranslate, say_tip
 from ..viewfinder import ViewfinderFleet, open_picker, store_picked_region
 from ._ui_state import UiStateStore
 from .assets import Assets
@@ -596,7 +597,9 @@ class TRCCApp(QMainWindow):
     def _show_language(self, lang: str) -> None:
         """Show the App's language in the picker and every translated text.
 
-        The gui translates in three places, and all three re-translate here:
+        Tooltips keep their English (``say_tip``) and are said again here, in
+        one pass over the window.  The rest the gui translates in three
+        places, and all three re-translate here:
         the labels made by ``_create_i18n_overlays`` (``_i18n_labels`` -- theme,
         mask, background, video and settings panels), the panel-table titles
         (``_i18n_panel_tables``), and the LED panel, which translates its own
@@ -607,6 +610,11 @@ class TRCCApp(QMainWindow):
         self._lang_combo.blockSignals(True)
         self._lang_combo.setCurrentIndex(self._lang_combo.findData(lang))
         self._lang_combo.blockSignals(False)
+        # Every tooltip ``say_tip`` keeps (ui/qt_words) -- before the module
+        # pages below, which then say their own words over TRCC's.
+        retranslate(self, partial(tr, lang=lang))
+        self.uc_theme_local.set_language(lang)
+        self.uc_system_info.set_language(lang)
         for label, key, module in self._i18n_labels:
             if key is not None:
                 label.setText(tr(key, lang, module))
@@ -1162,13 +1170,13 @@ class TRCCApp(QMainWindow):
         self.form1_close_btn = create_image_button(
             central, *Layout.FORM1_CLOSE_BTN,
             Assets.BTN_POWER, Assets.BTN_POWER_HOVER, fallback_text="X")
-        self.form1_close_btn.setToolTip("Close")
+        say_tip(self.form1_close_btn, "Close")
         self.form1_close_btn.clicked.connect(self.close)
 
         self.form1_help_btn = create_image_button(
             central, *Layout.FORM1_HELP_BTN,
             Assets.BTN_HELP, None, fallback_text="?")
-        self.form1_help_btn.setToolTip("Help")
+        say_tip(self.form1_help_btn, "Help")
         self.form1_help_btn.clicked.connect(self._on_help_clicked)
 
         self._create_i18n_overlays()
@@ -1343,7 +1351,7 @@ class TRCCApp(QMainWindow):
             btn = create_image_button(
                 self.form_container, x, y, w, h,
                 normal_img, active_img, checkable=True)
-            btn.setToolTip(tooltip)
+            say_tip(btn, tooltip)
             btn.setProperty('panel_idx', panel_idx)
             btn.clicked.connect(self._on_mode_button_clicked)
             self.mode_buttons.append(btn)
@@ -1360,7 +1368,7 @@ class TRCCApp(QMainWindow):
             "QComboBox::drop-down { border: none; width: 20px; }"
             "QComboBox QAbstractItemView { background-color: #2A2A2A; color: white;"
             " selection-background-color: #4A6FA5; }")
-        self.rotation_combo.setToolTip("LCD rotation")
+        say_tip(self.rotation_combo, "LCD rotation")
         self.rotation_combo.currentIndexChanged.connect(self._on_rotation_change)
 
         # Device fingerprint line — name · vid:pid · FBL/PM/SUB, selectable so
@@ -1374,14 +1382,14 @@ class TRCCApp(QMainWindow):
         self.device_info_label.setWordWrap(True)
         self.device_info_label.setStyleSheet(
             "QLabel { color: #9AA0A6; font-family: monospace; font-size: 10px; }")
-        self.device_info_label.setToolTip("Device fingerprint (selectable)")
+        say_tip(self.device_info_label, "Device fingerprint (selectable)")
 
         # The C#'s brightness slider (``UCScrollB``).  This spot held its
         # HIDDEN dynamic-island button, repurposed as a 3-step brightness
         # cycle; ``uc_brightness`` says why that was wrong.
         self.uc_brightness = UCBrightness(self.form_container)
         self.uc_brightness.setGeometry(*Layout.BRIGHTNESS_SLIDER)
-        self.uc_brightness.setToolTip("Brightness")
+        say_tip(self.uc_brightness, "Brightness")
         self.uc_brightness.changed.connect(self._on_brightness_changed)
         self._show_brightness()
 
@@ -1389,7 +1397,7 @@ class TRCCApp(QMainWindow):
         self.theme_name_input.setGeometry(*Layout.THEME_NAME_INPUT)
         self.theme_name_input.setText("Theme1")
         self.theme_name_input.setMaxLength(10)
-        self.theme_name_input.setToolTip("Theme name for saving")
+        say_tip(self.theme_name_input, "Theme name for saving")
         self.theme_name_input.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.theme_name_input.setStyleSheet(
             "background-color: #232227; color: white; border: none;"
@@ -1398,7 +1406,7 @@ class TRCCApp(QMainWindow):
             QRegularExpressionValidator(QRE(r'[^/\\:*?"<>|\x00-\x1f]+')))
 
         self.save_btn = self._icon_btn(*Layout.SAVE_BTN, Assets.BTN_SAVE, "S")
-        self.save_btn.setToolTip("Save theme")
+        say_tip(self.save_btn, "Save theme")
         self.save_btn.clicked.connect(self._on_save_clicked)
 
     def _icon_btn(self, x: int, y: int, w: int, h: int,
@@ -1419,13 +1427,13 @@ class TRCCApp(QMainWindow):
     def _create_title_buttons(self) -> None:
         help_btn = create_image_button(
             self.form_container, *Layout.HELP_BTN, Assets.BTN_HELP, None, fallback_text="?")
-        help_btn.setToolTip("Help")
+        say_tip(help_btn, "Help")
         help_btn.clicked.connect(self._on_help_clicked)
 
         close_btn = create_image_button(
             self.form_container, *Layout.CLOSE_BTN,
             Assets.BTN_POWER, Assets.BTN_POWER_HOVER, fallback_text="X")
-        close_btn.setToolTip("Close")
+        say_tip(close_btn, "Close")
         close_btn.clicked.connect(self.close)
 
     def _apply_settings_backgrounds(self) -> None:

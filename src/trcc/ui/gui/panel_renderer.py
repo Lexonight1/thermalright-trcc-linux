@@ -28,6 +28,7 @@ from ..presentation.panel_spec import (
     Label,
     PanelSpec,
 )
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import create_image_button, make_icon_button, set_background_pixmap
 
@@ -186,7 +187,7 @@ def _build(control: Any, parent: QWidget,
             fallback_text=control.fallback_text,
         )
         if control.tooltip:
-            widget.setToolTip(control.tooltip)
+            say_tip(widget, control.tooltip)
         return widget
 
     if isinstance(control, IconButton):

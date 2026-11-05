@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -314,3 +315,77 @@ def test_an_update_replaces_a_modules_words(module_words: dict) -> None:
 
     drop_translations("weather")
     assert tr("Gust", "de", "weather") == "Gust"
+
+
+# ── The gui's tooltips ───────────────────────────────────────────────────
+
+
+def test_the_gui_says_its_tooltips_in_the_apps_language(tmp_path: Path, qtbot: Any) -> None:
+    """His ask (2026-11-05): the gui's tooltips were English in every
+    language.  One made at start, the theme ✕ made when the list fills and a
+    custom dashboard panel's -- both made AFTER the language was chosen --
+    all in German, and back.  MUTATION CHECK: drop ``retranslate(self, ...)``
+    from ``TRCCApp._show_language``; then the one in ``_apply_decorations``."""
+    from PySide6.QtWidgets import QPushButton
+
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import SetLanguage
+    from trcc.core.results import ThemeListEntry
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    app = App(MockPlatform([], tmp_path), renderer=QtRenderer())
+    try:
+        window = TRCCApp(app=app)
+        qtbot.addWidget(window)
+        assert window.form1_close_btn.toolTip() == "Close"
+        assert app.dispatch(SetLanguage(language="de")).ok
+        qtbot.waitUntil(lambda: window.form1_close_btn.toolTip() == "Schließen", timeout=2000)
+
+        browser = window.uc_theme_local
+        browser.set_themes([ThemeListEntry(name="Mine", resolution=(320, 320),
+                                           path=str(tmp_path / "Mine"), origin="user")])
+        crosses = [b for b in browser.findChildren(QPushButton) if b.text() == "✕"]
+        assert crosses and {b.toolTip() for b in crosses} == {"Theme löschen"}
+
+        window.uc_system_info._on_add_clicked()
+        deletes = [b for b in window.uc_system_info.findChildren(QPushButton)
+                   if b.text() == "✕" and b.isVisibleTo(window.uc_system_info)]
+        assert deletes and {b.toolTip() for b in deletes} == {"Panel löschen"}
+
+        assert app.dispatch(SetLanguage(language="en")).ok
+        qtbot.waitUntil(lambda: window.form1_close_btn.toolTip() == "Close", timeout=2000)
+        assert {b.toolTip() for b in crosses} == {"Delete theme"}
+    finally:
+        app.close()
+
+
+def test_every_tooltip_the_gui_sets_is_a_word_of_the_table() -> None:
+    """A new English tooltip must be added to the table -- in every language,
+    by the gate above -- or it shows English to everyone.  Read from the
+    source: ``say_tip`` calls, ``tooltip=`` / ``tip=`` arguments, the tooltip
+    tables and the tab list.  App data (a sensor's explanation, a device's
+    name) and module tabs (their own table) are not literals, so not read."""
+    import ast
+
+    english = TRANSLATIONS["en"]
+    found: dict[str, str] = {}
+    gui = Path(__file__).resolve().parents[1] / "src" / "trcc" / "ui" / "gui"
+    for source in sorted(gui.glob("*.py")):
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            texts: list[ast.expr] = []
+            if isinstance(node, ast.Call):
+                name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+                if name == "say_tip" and len(node.args) > 1:
+                    texts.append(node.args[1])
+                texts += [k.value for k in node.keywords if k.arg in ("tooltip", "tip")]
+            elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict) and any(
+                    isinstance(t, ast.Name) and "TOOLTIP" in t.id for t in node.targets):
+                texts += [v for v in node.value.values if v is not None]
+            for text in texts:
+                for leaf in (text.body, text.orelse) if isinstance(text, ast.IfExp) else (text,):
+                    if isinstance(leaf, ast.Constant) and isinstance(leaf.value, str):
+                        found[leaf.value] = f"{source.name}:{getattr(node, 'lineno', 0)}"
+    assert len(found) > 60            # the reader still finds them
+    assert {text: where for text, where in found.items() if text not in english} == {}

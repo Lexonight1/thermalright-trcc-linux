@@ -16,6 +16,7 @@ from ...core.logs import per_frame
 from ...core.models import OverlayElementConfig, OverlayMode
 from ..presentation.overlay_model import OverlayModel
 from ..presentation.overlay_serialization import tile_reading
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Sizes, Styles
@@ -85,7 +86,7 @@ class OverlayGridPanel(QFrame):
                 "QPushButton:!checked { background: #666; }"
             )
 
-        self._toggle_btn.setToolTip("Toggle overlay display")
+        say_tip(self._toggle_btn, "Toggle overlay display")
         self._toggle_btn.clicked.connect(self._on_toggle)
 
     def _on_toggle(self, checked):

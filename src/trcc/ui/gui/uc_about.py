@@ -48,6 +48,7 @@ from ...core.commands import (
 )
 from ...core.models import DEFAULT_REFRESH_INTERVAL_S
 from ...core.results import ControlCenterSnapshotResult
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -291,7 +292,7 @@ class UCAbout(BasePanel):
             "background-color: black; color: #B4964F; border: none;"
             " font-family: 'Microsoft YaHei'; font-size: 9pt;"
         )
-        self.refresh_input.setToolTip("Data refresh interval (seconds)")
+        say_tip(self.refresh_input, "Data refresh interval (seconds)")
         self.refresh_input.editingFinished.connect(self._on_refresh_changed)
 
         # === Running Mode radio buttons (v2.1.4: buttonSingle / buttonMulti) ===
@@ -309,7 +310,7 @@ class UCAbout(BasePanel):
         self.website_btn.setFlat(True)
         self.website_btn.setStyleSheet(Styles.FLAT_BUTTON)
         self.website_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.website_btn.setToolTip("Open thermalright.com")
+        say_tip(self.website_btn, "Open thermalright.com")
         self.website_btn.clicked.connect(self._on_website_clicked)
 
         # Version label

@@ -25,6 +25,7 @@ from ...core.models import (
     OverlayElementConfig,
     OverlayMode,
 )
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -202,7 +203,7 @@ class ColorPickerPanel(QFrame):
         self.x_spin.setRange(0, 480)
         self.x_spin.setStyleSheet(Styles.INPUT_FIELD)
         self.x_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        self.x_spin.setToolTip("X position")
+        say_tip(self.x_spin, "X position")
         self.x_spin.valueChanged.connect(self._on_position_changed)
 
         # Y coordinate input
@@ -211,7 +212,7 @@ class ColorPickerPanel(QFrame):
         self.y_spin.setRange(0, 480)
         self.y_spin.setStyleSheet(Styles.INPUT_FIELD)
         self.y_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        self.y_spin.setToolTip("Y position")
+        say_tip(self.y_spin, "Y position")
         self.y_spin.valueChanged.connect(self._on_position_changed)
 
         # Font picker button (name only)
@@ -223,7 +224,7 @@ class ColorPickerPanel(QFrame):
         )
         self.font_btn.setText(THEME_FONT)
         self.font_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.font_btn.setToolTip("Choose font")
+        say_tip(self.font_btn, "Choose font")
         self.font_btn.clicked.connect(self._pick_font)
         self._current_font_name = THEME_FONT
         self._current_font_size = 36
@@ -235,7 +236,7 @@ class ColorPickerPanel(QFrame):
         self.font_size_spin.setRange(6, 200)
         self.font_size_spin.setValue(36)
         self.font_size_spin.setStyleSheet(Styles.INPUT_FIELD)
-        self.font_size_spin.setToolTip("Font size")
+        say_tip(self.font_size_spin, "Font size")
         self.font_size_spin.valueChanged.connect(self._on_font_size_changed)
 
         # The C#'s inline picker: a hue strip that drives a colour square.
@@ -253,19 +254,19 @@ class ColorPickerPanel(QFrame):
         self.r_input.setGeometry(*Layout.COLOR_R)
         self.r_input.setStyleSheet(Styles.RGB_INPUT)
         self.r_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.r_input.setToolTip("Red (0-255)")
+        say_tip(self.r_input, "Red (0-255)")
 
         self.g_input = QLineEdit("255", self)
         self.g_input.setGeometry(*Layout.COLOR_G)
         self.g_input.setStyleSheet(Styles.RGB_INPUT)
         self.g_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.g_input.setToolTip("Green (0-255)")
+        say_tip(self.g_input, "Green (0-255)")
 
         self.b_input = QLineEdit("255", self)
         self.b_input.setGeometry(*Layout.COLOR_B)
         self.b_input.setStyleSheet(Styles.RGB_INPUT)
         self.b_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.b_input.setToolTip("Blue (0-255)")
+        say_tip(self.b_input, "Blue (0-255)")
 
         for inp in (self.r_input, self.g_input, self.b_input):
             inp.editingFinished.connect(self._on_rgb_changed)
@@ -312,7 +313,7 @@ class ColorPickerPanel(QFrame):
         self.eyedropper_btn.setFlat(True)
         self.eyedropper_btn.setStyleSheet(Styles.ICON_BUTTON_HOVER)
         self.eyedropper_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.eyedropper_btn.setToolTip("Pick color from screen")
+        say_tip(self.eyedropper_btn, "Pick color from screen")
         self.eyedropper_btn.clicked.connect(self.eyedropper_requested.emit)
 
     def _on_hue_picked(self, r, g, b):

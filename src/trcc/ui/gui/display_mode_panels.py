@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from ...core.geometry import lock_region_to_panel
 from ...core.logs import per_frame
 from ...core.models import ACTION_ICON_IMAGES, InsetCorner, InsetSize, OverlayMode
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -142,7 +143,7 @@ class DataTablePanel(QFrame):
         # 70x24, drawn as P单位开关 / P单位开关a; the same switch as °C | °F now.
         self.unit_switch = ChoiceSwitch(("—", "%"), self)
         self.unit_switch.setGeometry(80, 15, 70, 24)
-        self.unit_switch.setToolTip("Show the unit after the value")
+        say_tip(self.unit_switch, "Show the unit after the value")
         self.unit_switch.picked.connect(self._on_unit_picked)
         self.unit_switch.setVisible(False)
 
@@ -151,7 +152,7 @@ class DataTablePanel(QFrame):
         # Legacy had it; the cutover left it inert, then it was gone.
         self.temp_switch = ChoiceSwitch(("°C", "°F"), self)
         self.temp_switch.setGeometry(80, 15, 70, 24)
-        self.temp_switch.setToolTip("Temperature unit")
+        say_tip(self.temp_switch, "Temperature unit")
         self.temp_switch.picked.connect(self._on_temp_picked)
         self.temp_switch.setVisible(False)
         self._temp_unit = "C"
@@ -159,7 +160,7 @@ class DataTablePanel(QFrame):
         # 12H | 24H (mode 1: time) -- myModeSub 1 = 12H, 2 = 24H.
         self.time_switch = ChoiceSwitch(("12H", "24H"), self)
         self.time_switch.setGeometry(80, 15, 70, 24)
-        self.time_switch.setToolTip("Time format (12h/24h)")
+        say_tip(self.time_switch, "Time format (12h/24h)")
         self.time_switch.picked.connect(self._on_time_picked)
         self.time_switch.setVisible(False)
 
@@ -167,7 +168,7 @@ class DataTablePanel(QFrame):
         # button3 cycling P YMD / DMY / MD / DM, all four shown at once now.
         self.date_switch = ChoiceSwitch(("Y/M/D", "D/M/Y", "M/D", "D/M"), self)
         self.date_switch.setGeometry(15, 15, 200, 24)
-        self.date_switch.setToolTip("Date format")
+        say_tip(self.date_switch, "Date format")
         self.date_switch.picked.connect(self._on_date_picked)
         self.date_switch.setVisible(False)
 
@@ -177,7 +178,7 @@ class DataTablePanel(QFrame):
         self.text_input.setGeometry(15, 15, 200, 22)
         self.text_input.setStyleSheet(Styles.INPUT_FIELD)
         self.text_input.setPlaceholderText("Text/Value")
-        self.text_input.setToolTip("Custom text")
+        say_tip(self.text_input, "Custom text")
         self.text_input.setMaxLength(100)
         self.text_input.editingFinished.connect(self._on_text_committed)
         self.text_input.setVisible(False)
@@ -328,7 +329,7 @@ class DisplayModePanel(QFrame):
             self.toggle_btn.setIconSize(self.toggle_btn.size())
         self.toggle_btn.setStyleSheet(Styles.FLAT_BUTTON)
         self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.toggle_btn.setToolTip(self._TOGGLE_TOOLTIP.get(self.mode_id, "Toggle"))
+        say_tip(self.toggle_btn, self._TOGGLE_TOOLTIP.get(self.mode_id, "Toggle"))
         self.toggle_btn.clicked.connect(self._on_toggle)
 
         # Title label next to toggle
@@ -358,7 +359,7 @@ class DisplayModePanel(QFrame):
                 btn.setText(action_name)
                 btn.setStyleSheet(Styles.ACTION_TEXT_BUTTON)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setToolTip(self._TOOLTIP_MAP.get(action_name, action_name))
+            say_tip(btn, self._TOOLTIP_MAP.get(action_name, action_name))
             btn.setEnabled(False)  # Disabled until toggle is ON (C# buttonOnOff_Set)
             # The action rides ON the button rather than in a closure over
             # the loop variable — ``feedback_no_lambdas``.
@@ -539,7 +540,7 @@ class MaskPanel(DisplayModePanel):
         self.eye_btn = QPushButton(self)
         self.eye_btn.setGeometry(*self._BTN_EYE)
         self.eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.eye_btn.setToolTip("Toggle mask visibility")
+        say_tip(self.eye_btn, "Toggle mask visibility")
         self.eye_btn.clicked.connect(self._on_eye_toggle)
         self._update_eye_icon()
 
@@ -691,7 +692,7 @@ class ScreenCastPanel(DisplayModePanel):
         self.border_btn = QPushButton(self)
         self.border_btn.setGeometry(*self._BTN_BORDER)
         self.border_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.border_btn.setToolTip("Toggle capture border")
+        say_tip(self.border_btn, "Toggle capture border")
         self.border_btn.clicked.connect(self._on_border_toggle)
         self._update_border_icon()
 
@@ -700,7 +701,7 @@ class ScreenCastPanel(DisplayModePanel):
         self.audio_btn = QPushButton(self)
         self.audio_btn.setGeometry(*self._BTN_AUDIO)
         self.audio_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.audio_btn.setToolTip("Toggle mic audio visualization")
+        say_tip(self.audio_btn, "Toggle mic audio visualization")
         self.audio_btn.clicked.connect(self._on_audio_toggle)
         self._update_audio_icon()
 

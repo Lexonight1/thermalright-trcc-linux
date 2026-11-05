@@ -22,6 +22,7 @@ from ..presentation.panel_spec import (
     Label,
     PanelSpec,
 )
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import BasePanel, SkinButton, create_image_button
 from .constants import Colors, Layout, Sizes, Styles
@@ -229,7 +230,7 @@ class UCDevice(BasePanel):
         button.setGeometry(*rect)
         button.setCheckable(True)
         button.setStyleSheet(_VIEW_BTN_QSS)
-        button.setToolTip(tooltip)
+        say_tip(button, tooltip)
         button.clicked.connect(partial(self._on_view_clicked, key))
         button.show()
         self.view_buttons[key] = button

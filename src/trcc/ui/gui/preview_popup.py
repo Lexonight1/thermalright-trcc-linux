@@ -26,6 +26,7 @@ from ..presentation.lcd_panel import (
     POPUP_PREVIEW_MARGIN,
     POPUP_PREVIEW_ORIGIN,
 )
+from ..qt_words import say_tip
 from .assets import Assets
 from .base import ImageLabel
 from .constants import Styles
@@ -55,7 +56,7 @@ class PreviewPopup(QWidget):
         self._dock.setIcon(QIcon(Assets.load_pixmap("app_power")))
         self._dock.setStyleSheet(Styles.FLAT_BUTTON)
         self._dock.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._dock.setToolTip("Dock the preview")
+        say_tip(self._dock, "Dock the preview")
         self._dock.clicked.connect(self._on_dock_clicked)
 
     def show_art(self, name: str) -> tuple[int, int, int, int]:

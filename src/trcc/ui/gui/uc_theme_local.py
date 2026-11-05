@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
 from ...core.models import LocalThemeItem
 from ...core.results import ThemeListEntry
 from ..presentation.slideshow_model import SlideshowModel
+from ..qt_words import retranslate, say_tip
 from .assets import Assets
 from .base import BaseThemeBrowser, BaseThumbnail
 from .constants import Layout, Styles
@@ -58,7 +59,7 @@ class ThemeThumbnail(BaseThumbnail):
                 "QPushButton:hover { background: rgba(220, 50, 50, 255); }"
             )
             self._delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._delete_btn.setToolTip("Delete theme")
+            say_tip(self._delete_btn, "Delete theme")
             self._delete_btn.clicked.connect(self._on_delete_clicked)
             self._delete_btn.raise_()
             self._delete_btn.show()
@@ -179,7 +180,7 @@ class UCThemeLocal(BaseThemeBrowser):
         if not self._lunbo_off.isNull():
             self.slideshow_btn.setIcon(QIcon(self._lunbo_off))
             self.slideshow_btn.setIconSize(self.slideshow_btn.size())
-        self.slideshow_btn.setToolTip("Toggle theme slideshow")
+        say_tip(self.slideshow_btn, "Toggle theme slideshow")
         self.slideshow_btn.clicked.connect(self._on_slideshow_clicked)
 
         # Slideshow interval input — Windows: textBoxTimer (602, 29) 24x16
@@ -188,7 +189,7 @@ class UCThemeLocal(BaseThemeBrowser):
         self.timer_input.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.timer_input.setMaxLength(3)
         self.timer_input.setText("3")
-        self.timer_input.setToolTip("Slideshow interval (seconds)")
+        say_tip(self.timer_input, "Slideshow interval (seconds)")
         self.timer_input.setStyleSheet(
             "QLineEdit { background: #232227; color: white; border: none; "
             "font-family: 'Microsoft YaHei'; font-size: 9pt; }"
@@ -215,7 +216,7 @@ class UCThemeLocal(BaseThemeBrowser):
         btn.setFlat(True)
         btn.setStyleSheet(Styles.FLAT_BUTTON)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setToolTip(tip)
+        say_tip(btn, tip)
         pix = Assets.load_pixmap(image, 40, 18)
         if not pix.isNull():
             btn.setIcon(QIcon(pix))
@@ -325,6 +326,8 @@ class UCThemeLocal(BaseThemeBrowser):
                     self._slideshow_model.badge_position(info.name))
             else:
                 widget.clear_slideshow_badge()
+        # A delete button is made here, after the window last translated.
+        retranslate(self, self._tr)
 
     def _on_delete_clicked(self, item_info: dict):
         """Forward delete request to parent (confirmation handled there)."""
@@ -443,7 +446,7 @@ class GameModeControls:
         self.cpu_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.cpu_input.setMaxLength(2)
         self.cpu_input.setValidator(QIntValidator(0, 99, self.cpu_input))
-        self.cpu_input.setToolTip("Game mode: CPU usage % that takes the panel")
+        say_tip(self.cpu_input, "Game mode: CPU usage % that takes the panel")
         self.cpu_input.setStyleSheet(
             "QLineEdit { background: #232227; color: white; border: none; "
             "font-family: 'Microsoft YaHei'; font-size: 9pt; }"

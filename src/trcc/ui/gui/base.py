@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal
@@ -28,8 +29,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.i18n import tr
 from ...core.logs import per_frame
 from ..qt_periodic import PeriodicUpdater
+from ..qt_words import Tr
 from .constants import Colors, Layout, Sizes, Styles
 
 log = logging.getLogger(__name__)
@@ -707,8 +710,16 @@ class BaseThemeBrowser(BasePanel):
         self.items: list = []
         self.item_widgets: list = []
         self.selected_item = None
+        #: The window's language, for the thumbnails a browser rebuilds.
+        self._tr: Tr = str
 
         self._setup_ui()
+
+    def set_language(self, lang: str) -> None:
+        """The window's language, for what this panel builds from now on --
+        the window's own pass translated what is there already."""
+        log.info("%s.set_language: %s", type(self).__name__, lang)
+        self._tr = partial(tr, lang=lang)
 
     def _setup_ui(self) -> None:
         """BaseThemeBrowser UI: scroll area + filter buttons."""

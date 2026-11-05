@@ -31,6 +31,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QPushButton, QWidget
 
+from ..qt_words import say_tip
 from .assets import Assets
 
 log = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ class UCColorWheel(QWidget):
                 "QPushButton:hover { background: rgba(80,80,80,200); }"
             )
             self._onoff_btn.setText("\u23FB")  # Power symbol
-        self._onoff_btn.setToolTip("Turn LEDs on / off")
+        say_tip(self._onoff_btn, "Turn LEDs on / off")
         self._onoff_btn.clicked.connect(self._toggle_onoff)
 
         # Store asset paths for toggling

@@ -16,6 +16,7 @@ Matches Windows TRCC UCSystemInfoOptions:
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from ...core.models import HardwareMetrics
 
 from ...core.commands import GetSensorDashboard, SetSensorDashboard
+from ...core.i18n import tr
 from ...core.models import (
     CATEGORY_COLORS,
     CATEGORY_IMAGES,
@@ -34,6 +36,7 @@ from ...core.models import (
 )
 from ...core.ports import CommandBus
 from ..presentation.sensor_display import format_sensor_value
+from ..qt_words import Tr, retranslate, say_tip
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Layout
@@ -166,13 +169,13 @@ class SystemInfoPanel(QWidget):
                 "QPushButton:hover { color: #FF4444; }"
             )
             self._del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._del_btn.setToolTip("Delete panel")
+            say_tip(self._del_btn, "Delete panel")
             self._del_btn.clicked.connect(self._on_delete_clicked)
 
             # Editable name for custom panels
             self._name_edit = QLineEdit(config.name, self)
             self._name_edit.setGeometry(49, 24, 190, 16)
-            self._name_edit.setToolTip("Panel name")
+            say_tip(self._name_edit, "Panel name")
             self._name_edit.setStyleSheet(
                 "QLineEdit { background: transparent; border: none; "
                 "border-bottom: 1px solid #444; color: #C0C0C0; font-size: 10px; }"
@@ -195,7 +198,7 @@ class SystemInfoPanel(QWidget):
                 edit.setFont(row_font)
                 edit.setGeometry(ROW_NAME_X, ROW_NAME_Y + i * ROW_NAME_PITCH,
                                  ROW_NAME_W, ROW_NAME_H)
-                edit.setToolTip("Row name")
+                say_tip(edit, "Row name")
                 edit.setStyleSheet(
                     f"QLineEdit {{ background: transparent; border: none; "
                     f"color: {self._color}; }}"
@@ -345,6 +348,8 @@ class UCSystemInfo(QWidget):
         # to import the persistence adapter itself, which is why cli / api /
         # qtgui could not read the dashboard at all.
         self._dashboard: list[PanelConfig] = []
+        #: The window's language, for the panels this page rebuilds.
+        self._tr: Tr = str
         self._page = 0
         self._temp_unit = 0  # 0=Celsius, 1=Fahrenheit
         self._panels_list: list[SystemInfoPanel] = []
@@ -493,6 +498,8 @@ class UCSystemInfo(QWidget):
 
         # Page navigation
         self._setup_page_nav(total_panels)
+        # Built after the window last translated: their tooltips said now.
+        retranslate(self, self._tr)
 
         log.info(
             "UCSystemInfo._rebuild_grid: rendered page=%d visible=%d total=%d",
@@ -502,6 +509,12 @@ class UCSystemInfo(QWidget):
         # Select first panel by default
         if self._panels_list:
             self._on_panel_clicked(self._panels_list[0])
+
+    def set_language(self, lang: str) -> None:
+        """The window's language, for what this panel builds from now on --
+        the window's own pass translated what is there already."""
+        log.info("%s.set_language: %s", type(self).__name__, lang)
+        self._tr = partial(tr, lang=lang)
 
     def _setup_page_nav(self, total_panels: int):
         """Create/update page navigation buttons."""
@@ -546,7 +559,7 @@ class UCSystemInfo(QWidget):
                 "QPushButton:hover { color: white; }"
             )
         self._page_prev.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._page_prev.setToolTip("Previous page")
+        say_tip(self._page_prev, "Previous page")
         self._page_prev.clicked.connect(self._on_prev_page)
         self._page_prev.setEnabled(self._page > 0)
         self._page_prev.show()
@@ -568,7 +581,7 @@ class UCSystemInfo(QWidget):
                 "QPushButton:hover { color: white; }"
             )
         self._page_next.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._page_next.setToolTip("Next page")
+        say_tip(self._page_next, "Next page")
         self._page_next.clicked.connect(self._on_next_page)
         self._page_next.setEnabled(self._page < total_pages - 1)
         self._page_next.show()
