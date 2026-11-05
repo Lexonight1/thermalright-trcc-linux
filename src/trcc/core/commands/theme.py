@@ -277,18 +277,17 @@ class LoadTheme(Command[ThemeResult]):
             log.info("LoadTheme: %s released from a pushed frame's hold",
                      self.key)
             app.held.discard(self.key)
-        # Single source of truth for "stop the previous video + clear the
-        # cloud-background override + invalidate the scene cache": ``StopVideo``
-        # (publishes VideoStopped, clears background_path, unloads playback).
+        # Single source of truth for "stop the previous video + invalidate the
+        # scene cache": ``StopVideo`` (publishes VideoStopped, unloads the
+        # playback; unload-only here -- a picked load ends the choice below).
         # ONLY on an explicit load — on a restore (reconnect / view-switch
         # keep-alive) the user's current cloud background + playback must
         # survive, otherwise picking the System-Info tab silently reverted the
         # background to the theme's bundled one (StopVideo cleared the override).
         #
         # A video-backed new theme is a REPLACE, not a stop-then-start, so it
-        # skips the unload: ``PlayVideo`` below overwrites the playback AND the
-        # background_path override atomically (``MediaService.load_video``
-        # assigns ``_playbacks[key]``; ``PlayVideo`` persists the new path).
+        # skips the unload: ``PlayVideo.play`` below replaces the playback in
+        # place (``MediaService.load_video`` assigns ``_playbacks[key]``).
         # Unloading first opened a window where the device was mid-load with no
         # playback at all — every render fired in that window (MaskApplied,
         # MaskPositionChanged, and any SensorsUpdated off the metrics thread)
@@ -328,7 +327,6 @@ class LoadTheme(Command[ThemeResult]):
             if drawing is not None:
                 log.info("LoadTheme: %s has no module background — ending "
                          "the %s one drawing", theme.name, drawing)
-                app.settings.set_module_source(self.key, None)
                 _publish_background(app, self.key)
             if app.settings.for_device(self.key).pending_background is not None:
                 app.settings.set_pending_background(self.key, None)
@@ -611,7 +609,6 @@ class LoadTheme(Command[ThemeResult]):
             if drawing is not None:
                 log.info("LoadTheme: %s — ending the %s background that "
                          "was drawing", theme.name, drawing)
-                app.settings.set_module_source(self.key, None)
                 app.settings.end_background(self.key, ModuleBackground)
                 _publish_background(app, self.key)
 
@@ -828,9 +825,9 @@ class SaveTheme(Command[ThemeResult]):
         Never sent to the device, so baking the full composite is safe.
       * no ``config1.dc`` — ``load()`` reads ``trcc.json`` directly.
 
-    After a successful save the per-device overrides
-    (``background_path`` / ``mask_path`` /
-    ``user_overlay_elements``) are cleared and ``current_theme`` is
+    After a successful save the per-device overrides (``mask_path`` /
+    ``user_overlay_elements``) are cleared, the background choice is the
+    saved theme's own (its load is a picked one), and ``current_theme`` is
     re-pointed to the new directory.  Without this the next render
     would re-stack the (now-baked-in) overrides on top of the saved
     theme — double-mask, double-bg, doubled overlay text.
@@ -936,9 +933,9 @@ class SaveTheme(Command[ThemeResult]):
         # The device's overrides pointed at the SOURCE theme's assets.  They
         # are captured inside the saved theme now, so drop them before the
         # switch — this part IS SaveTheme's own business ("what I just baked
-        # in is no longer an override").
+        # in is no longer an override").  The background CHOICE needs no
+        # clearing: the switch below is a picked load, which ends it.
         app.settings.set_mask_path(self.key, None)
-        app.settings.set_background_path(self.key, None)
         # Establishing the saved theme as the device's live state is EXACTLY a
         # theme switch, so dispatch the Command that owns one.
         #
@@ -958,9 +955,9 @@ class SaveTheme(Command[ThemeResult]):
                 "(%s) — the theme is on disk, the device still shows the "
                 "previous one", self.name, target, switched.message,
             )
-        # ...and re-assert self-containment afterwards.  ``mask_path`` /
-        # ``background_path`` are OVERRIDE fields ("use this instead of the
-        # theme's"), and LoadTheme writes the mask one as a side effect of
+        # ...and re-assert self-containment afterwards.  ``mask_path`` is an
+        # OVERRIDE field ("use this instead of the theme's"), and LoadTheme
+        # writes it as a side effect of
         # applying a theme's bundled mask — so a theme that bundles its own
         # mask comes back holding an override that points at itself.  Harmless
         # to render (the renderer resolves the same image either way) but not
@@ -968,7 +965,6 @@ class SaveTheme(Command[ThemeResult]):
         # bleed this theme's mask onto the next maskless theme the user picks.
         # A saved theme owns its assets; the device overrides nothing.
         app.settings.set_mask_path(self.key, None)
-        app.settings.set_background_path(self.key, None)
         _invalidate_scene(app, self.key)
         log.info(
             "SaveTheme: %s — cleared overrides + switched the device to %s",
@@ -1132,7 +1128,8 @@ class SaveTheme(Command[ThemeResult]):
         COPIED into the USER library (``user_background_dir``, deduped, native
         res) so its ref resolves there.  ``_resolve_asset_ref`` resolves
         user-root first, so a custom asset never reverts to the cloud original.
-        ``DeviceSettings.background_path`` (override) wins over the source theme.
+        The file the user chose (``DeviceSettings.chosen_file``) wins over the
+        source theme's.
         """
         src = self._pick_asset(
             s.chosen_file, app.themes.background_path(theme), "background",
@@ -2113,8 +2110,8 @@ class RestoreDeviceState(Command[ThemeResult]):
       1. The persisted theme, with its mask + overlay edits + bundled video.
       2. Nothing persisted → the fallback theme (shipped ``Theme1``).
       3. Resume the screencast, the module picture or the media player, or
-         replay the persisted ``background_path`` video, over the theme --
-         the sources are exclusive, so at most one.
+         replay the picture or video the user chose, over the theme --
+         one choice, so at most one.
       4. A saved slideshow resumes rotating (it never did when the App
          started, in any UI but the gui, whose own timer is gone).
 
@@ -2280,7 +2277,7 @@ class DownloadCloudTheme(Command[CloudThemeLoadResult]):
     """Fetch a cloud background into the local cache WITHOUT applying it.
 
     The download half of :class:`LoadCloudTheme`, which is a strictly larger
-    operation: it also persists ``background_path`` and dispatches
+    operation: it also records the video as the panel's choice and dispatches
     ``PlayVideo``.  Substituting it here would start playing a theme the user
     has not chosen yet — which is exactly the split legacy makes, and why the
     GUI's cloud browser downloads on one event and applies on another (the
@@ -2355,8 +2352,8 @@ class LoadCloudTheme(Command[CloudThemeLoadResult]):
          first-frame PNG + animated GIF previews for the GUI.
       3. Dispatch ``PlayVideo(key, path=<mp4>)`` — that's the path
          MediaService + DisplayService already use to render a video
-         background on every tick.  It persists ``background_path`` itself,
-         and only once the video loads.
+         background on every tick.  It records the choice itself, and
+         only once the video loads.
     """
     USES_DEVICE: ClassVar[bool] = True
     REQUIRES: ClassVar[Capability | None] = Capability.THEME

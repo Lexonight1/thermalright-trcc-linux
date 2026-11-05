@@ -563,7 +563,7 @@ class LCDHandler(BaseHandler):
 
         ``LoadCloudTheme`` is the command that owns the flow:
           1. materialise the MP4 (idempotent — skip if already cached)
-          2. set ``DeviceSettings.background_path`` so the override
+          2. record the video as the panel's background choice so it
              survives an app restart
           3. dispatch ``PlayVideo`` to load MediaService playback —
              DisplayService renders the video on every tick

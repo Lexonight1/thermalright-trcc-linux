@@ -369,14 +369,15 @@ def test_a_push_stops_a_video_and_keeps_the_saved_background(
     saved = str(tmp_path / "bg.mp4")
     frame = QtRenderer().encode_png(QtRenderer().create_surface(8, 8))
     app.media._playbacks[_KEY] = Playback(frames=[frame], fps=15)
-    app.settings.set_background_path(_KEY, saved)
+    from trcc.core.models import VideoBackground
+    app.settings.set_background(_KEY, VideoBackground(saved))
     sent = _wire(app, monkeypatch)
 
     assert app.dispatch(SendImage(key=_KEY, path=_png(tmp_path, "b.png", _BLUE))).ok
 
     assert len(sent) == 1
     assert app.media.playback(_KEY) is None
-    assert app.settings.for_device(_KEY).background_path == saved
+    assert app.settings.for_device(_KEY).chosen_file == saved
 
 
 # ── Every one-shot push holds, and every implicit producer respects it ───

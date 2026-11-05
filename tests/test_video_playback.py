@@ -506,16 +506,15 @@ def test_stop_video_keep_override_unloads_but_keeps_the_persisted_path(
 ) -> None:
     """Teardown stops playback without wiping the user's chosen background;
     a plain stop still clears it (#271)."""
-    connected_app.settings.set_background_path(_KEY, str(video_file))
-    connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))
+    connected_app.dispatch(PlayVideo(key=_KEY, path=video_file))   # records the choice
     assert connected_app.media.playback(_KEY) is not None
 
     connected_app.dispatch(StopVideo(key=_KEY, keep_override=True))
     assert connected_app.media.playback(_KEY) is None
-    assert connected_app.settings.for_device(_KEY).background_path == str(video_file)
+    assert connected_app.settings.for_device(_KEY).chosen_file == str(video_file)
 
     connected_app.dispatch(StopVideo(key=_KEY))
-    assert connected_app.settings.for_device(_KEY).background_path is None
+    assert connected_app.settings.for_device(_KEY).chosen_file is None
 
 
 # ── DisplayService playback-override path ────────────────────────────
@@ -1773,7 +1772,8 @@ def test_the_saved_theme_comes_up_without_its_old_background(
     themeless.settings.set_current_theme(_KEY, str(saved.resolve()))
     old = tmp_home / "old.mp4"
     old.write_bytes(video_file.read_bytes())
-    themeless.settings.set_background_path(_KEY, str(old))
+    from trcc.core.models import VideoBackground
+    themeless.settings.set_background(_KEY, VideoBackground(str(old)))
 
     assert themeless.dispatch(PlayVideo(key=_KEY, path=video_file)).ok
 
@@ -1827,7 +1827,7 @@ def test_a_local_media_player_is_recorded_as_one(
     assert connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file))).ok
 
     s = connected_app.settings.for_device(_KEY)
-    assert (s.media_player_uri, s.background_path) == (str(video_file), None)
+    assert (s.chosen_media, s.chosen_file) == (str(video_file), None)
     assert _source(connected_app) == "media"
     assert connected_app.media.playback(_KEY) is not None
 
@@ -1842,7 +1842,7 @@ def test_a_media_player_that_fails_to_play_records_nothing(
     monkeypatch.setattr(MediaService, "load_video", refuse)
 
     assert not connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file))).ok
-    assert connected_app.settings.for_device(_KEY).media_player_uri is None
+    assert connected_app.settings.for_device(_KEY).chosen_media is None
 
 
 def test_stop_ends_the_media_player_and_teardown_keeps_it(
@@ -1852,10 +1852,10 @@ def test_stop_ends_the_media_player_and_teardown_keeps_it(
 
     connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=str(video_file)))
     connected_app.dispatch(StopVideo(key=_KEY, keep_override=True))
-    assert connected_app.settings.for_device(_KEY).media_player_uri == str(video_file)
+    assert connected_app.settings.for_device(_KEY).chosen_media == str(video_file)
 
     connected_app.dispatch(StopVideo(key=_KEY))
-    assert connected_app.settings.for_device(_KEY).media_player_uri is None
+    assert connected_app.settings.for_device(_KEY).chosen_media is None
     assert _source(connected_app) == "background"
 
 
@@ -1874,7 +1874,7 @@ def test_clearing_the_media_player_brings_back_the_theme_s_own_video(
     assert connected_app.dispatch(SetMediaPlayer(key=_KEY, uri="")).ok
 
     s = connected_app.settings.for_device(_KEY)
-    assert s.media_player_uri is None
+    assert s.chosen_media is None
     assert [c[1] for c in stub_media][-1] == theme_video, "the theme's video did not resume"
     assert _source(connected_app) == "background"
     assert heard == [_KEY], "clearing was not announced"
@@ -1889,7 +1889,7 @@ def test_clearing_with_no_media_player_leaves_a_background_video_alone(
     connected_app.dispatch(SetMediaPlayer(key=_KEY, uri=""))
 
     assert connected_app.media.playback(_KEY) is not None
-    assert connected_app.settings.for_device(_KEY).background_path == str(video_file)
+    assert connected_app.settings.for_device(_KEY).chosen_file == str(video_file)
 
 
 def test_restore_resumes_the_media_player(
@@ -1904,7 +1904,7 @@ def test_restore_resumes_the_media_player(
     assert connected_app.dispatch(RestoreDeviceState(key=_KEY)).ok
 
     assert connected_app.media.playback(_KEY) is not None
-    assert connected_app.settings.for_device(_KEY).media_player_uri == str(video_file)
+    assert connected_app.settings.for_device(_KEY).chosen_media == str(video_file)
 
 
 def test_a_web_source_is_announced(connected_app: App) -> None:

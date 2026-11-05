@@ -272,7 +272,7 @@ class Drive:
         from trcc.core.models import PanelSource
 
         source = self.app.media.live(_KEY, PanelSource.MODULE)
-        found = (self.app.settings.for_device(_KEY).module_source,
+        found = (self.app.settings.for_device(_KEY).chosen_module,
                  type(source).__name__ if source is not None else "")
         log.debug("panel: %s", found)
         return found

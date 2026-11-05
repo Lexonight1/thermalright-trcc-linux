@@ -137,7 +137,7 @@ def _cases(app: Any, key: str, size: tuple[int, int], root: Path,
     pushed = _image(root / "pushed.png", size, (90, 90, 200))
 
     def fresh() -> None:
-        s.background_mode, s.mask_visible, s.background_path = "theme", True, None
+        s.background_mode, s.mask_visible = "theme", True
         s.background = ThemeBackground()
         s.split_mode = 0
         app.media._playbacks.pop(key, None)

@@ -37,7 +37,6 @@ from ..core.logs import per_frame
 from ..core.models import (
     DATE_FORMATS,
     DEFAULT_REFRESH_INTERVAL_S,
-    DISPLAY_SOURCE_FIELDS,
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
     RECENT_COLOR_DEFAULT,
@@ -175,8 +174,8 @@ _PRE_CUTOVER_CONFIG_FILE = "trcc-next.json"
 #                         its own section.  ``_migrate_app`` moves them.
 #   8                     a panel's background is ONE choice, ``background``
 #                         (``BackgroundChoice``), not four nullable fields;
-#                         ``_fold_background`` derives it from them.  They are
-#                         still written beside it until the readers move.
+#                         ``_fold_background`` derives it from them and drops
+#                         them.
 #
 # Every config written before the bump carries ``[]`` for the majority of
 # users who never edited an overlay, so reading one at face value under v2
@@ -601,22 +600,6 @@ class Settings:
             self.for_device(key).mask_visible = visible
             self._save()
 
-    def set_background_path(self, key: str, path: str | None) -> None:
-        """Set the cloud-background override (video path) for a device.
-
-        Passing ``None`` clears the override — the device falls back to
-        the active theme's bundled background.  LoadCloudTheme sets it;
-        the GUI's local-theme click handler (and ``LoadTheme`` for any
-        non-cloud path) should clear it so picking a local theme reverts
-        to the theme's own background.
-        """
-        log.info("set_background_path: key=%s path=%s", key, path)
-        with self._display_write(key) as dev:
-            dev.background_path = path
-            if path is not None:   # display-source toggles are mutually exclusive
-                _only_source(dev, "background_path")
-            self._save()
-
     def set_screencast_region(
         self, key: str, region: tuple[int, int, int, int, bool] | None,
     ) -> None:
@@ -654,32 +637,6 @@ class Settings:
             dev.screencast_hide_border = hide_border
             self._save()
 
-    def set_media_player_uri(self, key: str, uri: str | None) -> None:
-        """Set (or clear with ``None``) the device's media-player source URI.
-
-        A URI — a local path or a URL/stream.  The media-player toggle's
-        persisted state — SaveTheme bakes it into a theme's ``media_player`` ref
-        and a reload resumes it.  Mutually exclusive with the other display
-        sources, so setting it clears the background + screencast.
-        """
-        log.info("set_media_player_uri: key=%s uri=%s", key, uri)
-        with self._display_write(key) as dev:
-            dev.media_player_uri = uri
-            if uri is not None:
-                _only_source(dev, "media_player_uri")
-            self._save()
-
-    def set_module_source(self, key: str, module: str | None) -> None:
-        """Set (or clear with ``None``) the module drawing the device's
-        background.  Mutually exclusive with the other display sources, so
-        setting it clears them, a waiting theme background included."""
-        log.info("set_module_source: key=%s module=%s", key, module)
-        with self._display_write(key) as dev:
-            dev.module_source = module
-            if module is not None:
-                _only_source(dev, "module_source")
-            self._save()
-
     def module_themes_moved(self) -> bool:
         """Whether the one-time move of module themes has run."""
         done = self._app.module_themes_moved is True
@@ -714,11 +671,22 @@ class Settings:
 
     def set_background(self, key: str, choice: BackgroundChoice) -> None:
         """The user chose *choice* for *key*'s background -- the one writer.
-        Whatever was chosen before is replaced."""
+        Whatever was chosen before is replaced.
+
+        Choosing a picture, a video, the media player or a module also ends a
+        running cast and a theme background still waiting for its module, as
+        picking any source always has (the old ``_only_source``): left, the
+        cast captured over the pick, and the module coming on put the waiting
+        background over it.  The theme's own (a picked theme) leaves both to
+        ``LoadTheme``, which decides them for the theme it loads."""
         with self._display_write(key) as dev:
-            log.info("set_background: key=%s %s -> %s", key, dev.background,
-                     choice)
+            log.info("set_background: key=%s %s -> %s (cast %s, waiting %s)",
+                     key, dev.background, choice, dev.screencast_region,
+                     dev.pending_background)
             dev.background = choice
+            if not isinstance(choice, ThemeBackground):
+                dev.screencast_region = None
+                dev.pending_background = None
             self._save()
 
     def end_background(self, key: str,
@@ -1445,6 +1413,8 @@ def _fold_background(data: dict[str, Any], key: str) -> None:
     choice = background_choice_from_fields(
         text("background_path"), text("media_player_uri"),
         text("module_source"), text("current_theme"))
+    for old in ("background_path", "media_player_uri", "module_source"):
+        data.pop(old, None)
     data["background"] = choice.to_json()
     log.info("_fold_background: %s -> %s", key, choice)
 
@@ -1603,21 +1573,6 @@ def _tuple_of(size: int,
             return tuple(item(v) for v in value) if item else tuple(value)
         return value
     return convert
-
-
-def _only_source(dev: DeviceSettings, keep: str) -> None:
-    """Clear every display source on *dev* but *keep* -- one at a time, the
-    fields being ``DISPLAY_SOURCE_FIELDS``, the one list -- and a theme's
-    module background still waiting for its module: the source chosen now
-    replaces it.  Left waiting, the module coming on put it over the user's
-    later cast, and a restore resumed it in place of their media player
-    (measured 2026-11-04)."""
-    log.debug("_only_source: keep %s (waiting background %s dropped)", keep,
-              dev.pending_background)
-    for name in DISPLAY_SOURCE_FIELDS:
-        if name != keep:
-            setattr(dev, name, None)
-    dev.pending_background = None
 
 
 def _led_mode(value: int) -> LEDMode | None:

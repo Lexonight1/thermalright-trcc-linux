@@ -859,8 +859,8 @@ def _write_theme_with_real_pngs(directory: Path, name: str = "src",
 def test_save_theme_bakes_cloud_background_override(
     app: App, tmp_home: Path, user_theme_dir: Path,
 ) -> None:
-    """``DeviceSettings.background_path`` set → saved theme REFERENCES the
-    override's content in the library, NOT the source theme's bg.
+    """A chosen background → saved theme REFERENCES the
+    chosen file's content in the library, NOT the source theme's bg.
 
     Reproduces the user-reported bug: select cloud background → save →
     new theme should resolve to the cloud bg, not the local Theme1's bg.
@@ -1436,14 +1436,14 @@ def test_save_theme_references_screencast_region(
 def test_screencast_region_persists_and_is_mutually_exclusive(
     app: App, tmp_home: Path,
 ) -> None:
-    """set_screencast_region round-trips through config.json, and setting a
-    background clears it (the four toggles are mutually exclusive)."""
+    """set_screencast_region round-trips through trcc.json, and choosing a
+    background ends the cast (``set_background``; it was ``_only_source``)."""
     del tmp_home
     app.settings.set_screencast_region(_TEST_DEVICE_KEY, (1, 2, 3, 4, False))
     reloaded = Settings(app.platform.paths())
     assert reloaded.for_device(_TEST_DEVICE_KEY).screencast_region == (1, 2, 3, 4, False)
-    # A background override clears the screencast (mutually exclusive).
-    app.settings.set_background_path(_TEST_DEVICE_KEY, "/some/video.mp4")
+    # Choosing a background ends the cast.
+    app.settings.set_background(_TEST_DEVICE_KEY, VideoBackground("/some/video.mp4"))
     assert app.settings.for_device(_TEST_DEVICE_KEY).screencast_region is None
 
 
@@ -1475,15 +1475,15 @@ def test_save_theme_references_media_player_uri_and_url(
 def test_media_player_uri_persists_and_is_mutually_exclusive(
     app: App, tmp_home: Path,
 ) -> None:
-    """set_media_player_uri round-trips and clears the other display sources."""
+    """The media player as the choice round-trips, and choosing it ends the cast."""
     del tmp_home
     app.settings.set_screencast_region(_TEST_DEVICE_KEY, (1, 2, 3, 4, False))
-    app.settings.set_media_player_uri(_TEST_DEVICE_KEY, "rtsp://cam/live")
+    app.settings.set_background(_TEST_DEVICE_KEY, MediaPlayerBackground("rtsp://cam/live"))
     dev = app.settings.for_device(_TEST_DEVICE_KEY)
-    assert dev.media_player_uri == "rtsp://cam/live"
+    assert dev.chosen_media == "rtsp://cam/live"
     assert dev.screencast_region is None          # cleared — mutually exclusive
     reloaded = Settings(app.platform.paths())
-    assert reloaded.for_device(_TEST_DEVICE_KEY).media_player_uri == "rtsp://cam/live"
+    assert reloaded.for_device(_TEST_DEVICE_KEY).chosen_media == "rtsp://cam/live"
 
 
 # ─────────────────────────────────────────────────────────────────────

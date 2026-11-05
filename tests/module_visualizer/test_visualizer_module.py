@@ -63,7 +63,7 @@ def _switch(app: App, on: bool) -> None:
 
 def _choice(app: App) -> tuple[str | None, dict[str, Any]]:
     s = app.settings.for_device(_KEY)
-    return s.module_source, s.module_settings.get("visualizer", {})
+    return s.chosen_module, s.module_settings.get("visualizer", {})
 
 
 def test_it_is_a_built_in_module_on_by_default(app: App) -> None:
@@ -195,10 +195,10 @@ def test_a_settings_file_from_before_keeps_every_panel_playing(tmp_path: Path) -
     s = Settings(FakePaths(tmp_path))
 
     playing = s.for_device(_KEY)
-    assert (playing.module_source, playing.module_settings) == ("visualizer", {
+    assert (playing.chosen_module, playing.module_settings) == ("visualizer", {
         "visualizer": {"visual": "milkdrop", "preset": "a/b.milk",
                        "settings": {"x": 1.0}}})
-    assert s.for_device("87ad:70db").module_source is None
+    assert s.for_device("87ad:70db").chosen_module is None
     assert s.module_settings("visualizer") == {
         "center": "/pictures/bob.png", "center_shown": False, "center_fire": 0.4}
 
@@ -473,5 +473,5 @@ def test_a_media_player_started_while_a_visual_waits_is_what_a_restore_resumes(
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
 
     s = app.settings.for_device(_KEY)
-    assert (s.display_source, s.media_player_uri) == (PanelSource.MEDIA, _URL)
+    assert (s.display_source, s.chosen_media) == (PanelSource.MEDIA, _URL)
     assert app.media.live_kind(_KEY) is PanelSource.MEDIA

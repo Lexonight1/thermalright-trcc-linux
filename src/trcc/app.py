@@ -629,7 +629,6 @@ class App(CommandBus, ModuleServices):
         log.info("show_source: %s <- %s (%s, %g fps)", key, source.name,
                  module, fps)
         self.dispatch(StopVideo(key=key, keep_override=True))   # the module is next
-        self.settings.set_module_source(key, module)
         self.settings.set_background(key, ModuleBackground(module))
         self.media.open_live(key, PanelSource.MODULE, source)
         self.add_task(SourceDriver(self, key, PanelSource.MODULE, 1.0 / fps))
@@ -645,7 +644,6 @@ class App(CommandBus, ModuleServices):
         self.media.close_live(key, PanelSource.MODULE)
         self.remove_task(task_key(key, PanelSource.MODULE))
         if not keep_choice:
-            self.settings.set_module_source(key, None)
             self.settings.end_background(key, ModuleBackground)
         _theme_background_returns(self, key)
 
@@ -1853,7 +1851,7 @@ class App(CommandBus, ModuleServices):
         self._send_scheduler.remove(game_task(key))
         self.game_gates.pop(key, None)
         # The panel's live picture, whichever it is -- its choice
-        # (``module_source``, ``media_player_uri``, ``screencast_region``) stays
+        # (``background``, ``screencast_region``) stays
         # saved: only the running parts stop.
         self.media.close_live(key)
 

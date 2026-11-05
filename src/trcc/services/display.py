@@ -843,7 +843,7 @@ class DisplayService:
         Used by :class:`SendImage` Command + ``trcc display send-image``
         CLI to push a one-off image without staging a theme (no
         ``user_content_dir/single-image/`` directory created; no
-        ``DeviceSettings.background_path`` mutation).  Honors per-device
+        background choice written).  Honors per-device
         brightness + orientation + device-side rotation so the displayed
         image matches the rest of the LCD's state.
 
@@ -1237,8 +1237,8 @@ class DisplayService:
         to the theme's bundled background image or video.
 
         **The origin rides with the surface.**  Every branch below reaches a
-        DIFFERENT tree — a playback decoded at native, a ``background_path``
-        override, a reference theme's library asset resolved user-root-first,
+        DIFFERENT tree — a playback decoded at native, a picture the user
+        chose, a reference theme's library asset resolved user-root-first,
         the theme's own ``00.png`` — and only the branch that resolved it
         knows which.  The caller used to ask the active THEME's directory
         instead, which answers for none of the first three: a user upload
@@ -1276,9 +1276,9 @@ class DisplayService:
                 background_is_user=playback.is_user_content,
             )
 
-        # Cloud-background override (DeviceSettings.background_path) —
-        # takes precedence over the active theme's own bg.  Set by
-        # LoadCloudTheme; cleared by LoadTheme on local-theme select.
+        # A picture or video the user chose (``DeviceSettings.background``)
+        # takes precedence over the active theme's own bg.  Chosen by
+        # SetBackground / PlayVideo / LoadCloudTheme; a picked theme ends it.
         s = self._settings.for_device(info.key)
         if (chosen := s.chosen_file) is not None:
             override = Path(chosen)
@@ -1431,8 +1431,8 @@ class DisplayService:
 
         The one derivation of background IDENTITY.  It answers the same
         question ``_resolve_background`` answers with pixels, in the same
-        precedence -- playback, then the ``background_path`` override, then
-        the theme -- and both the slot and the bg+mask cache key are built
+        precedence -- playback, then the file the user chose, then the
+        theme -- and both the slot and the bg+mask cache key are built
         from it, so identity is stated once.
 
         It used to be stated twice.  ``_bg_mask_key`` carried its own copy of

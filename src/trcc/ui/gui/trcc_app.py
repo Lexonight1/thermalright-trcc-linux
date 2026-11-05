@@ -2617,8 +2617,8 @@ class TRCCApp(QMainWindow):
             # UI.  This handler copied it out of /tmp itself, a decision no
             # other UI made, until the runner started storing it.
             target = Path(zt_path)
-            # ``SetBackground`` persists the .zt as the device's
-            # background override (``DeviceSettings.background_path``)
+            # ``SetBackground`` records the .zt as the device's
+            # background choice (``DeviceSettings.background``)
             # THEN delegates to ``PlayVideo`` for the decode/animate
             # pipeline — same as the image cutter's ``_on_image_cut_done``.
             # Dispatching ``PlayVideo`` directly here (the old code) left

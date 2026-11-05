@@ -1469,9 +1469,10 @@ def test_a_cast_over_a_video_theme_resumes_without_the_video_taking_over(
     app: App, mic: FakeMic, tmp_home: Path,
 ) -> None:
     """The theme restored under the cast has a video of its own: the restore
-    must not play it.  Its ``PlayVideo`` sets ``background_path``, and the
-    one-source rule clears the cast's region -- the media-player theme's bug
-    (``b088bb50``), one branch down.
+    must not play it.  Its ``PlayVideo`` set ``background_path``, and the
+    one-source rule cleared the cast's region -- the media-player theme's bug
+    (``b088bb50``), one branch down.  (A theme's own video chooses nothing
+    now; the early return still keeps the cast's resume its own.)
 
     MUTATION CHECK: drop the early return for a cast that stays in
     ``LoadTheme`` and the region is cleared.
@@ -1490,11 +1491,13 @@ def test_a_cast_over_a_video_theme_resumes_without_the_video_taking_over(
 
     _reconnect(app)
 
+    from trcc.core.models import ThemeBackground
+
     s = app.settings.for_device(_KEY)
-    # The theme's video stays the chosen background UNDER the cast -- what
-    # the cast's off restores (2026-11-04) -- and does not take the panel.
-    assert (s.screencast_region, s.background_path) == (
-        (10, 20, 64, 48, False), str(vid / "Theme.mp4"))
+    # The theme's own background stays the choice UNDER the cast -- what the
+    # cast's off restores (2026-11-04) -- and its video does not take the panel.
+    assert (s.screencast_region, s.background) == (
+        (10, 20, 64, 48, False), ThemeBackground())
     assert s.display_source is PanelSource.SCREENCAST
     assert app.media.live_kind(_KEY) is PanelSource.SCREENCAST
 
@@ -1624,7 +1627,7 @@ def test_the_picked_background_stays_under_the_cast_and_comes_back(
     assert app.dispatch(SetBackground(key=_KEY, path=picked)).ok
     assert app.dispatch(StartScreencast(key=_KEY, audio=False, **_REGION)).ok
     s = app.settings.for_device(_KEY)
-    assert (s.display_source, s.background_path) == (PanelSource.SCREENCAST, str(picked))
+    assert (s.display_source, s.chosen_file) == (PanelSource.SCREENCAST, str(picked))
 
     sent = _recording(app, monkeypatch)
     caplog.clear()
@@ -1635,7 +1638,7 @@ def test_the_picked_background_stays_under_the_cast_and_comes_back(
     assert [r.getMessage() for r in caplog.records
             if r.levelno >= logging.WARNING and "failed" in r.getMessage()] == []
     s = app.settings.for_device(_KEY)
-    assert (s.display_source, s.background_path) == (PanelSource.BACKGROUND, str(picked))
+    assert (s.display_source, s.chosen_file) == (PanelSource.BACKGROUND, str(picked))
     # The picture the panel gets: the picked green, not the theme's blue.
     surface = app.display.build_preview_surface(
         info=app.devices[_KEY].info, theme=app.active_themes[_KEY], sensors={})

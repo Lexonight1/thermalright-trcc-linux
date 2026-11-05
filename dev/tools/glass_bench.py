@@ -546,7 +546,13 @@ def _stream_tick(app: Any, key: str) -> Any:
         def close(self) -> None:
             pass
 
-    app.settings.set_media_player_uri(key, url)
+    # By name: a tree from before the one background choice (schema 8) has
+    # only the media-player field; this one has only the choice.
+    if hasattr(app.settings, "set_background"):
+        from trcc.core.models import MediaPlayerBackground
+        app.settings.set_background(key, MediaPlayerBackground(url))
+    else:
+        app.settings.set_media_player_uri(key, url)
     # By name: it exists only in a tree from before the family.
     before = getattr(commands, "CaptureStreamFrame", None)
     if before is not None:

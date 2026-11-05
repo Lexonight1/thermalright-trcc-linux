@@ -159,11 +159,12 @@ def test_fails_cleanly_when_no_theme_available(app: App) -> None:
 
 
 def test_replays_persisted_background_best_effort(app: App, tmp_home: Path) -> None:
-    """A persisted background_path is replayed after the theme; a missing/
-    undecodable video is best-effort and never fails the restore."""
+    """A chosen video is replayed after the theme; a missing / undecodable
+    one is best-effort and never fails the restore."""
     theme_dir = _write_theme(tmp_home, "withbg")
     app.settings.set_current_theme(_KEY, str(theme_dir.resolve()))
-    app.settings.set_background_path(_KEY, str(tmp_home / "nonexistent.mp4"))
+    from trcc.core.models import VideoBackground
+    app.settings.set_background(_KEY, VideoBackground(str(tmp_home / "nonexistent.mp4")))
 
     result = app.dispatch(RestoreDeviceState(key=_KEY))
 

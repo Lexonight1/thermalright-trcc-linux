@@ -765,17 +765,6 @@ class PanelSource(str, Enum):
     BACKGROUND = "background"
 
 
-#: The ``DeviceSettings`` fields that name a display source -- the ONE list.
-#: One is set at a time: setting one clears the rest (``Settings``'s
-#: ``_only_source``), and every reader takes it from here, so none can forget
-#: one: the slideshow's watch left ``module_source`` out of its own copy, and
-#: a module's picture took the panel unseen (2026-11-04).  In the order a
-#: stale config with several set is read; ``background_path`` last, being an
-#: override of the theme's own background -- BACKGROUND either way.
-DISPLAY_SOURCE_FIELDS: tuple[str, ...] = (
-    "screencast_region", "media_player_uri", "module_source", "background_path")
-
-
 # =========================================================================
 # What a panel's background is -- the user's ONE choice
 # =========================================================================
@@ -792,8 +781,8 @@ class BackgroundChoice:
     """What the user chose to fill a panel's background -- ONE value.
 
     It replaces four nullable settings fields kept consistent by hand
-    (``_only_source``), which let a theme playing its OWN video overwrite the
-    user's choice (tests/test_background_choice.py).  Choosing something
+    (``_only_source``, gone), which let a theme playing its OWN video overwrite
+    the user's choice (tests/test_background_choice.py).  Choosing something
     replaces this value; nothing else writes it.  A screencast is not a
     choice here: it goes ON TOP and the choice under it survives
     (``DeviceSettings.screencast_region``).
@@ -923,21 +912,18 @@ class DeviceSettings:
     # User-supplied mask path that overrides the active theme's mask.
     # None = use the theme's bundled mask (or no mask if the theme has none).
     mask_path: str | None = None
-    # Cloud-background override — a video path that replaces the
-    # active theme's bundled background (00.png / Theme.mp4 / etc.).
-    # Set by LoadCloudTheme, cleared by LoadTheme (picking a local
-    # theme reverts to its own background).  Survives app restart.
-    background_path: str | None = None
     # What the user chose to fill the panel's background -- ONE value
-    # (``BackgroundChoice``), saved as ``{"kind": ...}``.  Written beside
-    # ``background_path`` / ``media_player_uri`` / ``module_source`` while
-    # the readers move over to it; a theme's own video never writes it.
+    # (``BackgroundChoice``), saved as ``{"kind": ...}``.  It replaced four
+    # nullable fields (``background_path``, ``media_player_uri``,
+    # ``module_source``, kept consistent by hand) in schema 8; a theme's own
+    # video never writes it.  A cast is not a choice: it goes on top
+    # (``screencast_region``).
     background: BackgroundChoice = ThemeBackground()
     # Active screencast region (x, y, w, h, audio) — the display source when the
-    # screencast toggle is on.  ``None`` = not screencasting.  Persisted like
-    # ``background_path`` so SaveTheme can bake it into a theme's ``screencast``
-    # ref and a reload can resume it.  Mutually exclusive with a video/image
-    # background (the toggles are).
+    # screencast toggle is on.  ``None`` = not screencasting.  Persisted so
+    # SaveTheme can bake it into a theme's ``screencast`` ref and a reload can
+    # resume it.  It goes ON TOP of ``background``, which survives it; choosing
+    # a background ends it (``Settings.set_background``).
     screencast_region: tuple[int, int, int, int, bool] | None = None
     # The device's screencast REGION, cast or not -- the C#'s JpX, JpY, JpW,
     # JpH, kept as the theme's DC stores them (``core.geometry.screencast_axes``
@@ -948,17 +934,6 @@ class DeviceSettings:
     # The C#'s ``myYcbk``: HIDE the on-screen region frame.  True by default,
     # as in the C# (FormCZTV.cs:316).
     screencast_hide_border: bool = True
-    # Active media-player source URI — the display source when the media-player
-    # toggle is on.  A URI: a local path OR a URL/stream (http, https, rtsp, …).
-    # ``None`` = not playing media.  Persisted like ``background_path`` so
-    # SaveTheme can bake it into a theme's ``media_player`` ref and a reload can
-    # resume it.  Mutually exclusive with the other display-source toggles.
-    media_player_uri: str | None = None
-    # The module drawing the background -- its key -- or ``None``.  A
-    # display source like the others, exclusive with them, and resumed on a
-    # reconnect through the module's background kind.  What it draws is the
-    # module's own business, in ``module_settings[<key>]``.
-    module_source: str | None = None
     # Each module's own settings for this panel, by module key -- written
     # only through its host (``ModuleHost.save_panel_settings``).
     module_settings: dict[str, dict[str, Any]] = field(default_factory=dict)

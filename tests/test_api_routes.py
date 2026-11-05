@@ -1905,7 +1905,7 @@ def test_a_web_url_is_not_a_path(panel_api: tuple[TestClient, App]) -> None:
     resp = client.post(f"/devices/{_KEY}/display/media-player",
                        json={"uri": "https://example.com/stream.m3u8"})
     assert resp.status_code == 200
-    assert app.settings.for_device(_KEY).media_player_uri == (
+    assert app.settings.for_device(_KEY).chosen_media == (
         "https://example.com/stream.m3u8")
 
 

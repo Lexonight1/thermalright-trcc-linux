@@ -144,7 +144,8 @@ def main() -> int:
 
         # Cloud-override mp4 path (file doesn't have to exist — we
         # populate the playback manually below).
-        settings.set_background_path(info.key, str(base / "fake_cloud.mp4"))
+        from trcc.core.models import VideoBackground
+        settings.set_background(info.key, VideoBackground(str(base / "fake_cloud.mp4")))
         # Brightness 100 = no-op; overlay disabled.
 
         # Build the 3-frame fake playback: red / green / blue.

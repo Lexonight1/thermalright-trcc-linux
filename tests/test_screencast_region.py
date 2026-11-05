@@ -202,10 +202,11 @@ def test_a_settings_reload_keeps_it(app: App, tmp_path: Path) -> None:
 
 
 def test_storing_the_region_leaves_the_background_alone(app: App) -> None:
-    app.settings.set_background_path(_KEY, "/x/bg.png")
+    from trcc.core.models import PictureBackground
+    app.settings.set_background(_KEY, PictureBackground("/x/bg.png"))
     app.dispatch(SetScreencastRegion(key=_KEY, x=10, y=20, w=480, h=270))
 
-    assert app.settings.for_device(_KEY).background_path == "/x/bg.png"
+    assert app.settings.for_device(_KEY).chosen_file == "/x/bg.png"
 
 
 # ── Seeding, as the C# reads Jp* from every DC it loads ──────────────

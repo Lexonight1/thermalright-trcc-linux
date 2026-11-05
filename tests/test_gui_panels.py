@@ -3051,7 +3051,7 @@ def test_setting_a_background_dispatches_SetBackground_not_LoadImage(
 
     The distinction is the whole point and it is easy to get wrong:
 
-    * ``SetBackground`` writes ``DeviceSettings.background_path``, which the
+    * ``SetBackground`` records the panel's background choice, which the
       renderer consults BEFORE the theme's own background — the theme and its
       overlays survive, only the picture changes.
     * ``LoadImage`` REPLACES the theme, materialising a one-file theme under

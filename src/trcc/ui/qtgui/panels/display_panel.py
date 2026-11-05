@@ -100,12 +100,12 @@ class DisplayPanel(BasePanel):
         self._restore_btn.clicked.connect(self._on_restore_last)
 
         # Background media — immediate actions.
-        # ``SetBackground`` and ``PlayVideo`` are sisters: both write
-        # ``DeviceSettings.background_path``, which the renderer consults
+        # ``SetBackground`` and ``PlayVideo`` are sisters: both record the
+        # panel's background choice, which the renderer consults
         # BEFORE the theme's own background, so they swap the picture and
-        # KEEP the theme's overlays.  ``Stop`` clears the override for
-        # either — it tests ``had_override`` independently of whether any
-        # video was playing — which is why one button serves both.
+        # KEEP the theme's overlays.  ``Stop`` ends the choice for either --
+        # the theme's own background returns -- whether or not a video was
+        # playing, which is why one button serves both.
         self._background_btn = QPushButton("Set background…", self)
         self._background_btn.clicked.connect(self._on_set_background)
         self._play_video_btn = QPushButton("Play video…", self)

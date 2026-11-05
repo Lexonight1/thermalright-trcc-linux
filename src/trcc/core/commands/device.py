@@ -1474,17 +1474,9 @@ class PlayVideo(Command[VideoResult]):
             return VideoResult(ok=False, key=self.key, path=str(self.path),
                                 message=str(e))
 
-        # Persist the override now that we know it LOADS.  Without this a
-        # later ``theme save`` has nothing in ``DeviceSettings.background_path``
-        # to bake in and the saved theme reloads with no background.
-        #
-        # This belongs to the Command, not its callers: the CLI and the two
-        # API routes each wrote it themselves before dispatching (qtgui never
-        # did, so that skin silently lost the background on save), and under
-        # ``TRCC_DAEMON=1`` the CLI's write crashed outright — ``AppProxy``
-        # exposes only ``dispatch``, so ``app.settings`` raised AttributeError
-        # and play-video never even reached the wire (#249).
-        app.settings.set_background_path(self.key, str(self.path))
+        # The choice is recorded by ``execute`` once this LOADS -- the
+        # Command's, not its callers' (each UI once wrote it itself, and over
+        # the daemon that crashed, #249).  A theme's own video records none.
 
         # Bust the scene cache so the next render picks up the override.
         _invalidate_scene(app, self.key)
@@ -1567,9 +1559,6 @@ class StopVideo(Command[VideoResult]):
         app.media.unload(self.key)
         ended = False
         if not self.keep_override:
-            # The old fields, written beside the choice until B4.
-            app.settings.set_background_path(self.key, None)
-            app.settings.set_media_player_uri(self.key, None)
             ended = app.settings.end_background(
                 self.key, PictureBackground, VideoBackground,
                 MediaPlayerBackground, ModuleBackground)
@@ -2032,7 +2021,6 @@ def _stream_failed(app: App, key: str) -> None:
     """The stream died: it ends, and the media player is no longer chosen."""
     log.info("_stream_failed: %s", key)
     _end_quietly(PanelSource.MEDIA, app, key)
-    app.settings.set_media_player_uri(key, None)
     app.settings.end_background(key, MediaPlayerBackground)
     _publish_background(app, key)
 
@@ -2222,18 +2210,17 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
 
     The media-player toggle's Command, sibling to :class:`SetBackground` /
     :class:`StartScreencast`, so every UI drives it the same way: dispatch,
-    don't reach into settings.  Persists the source in
-    ``DeviceSettings.media_player_uri`` (mutually exclusive with the other
-    display sources) so ``SaveTheme`` can bake it into a theme's ``media_player``
-    ref.  A LOCAL file starts playback through the same :class:`PlayVideo`
+    don't reach into settings.  Records the media player as the panel's
+    choice (``MediaPlayerBackground``) so ``SaveTheme`` can bake it into a
+    theme's ``media_player`` ref.  A LOCAL file starts playback through the same :class:`PlayVideo`
     pipeline; a web URL (http, https, rtsp) plays as a live stream on the
     screencast's chain (:meth:`_stream`).  Pass an empty ``uri`` to clear the
     source.
 
-    The source is recorded AFTER ``PlayVideo``: that Command writes the file as
-    ``background_path``, and the display sources are exclusive, so recording
-    first let playback erase the record -- every local media player read as a
-    background video, to the save, the restore and every UI's switch.
+    The file plays through ``PlayVideo.play``, which chooses nothing: the media
+    player is the choice, recorded once it plays.  Dispatching ``PlayVideo``
+    recorded the FILE as a video choice, and every local media player read as
+    a background video, to the save, the restore and every UI's switch.
 
     Clearing ends it the way the C#'s ``ClosePlayer`` does: the playback stops
     and a video theme's own video plays again -- the App decides, no UI
@@ -2271,7 +2258,6 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
             )
         play = PlayVideo(key=self.key, path=local).play(app)
         if play.ok:
-            app.settings.set_media_player_uri(self.key, uri)
             app.settings.set_background(self.key, MediaPlayerBackground(uri))
             _publish_background(app, self.key)
         return MediaPlayerResult(
@@ -2306,7 +2292,6 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
                                      message=problem)
         assert profile is not None
         app.dispatch(StopVideo(key=self.key, keep_override=True))   # the stream is next
-        app.settings.set_media_player_uri(self.key, uri)
         app.settings.set_background(self.key, MediaPlayerBackground(uri))
         app.media.open_stream(self.key, uri, profile.resolution,
                               round(1 / STREAM_TICK_S))
@@ -2336,9 +2321,9 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
 class SetBackground(Command[BackgroundResult]):
     """Apply a file as the device's persistent background override.
 
-    Sister Command to :class:`PlayVideo` — both write to
-    ``DeviceSettings.background_path``, which ``DisplayService``
-    consults BEFORE the active theme's bundled background.  Use this
+    Sister Command to :class:`PlayVideo` — both record the panel's
+    background choice (``DeviceSettings.background``), which
+    ``DisplayService`` consults BEFORE the active theme's bundled background.  Use this
     one for STATIC IMAGES (``PlayVideo`` for animated bg) so each
     Command is single-purpose:
 
@@ -2388,22 +2373,16 @@ class SetBackground(Command[BackgroundResult]):
                 "SetBackground.execute: %s has video ext — delegating to "
                 "PlayVideo", self.path.name,
             )
-            app.settings.set_background_path(self.key, str(self.path))
-            play = app.dispatch(PlayVideo(key=self.key, path=self.path))
+            play = app.dispatch(PlayVideo(key=self.key, path=self.path))   # records the choice
             return BackgroundResult(
                 ok=play.ok, key=self.key, path=str(self.path), kind="video",
                 message=play.message,
             )
         if kind is MediaKind.IMAGE:
-            # Drop any prior video first — its animation timer would
-            # otherwise tick over the static image we're about to set.
-            # Routes through StopVideo (publishes VideoStopped, stops
-            # the handler timer), then we set the new bg path.  StopVideo
-            # would normally clear ``background_path``, but we set it
-            # right after on the same dispatch thread, so the next
-            # render reads the new value.
-            StopVideo(key=self.key, keep_override=True).execute(app)   # the picture is next
-            app.settings.set_background_path(self.key, str(self.path))
+            # Drop any prior video first -- its animation timer would tick
+            # over the image.  Unload only (StopVideo publishes VideoStopped,
+            # which stops the handler timer): the picture is chosen next.
+            StopVideo(key=self.key, keep_override=True).execute(app)
             app.settings.set_background(self.key, PictureBackground(str(self.path)))
             _invalidate_scene(app, self.key)
             app.events.publish(
@@ -3021,7 +3000,7 @@ class SetMaskVisible(Command[MaskVisibilityResult]):
 
 def _publish_background(app: App, key: str) -> None:
     """Tell every UI (and the render observer) that *key*'s background changed."""
-    path = app.settings.for_device(key).background_path or ""
+    path = app.settings.for_device(key).chosen_file or ""
     log.debug("_publish_background: %s path=%r", key, path)
     app.events.publish(BackgroundChanged(key=key, path=path))
 

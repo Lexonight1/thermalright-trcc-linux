@@ -484,7 +484,7 @@ def test_download_cloud_theme_caches_without_applying(
     assert Path(result.theme_path).is_file()
     assert result.theme_id == "a004"
     # Applied nothing: no background persisted, no playback started.
-    assert not app.settings.for_device("0402:3922").background_path
+    assert not app.settings.for_device("0402:3922").chosen_file
     assert app.media.playback("0402:3922") is None
 
     # Idempotent — the second call re-uses the cache (materialise's contract).

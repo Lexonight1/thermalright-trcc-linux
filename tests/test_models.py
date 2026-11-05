@@ -194,14 +194,6 @@ def test_the_legacy_tables_are_derived_not_maintained() -> None:
 # ── where a panel's background comes from ─────────────────────────────────
 
 
-def test_every_display_source_field_is_a_device_setting() -> None:
-    """The one list names real fields -- a typo here would silently make the
-    slideshow and the one-source rule blind to a source."""
-    from trcc.core.models import DISPLAY_SOURCE_FIELDS, DeviceSettings
-    names = {f.name for f in dataclasses.fields(DeviceSettings)}
-    assert set(DISPLAY_SOURCE_FIELDS) <= names
-
-
 def _choices() -> list[BackgroundChoice]:
     from trcc.core.models import (
         MediaPlayerBackground,

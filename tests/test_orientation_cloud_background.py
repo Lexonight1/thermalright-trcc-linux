@@ -105,10 +105,10 @@ def test_rotation_reapplies_cloud_background_oriented(connected) -> None:
     not leave the landscape background squished into the portrait canvas."""
     app, recorder, _ = connected
 
-    # Apply at landscape → background_path lands under web/854480.
+    # Apply at landscape → the chosen video lands under web/854480.
     app.dispatch(SetOrientation(key=_KEY, degrees=0))
     app.dispatch(LoadCloudTheme(key=_KEY, theme_id="a003"))
-    assert "854480" in app.settings.for_device(_KEY).background_path
+    assert "854480" in app.settings.for_device(_KEY).chosen_file
 
     # Rotate to portrait → the OrientationChanged observer re-applies oriented.
     recorder.calls.clear()
@@ -117,7 +117,7 @@ def test_rotation_reapplies_cloud_background_oriented(connected) -> None:
     assert ("a003", (480, 854)) in recorder.calls, (
         "rotation must re-materialise the cloud background at web/480854"
     )
-    assert "480854" in app.settings.for_device(_KEY).background_path
+    assert "480854" in app.settings.for_device(_KEY).chosen_file
 
 
 def test_resolve_oriented_resolution_swaps_for_portrait(connected) -> None:
@@ -168,7 +168,7 @@ def test_a_cloud_video_that_fails_to_play_keeps_the_saved_background(
 
     app, _recorder, _ = connected
     assert app.dispatch(LoadCloudTheme(key=_KEY, theme_id="a003")).ok
-    kept = app.settings.for_device(_KEY).background_path
+    kept = app.settings.for_device(_KEY).chosen_file
     assert kept is not None and kept.endswith("a003.mp4")
 
     def _broken(self, device_key, path, size=None, **kwargs):
@@ -178,4 +178,4 @@ def test_a_cloud_video_that_fails_to_play_keeps_the_saved_background(
     result = app.dispatch(LoadCloudTheme(key=_KEY, theme_id="a004"))
 
     assert not result.ok
-    assert app.settings.for_device(_KEY).background_path == kept
+    assert app.settings.for_device(_KEY).chosen_file == kept

@@ -339,7 +339,7 @@ def test_a_module_visual_ends_the_slideshow(tmp_home: Path) -> None:
 
         assert _wait_for(lambda: not app.settings.for_device(_KEY).slideshow_enabled)
         assert _never_rotates_again(rotator), "the slideshow's thread outlived it"
-        assert app.settings.for_device(_KEY).module_source == "probe", (
+        assert app.settings.for_device(_KEY).chosen_module == "probe", (
             "the rotation ended the visual")
     finally:
         app.close()
@@ -348,15 +348,20 @@ def test_a_module_visual_ends_the_slideshow(tmp_home: Path) -> None:
 def test_a_video_theme_does_not_end_its_own_slideshow(
     tmp_home: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A bundled video sets ``background_path`` as part of the slideshow's OWN
-    load.  Judged as "another source", the slideshow would switch itself off
-    after the first video theme.
+    """A bundled video plays as part of the slideshow's OWN load.  Judged as
+    "another source", the slideshow would switch itself off after the first
+    video theme.  It used to set ``background_path``, the field the
+    slideshow watched; a theme's own video chooses nothing now, so this holds
+    by structure -- kept so it stays that way.
     """
     from trcc.services.media import MediaService, Playback
 
     from .test_video_playback import _encoded_frame
 
+    decoded: list[str] = []
+
     def fake_load(self, device_key, path, size, **kwargs):   # no ffmpeg here
+        decoded.append(Path(path).name)
         w, h = size if size is not None else (320, 320)
         playback = Playback(frames=[_encoded_frame(0xFF000000, w, h)] * 2,
                             fps=kwargs.get("fps", 15))
@@ -383,9 +388,8 @@ def test_a_video_theme_does_not_end_its_own_slideshow(
         # A FULL cycle: judging its own video as foreign ends it one tick
         # after a load, so a second rotation never comes.
         assert _wait_for(cycled, timeout=6.0), order
-        bg = app.settings.for_device(_KEY).background_path
-        assert bg and bg.endswith("Theme.mp4"), (
-            f"background_path={bg!r}: no video was set, so this proves nothing")
+        assert "Theme.mp4" in decoded, (
+            f"decoded {decoded}: no theme video played, so this proves nothing")
         assert app.settings.for_device(_KEY).slideshow_enabled
         assert _driving(app)
     finally:

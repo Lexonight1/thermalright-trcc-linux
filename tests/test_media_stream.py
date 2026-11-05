@@ -165,7 +165,7 @@ def test_the_url_stops_what_played_before(
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
 
     assert app.media.playback(_KEY) is None, "the old video kept playing"
-    assert app.settings.for_device(_KEY).background_path is None
+    assert app.settings.for_device(_KEY).chosen_file is None
 
 
 @pytest.mark.parametrize("uri", ["file:///etc/passwd", "data://x", "ftp://h/v.mp4"])
@@ -175,7 +175,7 @@ def test_only_web_schemes_are_opened(app: App, uri: str) -> None:
 
     assert not result.ok
     assert _reader(app) is None
-    assert app.settings.for_device(_KEY).media_player_uri is None
+    assert app.settings.for_device(_KEY).chosen_media is None
 
 
 def test_another_source_ends_the_stream_within_a_tick(app: App) -> None:
