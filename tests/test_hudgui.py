@@ -691,3 +691,20 @@ def test_every_word_hudgui_says_is_in_every_language() -> None:
     english = TRANSLATIONS["en"]
     words = {*MENU, *DEVICE_TABS, DEVICE_SETTINGS_TAB, *(a[0] for a in ADDS)}
     assert words <= english.keys()
+
+
+def test_tiles_flow_to_the_visible_width_not_the_tabs(window: Any, qtbot: Any) -> None:
+    """His run (2026-11-05): the tiles were laid out while the side panel was
+    hidden -- one to a row -- and the VIEWPORT took its real width after the
+    tab's own resize, so nothing re-flowed: themes in a single column on a
+    1920-wide bar (reproduced on Xvfb: viewport 1158 wide, 1 column, 8 fit).
+    The offscreen platform resizes in an order that hides it, so the test
+    resizes the viewport alone.  MUTATION CHECK: drop the viewport's event
+    filter in ``TileGrid``."""
+    _themes(window._app, "One", "Two", "Three", "Four", "Five", "Six")
+    grid = _local_themes(window, qtbot)
+    viewport = grid._scroll.viewport()
+    viewport.resize(130, viewport.height())
+    assert grid._columns == 1
+    viewport.resize(1000, viewport.height())
+    assert grid._columns == grid._fit() == (1000 + 10) // 130

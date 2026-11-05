@@ -19,8 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtCore import QEvent, QObject, QSize, Qt
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
@@ -97,6 +96,10 @@ class TileGrid(QWidget):
         self._grid.setSpacing(SPACING)
         self._grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._scroll.setWidget(self._body)
+        # The tiles flow to the VISIBLE width -- the viewport's, which can
+        # change without this tab resizing (a scrollbar appears, the panel
+        # is shown after the tiles were laid out hidden).
+        self._scroll.viewport().installEventFilter(self)
         column.addWidget(self._scroll, stretch=1)
         #: The tiles, by what they name.
         self.tiles: dict[str, QToolButton] = {}
@@ -195,12 +198,17 @@ class TileGrid(QWidget):
         for index, button in enumerate(self.tiles.values()):
             self._grid.addWidget(button, index // self._columns, index % self._columns)
 
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        """A new width: the tiles flow again, if a different number fit."""
-        super().resizeEvent(event)
-        if self._fit() != self._columns:
-            log.debug("%s.resizeEvent: re-flow", type(self).__name__)
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """The visible width changed: the tiles flow again, if a different
+        number fit.  His run (2026-11-05): laid out while the side panel was
+        hidden -- one to a row -- the tab's own resize came before the
+        viewport's, and on a 1920-wide bar the themes stayed in one column."""
+        if (watched is self._scroll.viewport() and event.type() == QEvent.Type.Resize
+                and self._fit() != self._columns):
+            log.debug("%s.eventFilter: viewport %d wide -- re-flow", type(self).__name__,
+                      self._scroll.viewport().width())
             self._lay_out()
+        return super().eventFilter(watched, event)
 
     # ── A click, and the light ─────────────────────────────────────────
 
