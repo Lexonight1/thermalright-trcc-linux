@@ -487,7 +487,9 @@ def test_a_visual_moves_into_a_box_and_comes_back_after_a_restart(
 
     app.media.close_inset(_KEY)                                    # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
-    assert dict(app.media.inset(_KEY).spec.settings) == {"growth": 2.0}
+    restored = app.media.inset(_KEY)
+    assert isinstance(restored, _FakeReader)
+    assert dict(restored.spec.settings) == {"growth": 2.0}
 
     app.modules.start_session()           # a running App's: switching on starts it
     assert app.dispatch(SetModuleEnabled(key="visualizer", enabled=False)).ok
