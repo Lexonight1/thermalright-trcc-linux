@@ -25,7 +25,15 @@ import pytest
 
 from trcc.adapters.render.qt import QtRenderer
 from trcc.adapters.theme.filesystem import FileContentStore
-from trcc.core.models import FitMode, Kind, ProductInfo, RenderContent, Theme, Wire
+from trcc.core.models import (
+    FitMode,
+    Kind,
+    PictureBackground,
+    ProductInfo,
+    RenderContent,
+    Theme,
+    Wire,
+)
 from trcc.services.background import BackgroundSlot
 from trcc.services.display import DisplayService
 from trcc.services.media import MediaService, Playback
@@ -108,7 +116,7 @@ def test_user_background_renders_the_same_under_any_theme(
     wallpaper = _write_image(
         renderer, paths.user_data_dir() / "uploads" / "wall.png", WALLPAPER, INK)
     info = _info()
-    display._settings.set_background_path(info.key, str(wallpaper))
+    display._settings.set_background(info.key, PictureBackground(str(wallpaper)))
 
     under_program = _centre(renderer, display._build_bg_mask(
         info, _theme(paths.data_dir() / "theme320320", "shipped"), CANVAS))
@@ -168,7 +176,7 @@ def test_program_background_keeps_the_native_or_black_rule(
         renderer, paths.data_dir() / "web" / "320320" / "wide.png",
         WALLPAPER, INK)
     info = _info()
-    display._settings.set_background_path(info.key, str(override))
+    display._settings.set_background(info.key, PictureBackground(str(override)))
 
     theme = _theme(paths.data_dir() / "theme320320", "shipped")
     assert _centre(renderer, display._build_bg_mask(info, theme, CANVAS)) == BLACK
@@ -185,7 +193,7 @@ def test_fit_mode_still_selects_how_user_content_scales(
     wallpaper = _write_image(
         renderer, paths.user_data_dir() / "uploads" / "w.png", WALLPAPER, INK)
     info = _info()
-    display._settings.set_background_path(info.key, str(wallpaper))
+    display._settings.set_background(info.key, PictureBackground(str(wallpaper)))
     theme = _theme(paths.data_dir() / "theme320320", "shipped")
 
     display._settings.set_fit_mode(info.key, FitMode.WIDTH)

@@ -21,6 +21,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -602,6 +603,11 @@ class Playback:
     #: what ``frame_count`` reports until the decode completes, so a progress
     #: bar and clock show the video's real length from the first frame.
     expected_frames: int = 0
+    #: Which load this is -- never reused, so the background's identity
+    #: (``DisplayService._background_token``) moves when the video does.  It
+    #: borrowed ``DeviceSettings.background_path`` for that, which held the
+    #: theme's own video as if the user had picked it.
+    serial: int = field(default_factory=count(1).__next__)
 
     @property
     def advancing(self) -> bool:

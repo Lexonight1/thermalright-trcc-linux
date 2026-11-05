@@ -145,6 +145,33 @@ def test_the_token_moves_with_the_video_cursor(
     assert display._background_token(_info(), theme) != first
 
 
+def test_another_video_at_the_same_frame_is_another_token(
+    display: DisplayService, tmp_home: Path,
+) -> None:
+    """A new load -- another video, or the same one decoded again -- moves
+    the token even at the same cursor: the playback carries which load it is.
+    It borrowed the chosen ``background_path`` for that, which a theme's own
+    video wrote as if the user had picked it."""
+    theme = _theme(tmp_home, "vid")
+    display._media._playbacks[KEY] = Playback(frames=[b"a", b"b"], fps=15)
+    first = display._background_token(_info(), theme)
+    display._media._playbacks[KEY] = Playback(frames=[b"a", b"b"], fps=15)
+
+    assert display._background_token(_info(), theme) != first
+
+
+def test_a_chosen_picture_is_its_own_token(
+    display: DisplayService, tmp_home: Path,
+) -> None:
+    from trcc.core.models import PictureBackground
+
+    theme = _theme(tmp_home, "t")
+    before = display._background_token(_info(), theme)
+    display._settings.for_device(KEY).background = PictureBackground("/u/mine.png")
+
+    assert display._background_token(_info(), theme) != before
+
+
 def test_the_token_ignores_the_mask_and_the_canvas(
     display: DisplayService, tmp_home: Path,
 ) -> None:

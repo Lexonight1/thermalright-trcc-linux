@@ -123,7 +123,7 @@ def _digest(data: bytes) -> str:
 def _cases(app: Any, key: str, size: tuple[int, int], root: Path,
            split: bool) -> Iterator[tuple[str, Callable[[], dict[str, str]]]]:
     """Every case for one panel at its current angle: (name, run)."""
-    from trcc.core.models import RawFrame
+    from trcc.core.models import PictureBackground, RawFrame, ThemeBackground
     from trcc.services.media import Playback
 
     device = app.devices[key]
@@ -138,6 +138,7 @@ def _cases(app: Any, key: str, size: tuple[int, int], root: Path,
 
     def fresh() -> None:
         s.background_mode, s.mask_visible, s.background_path = "theme", True, None
+        s.background = ThemeBackground()
         s.split_mode = 0
         app.media._playbacks.pop(key, None)
         display.invalidate(key)
@@ -203,8 +204,9 @@ def _cases(app: Any, key: str, size: tuple[int, int], root: Path,
     yield "mode-color", setting(background_mode="color", overlay_background=(20, 120, 220))
     yield "mode-transparent", setting(background_mode="transparent")
     yield "mask-hidden", setting(mask_visible=False)
-    yield "override-user", setting(background_path=str(user_bg))
-    yield "override-program", setting(background_path=str(program_bg))
+    # The user chose a picture -- the one background choice the render reads.
+    yield "override-user", setting(background=PictureBackground(str(user_bg)))
+    yield "override-program", setting(background=PictureBackground(str(program_bg)))
     yield "video", video
     yield "portrait-theme", portrait_theme
     if split:
