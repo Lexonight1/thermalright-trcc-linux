@@ -6,7 +6,7 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-89 ports.
+90 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
@@ -27,6 +27,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ThemesPort`](#themesport) | 1 | 0 | 1 |
 | [`UserInterface`](#userinterface) | 1 | 11 | 5 |
 | [`_QtUI`](#_qtui) | 1 | 4 | 2 |
+| [`BackgroundLayer`](#backgroundlayer) | 2 | 1 | 3 |
 | [`BaseGlSurface`](#baseglsurface) | 2 | 1 | 3 |
 | [`BaseModule`](#basemodule) | 2 | 0 | 2 |
 | [`DataInstallRunner`](#datainstallrunner) | 2 | 0 | 2 |
@@ -35,7 +36,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
 | [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
-| [`Layer`](#layer) | 2 | 0 | 6 |
+| [`Layer`](#layer) | 2 | 0 | 7 |
 | [`LedSource`](#ledsource) | 2 | 0 | 1 |
 | [`LightsPort`](#lightsport) | 2 | 0 | 1 |
 | [`Module`](#module) | 2 | 10 | 2 |
@@ -354,6 +355,23 @@ run() -> int
 
 **Implementations (2):** `GuiUI` · `QtGuiUI`
 
+## BackgroundLayer
+
+`services/layers.py`
+
+The bottom of the stack: it MAKES the canvas, at the panel's size, rather than drawing onto one.  A canvas made first and then covered cost a whole panel-sized allocation per frame on a cast (~274 k instructions at 1600x720, measured) for pixels nobody saw.
+
+**You implement (2):**
+
+```python
+canvas(size: 'tuple[int, int]', renderer: 'Renderer') -> Any
+key() -> Hashable
+```
+
+**You inherit (1):** `draw`
+
+**Implementations (3):** `LivePicture` · `Picture` · `SolidColor`
+
 ## BaseGlSurface
 
 `adapters/visual/_gl.py`
@@ -489,7 +507,7 @@ draw(canvas: 'Any', renderer: 'Renderer') -> Any
 key() -> Hashable
 ```
 
-**Implementations (6):** `Mask` · `Overlay` · `Picture` · `SolidColor` · `Spectrum` · `Split`
+**Implementations (7):** `LivePicture` · `Mask` · `Overlay` · `Picture` · `SolidColor` · `Spectrum` · `Split`
 
 ## LedSource
 

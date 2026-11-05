@@ -12,9 +12,10 @@ layer only draws.  Rotation, brightness and the wire encode are not layers:
 they turn the finished picture into what a panel receives, and stay in the
 service's output step.
 
-Increments L1-L2 of the Layer plan (memory: project_layer_abc_trace): the
+Increments L1-L3 of the Layer plan (memory: project_layer_abc_trace): the
 mask, the overlay, the split overlay, the spectrum, and the two ways a
-background is drawn -- a picture, or a solid colour.  WHICH picture (a
+background is drawn -- a picture, a solid colour, or a live picture (a
+screencast, a web stream, a module's visual).  WHICH picture (a
 playing video, an override, the theme's own) is still chosen in one place,
 ``DisplayService._resolve_background`` with its one identity token: a layer
 draws what it is given.
@@ -30,7 +31,7 @@ from typing import Any
 
 from ..core.geometry import fit_rect_for_mode
 from ..core.logs import per_frame
-from ..core.models import FitMode, RenderContent
+from ..core.models import FitMode, RawFrame, RenderContent
 from ..core.ports import Renderer
 
 log = logging.getLogger(__name__)
@@ -51,8 +52,24 @@ class Layer(ABC):
         """*canvas* with this layer drawn on top."""
 
 
+class BackgroundLayer(Layer):
+    """The bottom of the stack: it MAKES the canvas, at the panel's size,
+    rather than drawing onto one.  A canvas made first and then covered cost
+    a whole panel-sized allocation per frame on a cast (~274 k instructions
+    at 1600x720, measured) for pixels nobody saw."""
+
+    @abstractmethod
+    def canvas(self, size: tuple[int, int], renderer: Renderer) -> Any:
+        """The canvas this background is, *size* pixels."""
+
+    def draw(self, canvas: Any, renderer: Renderer) -> Any:
+        """Over anything else, a background covers it."""
+        frame_log.debug("%s.draw: covers the canvas", type(self).__name__)
+        return self.canvas(renderer.surface_size(canvas), renderer)
+
+
 @dataclass(frozen=True, slots=True)
-class SolidColor(Layer):
+class SolidColor(BackgroundLayer):
     """A background of one colour (the ``color`` background mode)."""
 
     rgb: tuple[int, int, int]
@@ -61,19 +78,13 @@ class SolidColor(Layer):
         frame_log.debug("SolidColor.key: %s", self.rgb)
         return self.rgb
 
-    def draw(self, canvas: Any, renderer: Renderer) -> Any:
-        """A fresh canvas of the colour, the size of the one below.  Not a
-        fill over it: Qt fills through an antialiased painter, ~6 M
-        instructions at 1600x720 against ~0.3-0.5 M for the allocation
-        (measured).  It runs only when the background is rebuilt -- a colour
-        is cached with the mask until a setting changes."""
-        frame_log.debug("SolidColor.draw: %s", self.rgb)
-        return renderer.create_surface(*renderer.surface_size(canvas),
-                                       color=(*self.rgb, 255))
+    def canvas(self, size: tuple[int, int], renderer: Renderer) -> Any:
+        frame_log.debug("SolidColor.canvas: %s %dx%d", self.rgb, *size)
+        return renderer.create_surface(*size, color=(*self.rgb, 255))
 
 
 @dataclass(frozen=True, slots=True)
-class Picture(Layer):
+class Picture(BackgroundLayer):
     """A background picture -- an image, or the current frame of a video.
 
     Drawn by where it came from, as the C# draws it: the user's own is fitted
@@ -91,20 +102,48 @@ class Picture(Layer):
         frame_log.debug("Picture.key: %s", self.identity)
         return (self.identity, self.fit_mode)
 
-    def draw(self, canvas: Any, renderer: Renderer) -> Any:
+    def canvas(self, size: tuple[int, int], renderer: Renderer) -> Any:
+        """Black, with the picture on it -- the C# canvas starts black
+        (UCScreenImage.cs:903) and a picture may not cover it."""
+        canvas = renderer.create_surface(*size, color=(0, 0, 0, 255))
         if self.surface is None:
-            frame_log.debug("Picture.draw: no picture -- the canvas stays black")
+            frame_log.debug("Picture.canvas: no picture -- the canvas stays black")
             return canvas
         if not self.is_user:
-            frame_log.debug("Picture.draw: program picture, native-or-black")
+            frame_log.debug("Picture.canvas: program picture, native-or-black")
             return renderer.bg_fit(canvas, RenderContent(self.surface, None))
         src = renderer.surface_size(self.surface)
-        rect = fit_rect_for_mode(src, renderer.surface_size(canvas), self.fit_mode)
-        frame_log.debug("Picture.draw: user picture %dx%d -> fit %s -> %dx%d at "
+        rect = fit_rect_for_mode(src, size, self.fit_mode)
+        frame_log.debug("Picture.canvas: user picture %dx%d -> fit %s -> %dx%d at "
                         "(%d, %d)", *src, self.fit_mode.value, rect.width,
                         rect.height, rect.x, rect.y)
         fitted = renderer.resize(self.surface, rect.width, rect.height)
         return renderer.composite(canvas, fitted, position=(rect.x, rect.y))
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class LivePicture(BackgroundLayer):
+    """A live picture's newest frame -- a screencast, a web stream, a
+    module's visual -- stretched to the canvas: the C# sizes its ``GIFSize``
+    to the panel and stretches the grab into it (FormCZTV.cs:3100-3557).
+
+    Never equal to another: a live frame is not the same picture twice, so
+    its key is the layer itself and no cache can hand an old frame back."""
+
+    frame: RawFrame = field(repr=False)
+
+    def key(self) -> Hashable:
+        frame_log.debug("LivePicture.key")
+        return self
+
+    def canvas(self, size: tuple[int, int], renderer: Renderer) -> Any:
+        """The frame itself is the canvas -- no black one made under it."""
+        surface = renderer.from_raw_rgb24(self.frame)
+        if renderer.surface_size(surface) != size:
+            frame_log.debug("LivePicture.canvas: %dx%d stretched to %dx%d",
+                            self.frame.width, self.frame.height, *size)
+            surface = renderer.resize(surface, *size)
+        return surface
 
 
 @dataclass(frozen=True, slots=True)

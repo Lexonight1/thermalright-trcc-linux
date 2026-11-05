@@ -52,7 +52,16 @@ from ..core.protocol import (
 from ._clock import compute_clock
 from .background import Background, BackgroundSlot
 from .bg_cache import BgMaskCache
-from .layers import Layer, Mask, Overlay, Picture, SolidColor, Spectrum, Split
+from .layers import (
+    BackgroundLayer,
+    LivePicture,
+    Mask,
+    Overlay,
+    Picture,
+    SolidColor,
+    Spectrum,
+    Split,
+)
 from .media import MediaService
 from .overlay import OverlayService, overlay_source, resolve_overlay_elements
 from .settings import Settings
@@ -692,11 +701,7 @@ class DisplayService:
         s = self._settings.for_device(info.key)
         target_w, target_h = oriented_canvas(resolved, s.orientation)
 
-        surface = self._r.from_raw_rgb24(frame)
-        if (
-            self._r.surface_size(surface) != (target_w, target_h)
-        ):
-            surface = self._r.resize(surface, target_w, target_h)
+        surface = LivePicture(frame).canvas((target_w, target_h), self._r)
 
         if theme is not None:
             surface = self._composite_mask(info, s, theme, surface)
@@ -1093,16 +1098,15 @@ class DisplayService:
             getattr(s.fit_mode, "value", s.fit_mode),
             (self._media.playback(info.key) is not None),
         )
-        canvas = self._r.create_surface(*visual_size, color=(0, 0, 0, 255))
         background = self._background_layer(info, theme, s, visual_size)
-        if background is not None:
-            canvas = background.draw(canvas, self._r)
+        canvas = (background.canvas(visual_size, self._r) if background is not None
+                  else self._r.create_surface(*visual_size, color=(0, 0, 0, 255)))
         return self._composite_mask(info, s, theme, canvas)
 
     def _background_layer(
         self, info: ProductInfo, theme: Theme, s: DeviceSettings,
         visual_size: tuple[int, int],
-    ) -> Layer | None:
+    ) -> BackgroundLayer | None:
         """The panel's background as a layer -- the ONE reading of
         ``background_mode``: a solid colour, the picture (``theme``), or none
         (``transparent``: the canvas stays black and the overlay draws on

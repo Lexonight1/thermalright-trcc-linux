@@ -77,13 +77,27 @@ def test_every_element_field_moves_the_overlay_key(tmp_path: Path,
 
 
 def test_a_picture_with_nothing_resolved_leaves_the_canvas_black() -> None:
-    """A theme with no background: the canvas stays as it is, black."""
+    """A theme with no background: the canvas it makes is black."""
+    from trcc.adapters.render.qt import QtRenderer
     from trcc.core.models import FitMode
     from trcc.services.layers import Picture
 
-    canvas = object()
-    assert Picture(("theme",), None, False, FitMode.WIDTH).draw(
-        canvas, cast(Renderer, _Refuses())) is canvas
+    r = QtRenderer()
+    canvas = Picture(("theme",), None, False, FitMode.WIDTH).canvas((4, 3), r)
+    assert r.surface_size(canvas) == (4, 3)
+    assert canvas.pixelColor(3, 2).getRgb() == (0, 0, 0, 255)
+
+
+def test_a_background_drawn_over_a_canvas_covers_it() -> None:
+    """The bottom of the stack makes the canvas; drawn over another, it
+    takes that one's size and covers it."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.services.layers import SolidColor
+
+    r = QtRenderer()
+    drawn = SolidColor((10, 20, 30)).draw(r.create_surface(5, 2, color=(255, 255, 255, 255)), r)
+    assert r.surface_size(drawn) == (5, 2)
+    assert drawn.pixelColor(4, 1).getRgb() == (10, 20, 30, 255)
 
 
 @pytest.mark.parametrize(("mode", "layer"), [
@@ -110,3 +124,31 @@ def test_background_mode_is_read_in_one_place(tmp_path: Path, mode: str,
     theme = Theme(path=tmp_path, name="t", resolution=(320, 320))
     found = app.display._background_layer(app.devices[key].info, theme, s, (320, 320))
     assert (type(found).__name__ if found is not None else None) == layer
+
+
+def test_a_live_frame_is_never_the_same_picture_twice() -> None:
+    """A cast or stream frame is new every tick: two layers of the very same
+    frame object still have different keys, so no cache keyed on a layer can
+    hand an old frame back.  MUTATION CHECK: key on ``self.frame`` -- two
+    layers of one frame then share a key."""
+    from trcc.core.models import RawFrame
+    from trcc.services.layers import LivePicture
+
+    frame = RawFrame(data=b"\x00" * 3, width=1, height=1)
+    one, two = LivePicture(frame), LivePicture(frame)
+    assert one.key() != two.key()
+    assert one.key() == one.key()
+
+
+def test_a_live_frame_is_stretched_to_the_canvas() -> None:
+    """The C# stretches the grab into its ``GIFSize`` canvas; a frame the
+    panel's size is drawn as it is."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.core.models import RawFrame
+    from trcc.services.layers import LivePicture
+
+    r = QtRenderer()
+    small = RawFrame(data=bytes([255, 0, 0]) * (4 * 2), width=4, height=2)
+    drawn = LivePicture(small).canvas((8, 6), r)
+    assert r.surface_size(drawn) == (8, 6)
+    assert drawn.pixelColor(7, 5).getRgb()[:3] == (255, 0, 0)
