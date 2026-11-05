@@ -282,8 +282,33 @@ def test_el_without_epel_gets_a_command_that_works() -> None:
     to check themselves.
     """
     hint = _el(epel=False).software_install_hint("7z")
-    assert hint == "sudo dnf install epel-release && sudo dnf install /usr/bin/7z"
+    assert hint == ("sudo dnf install epel-release dnf-plugins-core"
+                    " && sudo dnf config-manager --set-enabled crb"
+                    " && sudo dnf install /usr/bin/7z")
     assert "\n" not in hint, "fix_hint renders on one line"
+
+
+#: Real /etc/os-release heads: RHEL 9 and Rocky 9.
+_RHEL = 'NAME="Red Hat Enterprise Linux"\nID="rhel"\nID_LIKE="fedora"\nVERSION_ID="9.6"\n'
+_ROCKY = 'NAME="Rocky Linux"\nID="rocky"\nID_LIKE="rhel centos fedora"\nVERSION_ID="9.6"\n'
+
+
+def test_epel_comes_with_the_crb_it_needs() -> None:
+    """EPEL's ffmpeg-free would not install on Rocky 9 without CRB ("nothing
+    provides ladspa", measured 2026-11-05).  RHEL has no epel-release in its
+    own repos and names CRB through subscription-manager (EPEL's guide).
+
+    MUTATION CHECK: drop the CRB step -- the Rocky line loses it and fails."""
+    from trcc.adapters.system.linux import _epel_enablement
+
+    assert _epel_enablement(_ROCKY) == (
+        "sudo dnf install epel-release dnf-plugins-core"
+        " && sudo dnf config-manager --set-enabled crb")
+    assert _epel_enablement(_RHEL) == (
+        "sudo subscription-manager repos --enable "
+        "codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms"
+        " && sudo dnf install https://dl.fedoraproject.org/pub/epel/"
+        "epel-release-latest-$(rpm -E %rhel).noarch.rpm")
 
 
 def test_el_with_epel_gets_the_plain_command() -> None:

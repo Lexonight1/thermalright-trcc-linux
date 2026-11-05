@@ -639,6 +639,31 @@ def _is_enterprise_linux(text: str | None = None) -> bool:
     return hit
 
 
+def _epel_enablement(text: str | None = None) -> str:
+    """The line that turns EPEL on, with the CRB repository it needs.
+
+    EPEL packages need CRB: on Rocky 9, EPEL's ffmpeg-free would not install
+    without it ("nothing provides ladspa"), measured 2026-11-05 -- the hint
+    said ``dnf install epel-release`` alone until then.  EPEL's guide
+    (docs.fedoraproject.org/en-US/epel/getting-started) gives two forms.  A
+    rebuild (Rocky, Alma, CentOS Stream) has epel-release in its own repos and
+    names the repo ``crb`` -- measured on Rocky 9.  RHEL has neither: CRB is
+    enabled through subscription-manager and epel-release comes from Fedora's
+    URL -- from the guide, not run here (no RHEL subscription).
+    """
+    ident, _ = _os_release_ids(text)
+    if ident == "rhel":
+        line = ("sudo subscription-manager repos --enable "
+                "codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms"
+                " && sudo dnf install https://dl.fedoraproject.org/pub/epel/"
+                "epel-release-latest-$(rpm -E %rhel).noarch.rpm")
+    else:
+        line = (f"sudo dnf install {_EPEL} dnf-plugins-core"
+                " && sudo dnf config-manager --set-enabled crb")
+    log.debug("_epel_enablement: ID=%r -> %s", ident, line)
+    return line
+
+
 def _is_nixos(text: str | None = None) -> bool:
     """Is this NixOS -- not Nix installed on another distro, which the
     package-manager probe cannot tell apart (both answer ``nix-env``)?  A
@@ -1120,7 +1145,7 @@ class LinuxOS(BaseOS, key="linux"):
             log.warning("_with_epel: could not check %s (%s)", _EPEL, e)
             return command
         log.info("_with_epel: EL without EPEL — prefixing enablement")
-        return f"sudo dnf install {_EPEL} && {command}"
+        return f"{_epel_enablement()} && {command}"
 
     def permission_denied_hint(self) -> str:
         """Why an open was refused — told by whether OUR udev rules exist.
