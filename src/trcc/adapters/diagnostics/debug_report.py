@@ -154,7 +154,7 @@ def build_debug_report(
     live_settings = settings_path or resolve_config_path(platform.paths())
     settings_text, settings_err = _read_settings_file(live_settings)
     state_files = _collect_state_files(platform.paths(), live_settings)
-    health = run_health_checks(platform)
+    health = run_health_checks(platform, modules=modules)
     log_path = platform.paths().log_file()
     log_lines = tail_log(log_path, n_lines=log_tail_lines, skip=own)
     action_lines = tail_log_actions(log_path, n_lines=log_action_lines, skip=own)
@@ -653,6 +653,8 @@ def _render_modules(modules: list[ModuleInfo], error: str) -> str:
         if m.problem:
             why = "cannot run here" if m.allowed else "not run"
             lines.append(f"        {why}: {m.problem}")
+        if m.locked:
+            lines.append(f"        locked: {m.locked}")
     on = sum(m.enabled for m in modules)
     return f"## Modules ({on} of {len(modules)} on)\n" + "\n".join(lines)
 

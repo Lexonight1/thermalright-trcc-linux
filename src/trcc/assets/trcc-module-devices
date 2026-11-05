@@ -33,9 +33,11 @@ Kept as small as ``trcc-ram-access``:
   * ``enable <key> <vvvv:pppp>...`` (1-16 ids), ``disable <key>`` or
     ``disable-all`` (the packages' uninstall hooks); anything else is refused
     before a file or a process is touched.
-  * writes only ``/etc/udev/rules.d/70-trcc-module-<key>.rules``, and removes
-    only a file whose first line is TRCC's header for that key -- never one an
-    admin wrote.
+  * writes only ``/etc/udev/rules.d/70-trcc-module-<key>.rules`` -- and, on
+    SteamOS, ``/etc/atomic-update.conf.d/trcc-module-<key>.conf``, which keeps
+    that rule through an OS update (it resets /etc to the new image) -- and
+    removes only a file whose first line is TRCC's header for that key, never
+    one an admin wrote.
   * runs only udevadm, getfacl and setfacl, from fixed system paths, with a
     fixed environment.
   * ``disable`` also deletes udev's own record of each node it granted
@@ -48,8 +50,10 @@ Kept as small as ``trcc-ram-access``:
 
 This file may import nothing from trcc, so what TRCC also spells is gated
 equal by tests: the key and id patterns (``core.models.MODULE_KEY`` and
-``MODULE_DEVICE``), the rule's shape (``_udev.build_rgb_udev_rules``), the
-group (``DEVICE_GROUP``) and the paths (``_module_devices``).
+``MODULE_DEVICE``), the group (``DEVICE_GROUP``), SteamOS's keep-list folder
+(``_udev.KEEP_LIST_DIR``) and the paths (``_module_devices``).  This file is
+the one builder of a module's rule: the Nix package's copy of a built-in
+module's is generated from ``rule_text`` (``dev/gen_packaging_setup.py``).
 
 Exit codes: 0 ok · 1 a step failed · 2 bad invocation · 3 not root.
 """
@@ -67,6 +71,8 @@ MAX_DEVICES = 16
 GROUP = "trcc"
 RULES_DIR = Path("/etc/udev/rules.d")
 RULE_GLOB = "70-trcc-module-*.rules"
+#: SteamOS keeps the paths listed in here through an OS update.
+KEEP_DIR = Path("/etc/atomic-update.conf.d")
 
 _ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 _TOOLS = {
@@ -89,6 +95,16 @@ def header(key: str) -> str:
 
 def rule_path(key: str) -> Path:
     return RULES_DIR / f"70-trcc-module-{key}.rules"
+
+
+def keep_path(key: str) -> Path:
+    """*key*'s SteamOS keep-list entry."""
+    return KEEP_DIR / f"trcc-module-{key}.conf"
+
+
+def keep_text(key: str) -> str:
+    """*key*'s keep-list entry: TRCC's header, then its rule's path."""
+    return f"{header(key)}\n{rule_path(key)}\n"
 
 
 def rule_text(key: str, devices: list[str]) -> str:
@@ -141,23 +157,21 @@ def _read(*argv: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def write(key: str, devices: list[str], root: Path = Path("/")) -> None:
-    """*key*'s rule file, atomically, root-owned 0644."""
-    target = root / rule_path(key).relative_to("/")
+def _put(target: Path, text: str) -> None:
+    """*text* into *target*, atomically, root-owned 0644."""
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f".{target.name}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(rule_text(key, devices))
+        f.write(text)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, target)
 
 
-def remove(key: str, root: Path = Path("/")) -> list[str] | None:
-    """*key*'s rule file, only if TRCC wrote it: the devices it named, or
-    None when there was nothing of TRCC's to remove."""
-    target = root / rule_path(key).relative_to("/")
+def _take(key: str, target: Path) -> str | None:
+    """Remove *target* if TRCC wrote it for *key*: its text, or None when
+    there was nothing of TRCC's there."""
     try:
         text = target.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -165,7 +179,23 @@ def remove(key: str, root: Path = Path("/")) -> list[str] | None:
     if text.partition("\n")[0] != header(key):
         return None
     target.unlink()
-    return devices_in(text)
+    return text
+
+
+def write(key: str, devices: list[str], root: Path = Path("/")) -> None:
+    """*key*'s rule file -- and on SteamOS its keep-list entry, so an OS
+    update does not throw the rule away."""
+    _put(root / rule_path(key).relative_to("/"), rule_text(key, devices))
+    if (root / KEEP_DIR.relative_to("/")).is_dir():
+        _put(root / keep_path(key).relative_to("/"), keep_text(key))
+
+
+def remove(key: str, root: Path = Path("/")) -> list[str] | None:
+    """*key*'s rule file and keep-list entry, only if TRCC wrote them: the
+    devices the rule named, or None when there was no rule of TRCC's."""
+    _take(key, root / keep_path(key).relative_to("/"))
+    text = _take(key, root / rule_path(key).relative_to("/"))
+    return None if text is None else devices_in(text)
 
 
 def keys_written(root: Path = Path("/")) -> list[str]:
@@ -256,8 +286,8 @@ def apply(enabled: bool, devices: list[str]) -> bool:
     -- after udev has settled, so no event still in flight grants them back.
     Only USER entries, as systemd's own ``devnode_acl`` resets a uaccess node
     -- a GROUP entry is never a uaccess grant, and an admin's stays.  Any
-    other rule that tags the device (OpenRGB's, TRCC's packaged RGB rule)
-    grants it again on the rebuild -- which is the truth.
+    other rule that tags the device (OpenRGB's, an admin's) grants it again
+    on the rebuild -- which is the truth.
     """
     udevadm = _tool("udevadm")
     if udevadm is None:

@@ -218,3 +218,25 @@ def test_where_any_program_opens_a_usb_device_there_is_nothing_to_grant(
     devices = cls.__new__(cls).module_devices()
     assert devices.grant(KEY, IDS) == note
     assert devices.grant(KEY, ()) == ""
+
+
+def test_on_nixos_the_flakes_rule_reads_as_unlocked(tmp_path: Path) -> None:
+    """NixOS builds /etc/udev/rules.d from each package's lib/udev/rules.d,
+    copying every file as it is (nixpkgs nixos/modules/services/hardware/
+    udev.nix, ``udevRulesFor``: ``cat $j > $out/$(basename $j)``).  So the
+    flake's copy of RGB Lighting's rule, read where NixOS puts it, must name
+    exactly what its module.json asks -- or its tile would ask a NixOS user
+    for a permission nothing can grant.  MUTATION CHECK: drop a device from
+    packaging/udev/70-trcc-module-rgb.rules."""
+    import trcc.modules.rgb
+    from trcc.adapters.modules._catalog import read_manifest
+    from trcc.adapters.system._module_devices import NixosModuleDevices
+    from trcc.modules import MANIFEST
+
+    repo = Path(__file__).resolve().parents[3]
+    packaged = repo / "packaging/udev/70-trcc-module-rgb.rules"
+    (tmp_path / packaged.name).write_bytes(packaged.read_bytes())
+    devices = read_manifest(Path(trcc.modules.rgb.__file__).parent / MANIFEST).devices
+    run = _Run(tmp_path)
+    assert _devices(tmp_path, run, cls=NixosModuleDevices).locked("rgb", devices) == ""
+    assert run.argv == []

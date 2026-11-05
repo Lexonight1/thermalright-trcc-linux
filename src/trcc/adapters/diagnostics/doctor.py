@@ -7,8 +7,10 @@ sit on top of the same ``HealthCheckResult`` data.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 from ...core.diagnostics import DoctorResult, HealthReport
+from ...core.models import ModuleInfo
 from ...core.ports import Platform
 from .health import run_health_checks
 
@@ -18,10 +20,11 @@ log = logging.getLogger(__name__)
 __all__ = ["DoctorResult", "render_doctor_output", "run_doctor"]
 
 
-def run_doctor(platform: Platform) -> DoctorResult:
+def run_doctor(platform: Platform,
+               modules: Sequence[ModuleInfo] = ()) -> DoctorResult:
     """Run every health check; map to an exit code."""
     log.info("run_doctor: invoking health checks via %s", type(platform).__name__)
-    report = run_health_checks(platform)
+    report = run_health_checks(platform, modules=modules)
     code = 1 if report.fail_count else 0
     log.info("run_doctor: exit_code=%d (%d fail / %d warn)",
              code, report.fail_count, report.warn_count)

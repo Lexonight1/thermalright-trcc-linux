@@ -1,0 +1,13 @@
+# TRCC module rgb -- written by trcc-module-devices; removing the module removes it.
+# The user at this seat and the trcc group reach these devices.
+
+SUBSYSTEM=="hidraw", KERNELS=="0003:0B05:18F3.*", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", ATTR{idProduct}=="18f3", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="hidraw", KERNELS=="0003:0B05:1939.*", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", ATTR{idProduct}=="1939", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="hidraw", KERNELS=="0003:0B05:19AF.*", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", ATTR{idProduct}=="19af", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="hidraw", KERNELS=="0003:0B05:1AA6.*", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", ATTR{idProduct}=="1aa6", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="hidraw", KERNELS=="0003:0B05:1BED.*", MODE="0660", GROUP="trcc", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", ATTR{idProduct}=="1bed", MODE="0660", GROUP="trcc", TAG+="uaccess"

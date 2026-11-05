@@ -11,7 +11,7 @@ DI/manipulability proof.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 from tests.mock_platform import MockPlatform
 from trcc.adapters.render.qt import QtRenderer
@@ -89,10 +89,10 @@ def _fake_diagnostics() -> Diagnostics:
     )
 
     class _FakeDiag(Diagnostics):
-        def health(self) -> HealthReport:
+        def health(self, modules: Any = ()) -> HealthReport:
             return HealthReport(checks=[HealthCheckResult("sentinel", "OK", "ok")])
 
-        def doctor(self) -> DoctorResult:
+        def doctor(self, modules: Any = ()) -> DoctorResult:
             return DoctorResult(report=self.health(), exit_code=0)
 
         def render_doctor(self, report: HealthReport) -> str:

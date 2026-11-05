@@ -87,14 +87,43 @@ def test_a_refused_command_line_touches_nothing(
 # ── what it writes ────────────────────────────────────────────────────────
 
 
-def test_its_usb_lines_are_the_packaged_rgb_rules(helper: ModuleType) -> None:
-    """The USB node line is ``70-trcc-rgb.rules``'s, built from ids alone."""
-    packaged = [line for line in _udev.build_rgb_udev_rules().splitlines()
-                if line.startswith('SUBSYSTEM=="usb"')]
-    ids = list(dict.fromkeys(helper.devices_in("\n".join(packaged))))
-    built = [line for line in helper.rule_text("rgb", ids).splitlines()
-             if line.startswith('SUBSYSTEM=="usb"')]
-    assert ids and built == packaged
+def test_on_steamos_it_keeps_the_rule_through_an_update(
+        helper: ModuleType, tmp_path: Path) -> None:
+    """SteamOS resets /etc to the new image on every update but what a keep
+    list names: without one, an update locked the module out again.  Only
+    where that folder exists, and removed with the rule.
+    MUTATION CHECK: drop the keep-list write in ``write``."""
+    assert helper.KEEP_DIR == _udev.KEEP_LIST_DIR
+    keep = tmp_path / "etc/atomic-update.conf.d"
+    keep.mkdir(parents=True)
+    helper.write("rgb", ["0b05:19af"], tmp_path)
+    entry = keep / "trcc-module-rgb.conf"
+    assert entry.read_text(encoding="utf-8") == (
+        f"{helper.header('rgb')}\n/etc/udev/rules.d/70-trcc-module-rgb.rules\n")
+    assert helper.remove("rgb", tmp_path) == ["0b05:19af"]
+    assert list(keep.iterdir()) == []
+
+
+def test_its_rule_tags_uaccess_before_seat_late_applies_it(helper: ModuleType) -> None:
+    """``uaccess`` becomes an ACL in 73-seat-late.rules; a rule sorting
+    after it tags too late and grants nothing."""
+    assert helper.rule_path("rgb").name < "73-seat-late.rules"
+
+
+def test_off_steamos_it_writes_no_keep_list(helper: ModuleType, tmp_path: Path) -> None:
+    helper.write("rgb", ["0b05:19af"], tmp_path)
+    assert not (tmp_path / "etc/atomic-update.conf.d").exists()
+
+
+def test_an_admins_keep_list_entry_is_never_removed(
+        helper: ModuleType, tmp_path: Path) -> None:
+    keep = tmp_path / "etc/atomic-update.conf.d"
+    keep.mkdir(parents=True)
+    (keep / "trcc-module-rgb.conf").write_text("# mine\n/etc/x\n", encoding="utf-8")
+    helper.write("rgb", ["0b05:19af"], tmp_path)
+    (keep / "trcc-module-rgb.conf").write_text("# mine\n/etc/x\n", encoding="utf-8")
+    assert helper.remove("rgb", tmp_path) == ["0b05:19af"]
+    assert (keep / "trcc-module-rgb.conf").read_text(encoding="utf-8") == "# mine\n/etc/x\n"
 
 
 def test_a_hidraw_node_is_matched_by_its_own_hid_device_never_an_ancestor(

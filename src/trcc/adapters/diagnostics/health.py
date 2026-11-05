@@ -23,11 +23,12 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ...core import toolchain
 from ...core.diagnostics import HealthCheckResult, HealthReport, Severity
+from ...core.models import ModuleInfo
 from ...core.ports import Paths, Platform
 from ..sensors._pawnio_cpu import PawnioCpu
 from ..sensors.nvml import NVML_RELOAD_HINT, GpuStateFn, nvml_init_state
@@ -379,6 +380,24 @@ def check_qt_importable() -> HealthCheckResult:
     )
 
 
+def check_module_devices(modules: Sequence[ModuleInfo]) -> HealthCheckResult:
+    """Every module that is on reaches the USB devices it names -- each one
+    that cannot says why, and the one way to fix it (``ModuleInfo.locked``)."""
+    locked = [m for m in modules if m.locked]
+    log.info("check_module_devices: %d module(s), locked=%s", len(modules),
+             [m.key for m in locked])
+    if not locked:
+        return HealthCheckResult(
+            name="module-devices", severity="OK",
+            message="every module that is on reaches its USB devices")
+    return HealthCheckResult(
+        name="module-devices", severity="WARN",
+        message="; ".join(f"{m.title}: {m.locked}" for m in locked),
+        fix_hint=" or ".join(f"trcc system modules unlock {m.key}" for m in locked)
+                 + " -- or press Unlock on its tile in Modules",
+    )
+
+
 def check_udev_rules_linux() -> HealthCheckResult:
     """Linux-only: look for the installed rule in every directory udev reads."""
     log.info("check_udev_rules_linux: called")
@@ -436,15 +455,6 @@ def check_udev_rules_linux() -> HealthCheckResult:
             fix_hint=(f"sudo rm {state.path} && sudo udevadm control "
                       "--reload-rules && sudo udevadm trigger"
                       if current_below else "Run `trcc system setup`"),
-        )
-    from ..system._udev import RGB_RULES_PATH
-    if rules_state(RGB_RULES_PATH).current is not True:
-        log.info("udev-rules: %s missing or stale", RGB_RULES_PATH.name)
-        return HealthCheckResult(
-            name="udev-rules", severity="WARN",
-            message=f"motherboard RGB udev rules ({RGB_RULES_PATH.name}) are "
-                    "missing or from an older TRCC",
-            fix_hint="Run `trcc system setup`",
         )
     return HealthCheckResult(
         name="udev-rules", severity="OK",
@@ -668,7 +678,8 @@ def check_seven_zip_present(platform: Platform) -> HealthCheckResult:
 
 
 def run_health_checks(
-    platform: Platform, gpu_state: GpuStateFn = nvml_init_state,
+    platform: Platform, gpu_state: GpuStateFn = nvml_init_state, *,
+    modules: Sequence[ModuleInfo] = (),
 ) -> HealthReport:
     """Run every registered check; collect results into a HealthReport.
 
@@ -690,6 +701,7 @@ def run_health_checks(
         check_ffmpeg_present(platform),
         check_qt_importable(),
         check_udev_rules_linux(),
+        check_module_devices(modules),
         check_device_group_linux(),
         check_fan_chip_linux(platform),
         check_cpu_sensors_windows(),

@@ -38,13 +38,14 @@ class DiagnosticsAdapter(Diagnostics):
         log.info("DiagnosticsAdapter: platform=%s gpu_state=%s",
                  type(platform).__name__, getattr(gpu_state, "__name__", gpu_state))
 
-    def health(self) -> HealthReport:
-        log.info("DiagnosticsAdapter.health")
-        return _health.run_health_checks(self._platform, self._gpu_state)
+    def health(self, modules: Sequence[ModuleInfo] = ()) -> HealthReport:
+        log.info("DiagnosticsAdapter.health: modules=%d", len(modules))
+        return _health.run_health_checks(self._platform, self._gpu_state,
+                                         modules=modules)
 
-    def doctor(self) -> DoctorResult:
-        log.info("DiagnosticsAdapter.doctor")
-        return _doctor.run_doctor(self._platform)
+    def doctor(self, modules: Sequence[ModuleInfo] = ()) -> DoctorResult:
+        log.info("DiagnosticsAdapter.doctor: modules=%d", len(modules))
+        return _doctor.run_doctor(self._platform, modules)
 
     def render_doctor(self, report: HealthReport) -> str:
         log.info("DiagnosticsAdapter.render_doctor: %d check(s)", len(report.checks))

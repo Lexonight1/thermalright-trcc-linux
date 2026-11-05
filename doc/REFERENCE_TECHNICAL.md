@@ -542,7 +542,9 @@ trcc serve                                    # start REST API server
 > manager (or `pip uninstall trcc-linux`), then delete `~/.trcc/`,
 > `~/.trcc-user/`, and the files `trcc system setup` installs: the udev rules
 > `/etc/udev/rules.d/70-trcc-lcd.rules` (`99-trcc-lcd.rules` before 2026-10)
-> and `/etc/udev/rules.d/70-trcc-rgb.rules`, `/etc/modules-load.d/trcc-sg.conf`,
+> and `/etc/udev/rules.d/70-trcc-rgb.rules` (before 2026-11), each module's
+> `/etc/udev/rules.d/70-trcc-module-<key>.rules` (written when you unlocked its
+> USB devices), `/etc/modules-load.d/trcc-sg.conf`,
 > `/etc/modules-load.d/trcc-rapl.conf`, and `/etc/modprobe.d/trcc-lcd.conf` if
 > present.  The `trcc` group setup creates can go too: `sudo groupdel trcc`.
 

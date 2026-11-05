@@ -162,7 +162,6 @@ jobs:
 
           install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/etc/udev/rules.d/70-trcc-lcd.rules"
           install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
-          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/etc/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
@@ -227,7 +226,6 @@ jobs:
           %files
           /etc/udev/rules.d/70-trcc-lcd.rules
           /usr/lib/sysusers.d/trcc.conf
-          /etc/udev/rules.d/70-trcc-rgb.rules
           /etc/modprobe.d/trcc-lcd.conf
           /etc/modules-load.d/trcc-sg.conf
           /etc/modules-load.d/trcc-rapl.conf
@@ -337,7 +335,6 @@ jobs:
 
           install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/lib/udev/rules.d/70-trcc-lcd.rules"
           install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
-          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
@@ -429,7 +426,6 @@ jobs:
 
           install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/lib/udev/rules.d/70-trcc-lcd.rules"
           install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
-          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/etc/modules-load.d/trcc-rapl.conf"
@@ -538,7 +534,6 @@ jobs:
 
           install -Dm644 /src/packaging/udev/70-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/70-trcc-lcd.rules"
           install -Dm644 /src/packaging/sysusers/trcc.conf "$PKG/usr/lib/sysusers.d/trcc.conf"
-          install -Dm644 /src/packaging/udev/70-trcc-rgb.rules "$PKG/usr/lib/udev/rules.d/70-trcc-rgb.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/usr/lib/modprobe.d/trcc-lcd.conf"
           install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/usr/lib/modules-load.d/trcc-sg.conf"
           install -Dm644 /src/packaging/modprobe/trcc-rapl.conf "$PKG/usr/lib/modules-load.d/trcc-rapl.conf"

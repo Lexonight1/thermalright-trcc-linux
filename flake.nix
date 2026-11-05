@@ -60,8 +60,11 @@
             # udev rules
             install -Dm644 packaging/udev/70-trcc-lcd.rules \
               $out/lib/udev/rules.d/70-trcc-lcd.rules
-            install -Dm644 packaging/udev/70-trcc-rgb.rules \
-              $out/lib/udev/rules.d/70-trcc-rgb.rules
+            # A built-in module's devices: elsewhere it writes this rule when
+            # switched on; NixOS builds /etc from the configuration, so the
+            # package carries it (dev/gen_packaging_setup.py).
+            install -Dm644 packaging/udev/70-trcc-module-rgb.rules \
+              $out/lib/udev/rules.d/70-trcc-module-rgb.rules
 
             # modprobe config
             install -Dm644 packaging/modprobe/trcc-lcd.conf \
@@ -148,8 +151,8 @@
                 (builtins.replaceStrings
                   [ "/bin/chmod" ] [ "${pkgs.coreutils}/bin/chmod" ]
                   (builtins.readFile ./packaging/udev/70-trcc-lcd.rules)))
-              (pkgs.writeTextDir "lib/udev/rules.d/70-trcc-rgb.rules"
-                (builtins.readFile ./packaging/udev/70-trcc-rgb.rules))
+              (pkgs.writeTextDir "lib/udev/rules.d/70-trcc-module-rgb.rules"
+                (builtins.readFile ./packaging/udev/70-trcc-module-rgb.rules))
             ];
 
             # The coolers' rule gives them to the user at the seat and to this

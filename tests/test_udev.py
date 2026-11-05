@@ -199,23 +199,14 @@ def test_packaged_setup_files_are_what_setup_writes() -> None:
         f"{sorted(map(str, shipped - set(gen_packaging_setup.generate())))}")
 
 
-def test_the_rgb_rule_grants_the_seat_every_aura_board_trcc_drives() -> None:
-    """Derived from the catalog by detector, never typed: hidraw + usb, the
-    seat (uaccess) and the trcc group as the coolers -- never every user --
-    and no power line (the controller is the board's)."""
-    from trcc.adapters.system._udev import build_rgb_udev_rules
-    from trcc.core.models import MAINBOARD_DETECTOR
-    from trcc.core.rgb_catalog import MOTHERBOARD_CONTROLLERS
+def test_core_setup_writes_no_modules_rule() -> None:
+    """A module's devices are its own: the RGB module asks for them when it
+    is switched on (``70-trcc-module-rgb.rules``).  Setup writes TRCC's one
+    rule file and retires its old RGB one."""
+    from trcc.adapters.system._udev import RETIRED_RULES, rule_files
 
-    ids = sorted({(c.vid, c.pid) for c in MOTHERBOARD_CONTROLLERS
-                  if c.detector == MAINBOARD_DETECTOR})
-    assert (0x0B05, 0x19AF) in ids                     # the maintainer's board
-    rules = [ln for ln in build_rgb_udev_rules().splitlines()
-             if ln and not ln.startswith("#")]
-    assert rules == [
-        f'SUBSYSTEM=="{s}", {a}{{idVendor}}=="{v:04x}", {a}{{idProduct}}=="{p:04x}", '
-        f'MODE="0660", GROUP="trcc", TAG+="uaccess"'
-        for v, p in ids for s, a in (("hidraw", "ATTRS"), ("usb", "ATTR"))]
+    assert [path.name for path in rule_files()] == ["70-trcc-lcd.rules"]
+    assert "70-trcc-rgb.rules" in RETIRED_RULES
 
 
 def test_every_uaccess_rule_file_runs_before_seat_late() -> None:
@@ -223,7 +214,7 @@ def test_every_uaccess_rule_file_runs_before_seat_late() -> None:
     sorting after it tags too late and grants nothing.  The first draft of
     the RGB rule sat in 99-trcc-lcd.rules and would have shipped dead.
 
-    MUTATION CHECK: point RGB_RULES_PATH at a 99- name."""
+    MUTATION CHECK: point RULES_PATH at a 99- name."""
     from trcc.adapters.system._udev import rule_files
 
     uaccess = [path.name for path, build in rule_files().items()

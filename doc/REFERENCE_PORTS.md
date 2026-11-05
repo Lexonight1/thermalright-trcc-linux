@@ -1411,9 +1411,9 @@ Port for system diagnostics.  Concrete: ``DiagnosticsAdapter`` (``adapters/diagn
 
 ```python
 debug_report(log_tail_lines: 'int', held: 'Mapping[str, Mapping[str, str]] | None' = None, probe: 'bool' = True, modules: 'Sequence[ModuleInfo]' = (), modules_error: 'str' = '') -> str
-doctor() -> DoctorResult
+doctor(modules: 'Sequence[ModuleInfo]' = ()) -> DoctorResult
 gpu_reader_state() -> GpuReaderState
-health() -> HealthReport
+health(modules: 'Sequence[ModuleInfo]' = ()) -> HealthReport
 package_manager() -> str | None
 render_doctor(report: 'HealthReport') -> str
 write_debug_report(rendered: 'str', path: 'Path') -> Path

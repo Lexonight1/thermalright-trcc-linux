@@ -733,7 +733,7 @@ class RunHealthCheck(Query[HealthReportResult]):
     """
 
     def execute(self, app: App) -> HealthReportResult:
-        report = app.diagnostics.health()
+        report = app.diagnostics.health(app.modules.infos())
         log.info("RunHealthCheck.execute: %d check(s), %d fail, %d warn, worst=%s",
                  len(report.checks), report.fail_count, report.warn_count,
                  report.worst_severity)
@@ -752,7 +752,7 @@ class RunDoctor(Query[DoctorResultPayload]):
     """Run health checks + render a CLI-friendly summary + exit code."""
 
     def execute(self, app: App) -> DoctorResultPayload:
-        doctor = app.diagnostics.doctor()
+        doctor = app.diagnostics.doctor(app.modules.infos())
         log.info("RunDoctor.execute: healthy=%s fail=%d warn=%d exit=%d",
                  doctor.is_healthy, doctor.report.fail_count,
                  doctor.report.warn_count, doctor.exit_code)

@@ -2263,12 +2263,13 @@ class Diagnostics(ABC):
     """
 
     @abstractmethod
-    def health(self) -> HealthReport:
-        """Run the full health-check suite."""
+    def health(self, modules: Sequence[ModuleInfo] = ()) -> HealthReport:
+        """Run the full health-check suite -- *modules* as the App lists
+        them, for the checks only the App can answer."""
         ...
 
     @abstractmethod
-    def doctor(self) -> DoctorResult:
+    def doctor(self, modules: Sequence[ModuleInfo] = ()) -> DoctorResult:
         """Run health checks + the exit-code verdict."""
         ...
 
