@@ -886,6 +886,10 @@ class App(CommandBus, ModuleServices):
         if self.media.inset(key) is not None:
             log.debug("resume_box: %s's box already draws", key)
             return
+        if (live := self.media.live_kind(key)) is not None:
+            log.info("resume_box: %s's box waits -- its %s covers the theme",
+                     key, live.value)
+            return
         kind = self.background_kind_of(inset.module)
         if kind is None:
             log.info("resume_box: %s's box waits for %s (off or not installed)",

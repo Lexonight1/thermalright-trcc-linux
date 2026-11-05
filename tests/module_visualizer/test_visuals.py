@@ -498,6 +498,33 @@ def test_a_visual_moves_into_a_box_and_comes_back_after_a_restart(
     assert isinstance(app.media.inset(_KEY), _FakeReader)
 
 
+def test_a_box_stops_under_a_live_picture_and_comes_back_after(
+        app: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A live picture covers the theme the box sits on, so the box's module
+    stops drawing what nothing shows -- the choice kept -- and draws again
+    when the theme's background returns.  MUTATION CHECKS: drop the
+    ``close_inset`` from ``MediaService.open_live``; drop ``resume_box``
+    from ``_theme_background_returns``."""
+    import trcc.core.toolchain as toolchain
+    from tests.test_media_stream import fake_web_streams
+    from trcc.core.commands import SetInset, StopVideo
+    from trcc.core.models import InsetChoice
+
+    monkeypatch.setattr(toolchain, "present", lambda tool: True)
+    fake_web_streams(monkeypatch)
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    assert app.dispatch(SetInset(key=_KEY, module="visualizer")).ok
+    box = app.media.inset(_KEY)
+    assert isinstance(box, _FakeReader)
+    assert app.dispatch(SetMediaPlayer(key=_KEY, uri="https://example.test/a.m3u8")).ok
+    assert app.media.inset(_KEY) is None and box.closed
+    assert app.settings.for_device(_KEY).inset == InsetChoice("visualizer")
+    app.resume_box(_KEY)                                  # a restore: still waits
+    assert app.media.inset(_KEY) is None
+    assert app.dispatch(StopVideo(key=_KEY)).ok           # the stream ends
+    assert isinstance(app.media.inset(_KEY), _FakeReader)
+
+
 def test_a_media_player_replaces_the_visual(app: App,
                                             monkeypatch: pytest.MonkeyPatch) -> None:
     """Which source wins -- not whether ffmpeg is installed (without it the web

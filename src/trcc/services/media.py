@@ -456,6 +456,10 @@ class MediaService:
         it had, of whatever kind, is closed."""
         log.info("open_live: %s <- %s %s", device_key, kind.value, source.name)
         self.close_live(device_key)
+        # A live picture covers the theme the box sits on: its module stops
+        # drawing what nothing shows.  The choice stays -- the theme's
+        # background returning brings it back (``App.resume_box``).
+        self.close_inset(device_key)
         self._live[device_key] = (kind, source)
 
     def live(self, device_key: str,

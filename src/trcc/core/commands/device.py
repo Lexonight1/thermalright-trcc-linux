@@ -2016,6 +2016,7 @@ def _theme_background_returns(app: App, key: str) -> None:
              video.name if video is not None else None)
     if video is not None:
         PlayVideo(key=key, path=video).play(app)   # the theme's own: no choice
+    app.resume_box(key)                            # the box over it, if one waited
     _publish_background(app, key)
 
 
