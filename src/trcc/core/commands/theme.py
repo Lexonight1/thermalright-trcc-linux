@@ -298,7 +298,9 @@ class LoadTheme(Command[ThemeResult]):
         # animation exactly as before.
         video_path = app.themes.video_path(theme)
         if self.reset_overrides and video_path is None:
-            StopVideo(key=self.key).execute(app)
+            # Unload only: this theme is what shows next, and a picked load
+            # ends the choice itself below (an unpicked one keeps it).
+            StopVideo(key=self.key, keep_override=True).execute(app)
         elif video_path is not None:
             log.info(
                 "LoadTheme: %s is video-backed (%s) — replacing the playback "

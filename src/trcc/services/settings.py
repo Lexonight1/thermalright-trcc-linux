@@ -722,18 +722,19 @@ class Settings:
             self._save()
 
     def end_background(self, key: str,
-                       *kinds: type[BackgroundChoice]) -> None:
+                       *kinds: type[BackgroundChoice]) -> bool:
         """A choice of one of *kinds* ended: *key*'s background is the
-        theme's own again.  Any other choice stands."""
+        theme's own again.  Any other choice stands.  Whether one ended."""
         with self._display_write(key) as dev:
             if not isinstance(dev.background, kinds):
                 log.debug("end_background: %s keeps %s (ends only %s)", key,
                           dev.background, [k.kind for k in kinds])
-                return
+                return False
             log.info("end_background: %s %s -> the theme's", key,
                      dev.background)
             dev.background = ThemeBackground()
             self._save()
+            return True
 
     def set_pending_background(self, key: str, ref: str | None) -> None:
         """A theme's module background *ref* waiting for its module to come

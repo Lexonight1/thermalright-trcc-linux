@@ -628,7 +628,7 @@ class App(CommandBus, ModuleServices):
         from .services.source_driver import SourceDriver
         log.info("show_source: %s <- %s (%s, %g fps)", key, source.name,
                  module, fps)
-        self.dispatch(StopVideo(key=key))
+        self.dispatch(StopVideo(key=key, keep_override=True))   # the module is next
         self.settings.set_module_source(key, module)
         self.settings.set_background(key, ModuleBackground(module))
         self.media.open_live(key, PanelSource.MODULE, source)

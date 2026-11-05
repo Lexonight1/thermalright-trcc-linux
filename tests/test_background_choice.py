@@ -41,10 +41,6 @@ from .mock_platform import MockPlatform
 from .test_video_playback import _encoded_frame
 
 _KEY = "0402:3922"
-_BUG = ("a panel's choice is four nullable fields kept by _only_source; one background "
-        "choice per panel fixes it (memory: project_layer_abc_trace)")
-
-
 class _Waiting(FrameSource):
     """A module's picture that has nothing to show yet."""
 
@@ -58,11 +54,19 @@ class _Waiting(FrameSource):
 
 
 @pytest.fixture
-def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[App]:
+def decoded() -> list[str]:
+    """The file name of every video the panel decoded, in order."""
+    return []
+
+
+@pytest.fixture
+def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        decoded: list[str]) -> Iterator[App]:
     """A connected 320x320 panel; videos load without ffmpeg."""
 
     def load_video(self: MediaService, device_key: str, path: Path,
                    size: Any = None, **_: Any) -> Playback:
+        decoded.append(Path(path).name)
         playback = Playback(frames=[_encoded_frame(0xFF000000, 320, 320)] * 2, fps=15)
         self._playbacks[device_key] = playback
         return playback
@@ -122,7 +126,6 @@ def test_switching_a_module_off_over_a_video_theme_keeps_the_choice(
     assert app.settings.for_device(_KEY).chosen_module == "visualizer"
 
 
-@pytest.mark.xfail(strict=True, reason=_BUG)
 def test_the_panel_never_says_module_with_nothing_drawing(
     app: App, tmp_path: Path,
 ) -> None:
@@ -378,3 +381,66 @@ def test_a_v7_config_folds_into_one_choice(
     path.write_text(json.dumps({"schema": 7, "devices": {_KEY: device}}),
                     encoding="utf-8")
     assert Settings(paths).for_device(_KEY).background.kind == kind
+
+
+# ── B3 step 4: the user's Stop gives the panel back to the theme ──────────
+
+
+def test_a_stop_over_a_picked_video_plays_the_themes_own_again(
+    app: App, tmp_path: Path, decoded: list[str],
+) -> None:
+    """Bug #5: on a video theme the Stop unloaded, nothing came back, and the
+    background was black."""
+    from trcc.core.commands import PlayVideo
+
+    _video_theme(app, tmp_path)
+    assert app.dispatch(PlayVideo(key=_KEY, path=_clip(tmp_path))).ok
+    decoded.clear()
+    app.dispatch(StopVideo(key=_KEY))
+    assert (decoded, _choice(app).kind) == (["Theme.mp4"], "theme")
+    assert app.media.playback(_KEY) is not None
+
+
+def test_a_stop_with_nothing_chosen_only_stops(
+    app: App, tmp_path: Path, decoded: list[str],
+) -> None:
+    """The theme's own video playing: bringing the theme back would rewind it."""
+    _video_theme(app, tmp_path)
+    decoded.clear()
+    app.dispatch(StopVideo(key=_KEY))
+    assert (decoded, app.media.playback(_KEY)) == ([], None)
+
+
+def test_a_picture_is_not_drawn_under_the_themes_video(
+    app: App, tmp_path: Path,
+) -> None:
+    """SetBackground unloads and chooses next: a Stop that brought the theme's
+    video back there would cover the picture -- a playback is drawn first."""
+    from trcc.core.commands import PlayVideo, SetBackground
+
+    _video_theme(app, tmp_path)
+    assert app.dispatch(PlayVideo(key=_KEY, path=_clip(tmp_path))).ok   # a choice to end
+    assert app.dispatch(SetBackground(key=_KEY, path=_picture(tmp_path))).ok
+    assert app.media.playback(_KEY) is None
+
+
+def test_a_module_is_not_drawn_under_the_themes_video(app: App, tmp_path: Path) -> None:
+    from trcc.core.commands import PlayVideo
+
+    _video_theme(app, tmp_path)
+    assert app.dispatch(PlayVideo(key=_KEY, path=_clip(tmp_path))).ok   # a choice to end
+    app.show_source("visualizer", _KEY, _Waiting(), 30.0)
+    assert app.media.playback(_KEY) is None
+
+
+def test_a_static_theme_trcc_shows_by_itself_keeps_the_choice(
+    app: App, tmp_path: Path,
+) -> None:
+    """The restore's fallback (``picked=False``) unloads the old picture --
+    and chooses nothing: the panel's module stays chosen."""
+    from trcc.core.models import ModuleBackground
+
+    app.show_source("visualizer", _KEY, _Waiting(), 30.0)
+    assert app.dispatch(LoadTheme(
+        key=_KEY, path=renderable_theme(tmp_path / "themes", "Static"), picked=False)).ok
+    assert _choice(app) == ModuleBackground("visualizer")

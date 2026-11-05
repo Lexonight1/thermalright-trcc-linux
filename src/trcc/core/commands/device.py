@@ -54,6 +54,7 @@ from ..models import (
     FitMode,
     HandshakeResult,
     MediaPlayerBackground,
+    ModuleBackground,
     OverlayElement,
     OverlayElementType,
     PanelSource,
@@ -1533,26 +1534,26 @@ class PlayVideo(Command[VideoResult]):
 
 @dataclass(frozen=True, slots=True)
 class StopVideo(Command[VideoResult]):
-    """Clear the device's playback override AND the persisted bg override.
+    """The user's Stop: the background they chose ends -- a picture, a
+    video, the media player or a module -- and the theme's own returns, its
+    video playing again (``_theme_background_returns``), as the C#'s
+    ``ClosePlayer`` does for its player.  Every UI's Stop is this one
+    Command, so none has to send a second to bring the theme back.
 
-    Idempotent — calling on a device with no playback is a no-op + ok=True
-    so scripts can use it as a defensive cleanup.
+    It only unloaded, and nothing came back: a Stop over a picked video on a
+    video theme left the background BLACK, and a Stop over a module left it
+    chosen with nothing drawing, so the snapshot said "module" (bugs #4 and
+    #5, tests/test_background_choice.py).
 
-    Clears ``DeviceSettings.background_path`` so the next render falls
-    back to the active theme's bundled background.  Without this, the
-    next ``RenderAndSend`` (triggered by ``VideoStopped`` via
-    ``DeviceRenderObserver``) would find ``background_path`` still set,
-    take the override branch in ``DisplayService._resolve_background``,
-    and silently re-decode the same video via ``MediaService.load_video``
-    — turning "stop" into "rewind to frame 0".
+    With nothing chosen -- the theme's own video playing -- the video stops,
+    as before: bringing the theme back would only rewind it.
 
-    ``keep_override=True`` unloads playback but leaves the persisted path
-    alone.  Teardown — GUI close, device disconnect — has no next render to
-    rewind, and clearing there wiped the user's chosen background from
-    ``trcc.json`` on every exit (#271).
+    ``keep_override=True`` only unloads and chooses nothing: a teardown (GUI
+    close, disconnect -- clearing there wiped the user's choice on every
+    exit, #271), a cast going on top, and a Command about to put something
+    else on the panel (a module, a stream, a picture, a theme).
 
-    The media player's source is the same kind of override and follows the
-    same rule: a stop ends it, a teardown keeps it for the next start.
+    Idempotent -- a Stop with nothing playing and nothing chosen is ok.
     """
     REQUIRES: ClassVar[Capability | None] = Capability.BACKGROUND
     key: str
@@ -1561,27 +1562,24 @@ class StopVideo(Command[VideoResult]):
     def execute(self, app: App) -> VideoResult:
         had_playback = app.media.playback(self.key) is not None
         s = app.settings.for_device(self.key)
-        had_override = (s.background_path is not None
-                        or s.media_player_uri is not None)
+        log.info("StopVideo: %s keep_override=%s choice=%s playback=%s",
+                 self.key, self.keep_override, s.background, had_playback)
         app.media.unload(self.key)
-        if had_override and not self.keep_override:
-            log.info(
-                "StopVideo: clearing background_path / media-player override "
-                "for %s", self.key,
-            )
+        ended = False
+        if not self.keep_override:
+            # The old fields, written beside the choice until B4.
             app.settings.set_background_path(self.key, None)
             app.settings.set_media_player_uri(self.key, None)
-        if not self.keep_override:
-            app.settings.end_background(self.key, PictureBackground,
-                                        VideoBackground, MediaPlayerBackground)
-        elif had_override:
-            log.info(
-                "StopVideo: keeping background_path override for %s "
-                "(keep_override)", self.key,
-            )
+            ended = app.settings.end_background(
+                self.key, PictureBackground, VideoBackground,
+                MediaPlayerBackground, ModuleBackground)
         _invalidate_scene(app, self.key)
         if had_playback:
             app.events.publish(VideoStopped(key=self.key))
+        if ended:
+            log.info("StopVideo: %s -- the theme's own background returns",
+                     self.key)
+            _theme_background_returns(app, self.key)
         return VideoResult(
             ok=True, key=self.key,
             message=(f"video stopped for {self.key}"
@@ -2307,7 +2305,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
             return MediaPlayerResult(ok=False, key=self.key, uri=uri,
                                      message=problem)
         assert profile is not None
-        app.dispatch(StopVideo(key=self.key))
+        app.dispatch(StopVideo(key=self.key, keep_override=True))   # the stream is next
         app.settings.set_media_player_uri(self.key, uri)
         app.settings.set_background(self.key, MediaPlayerBackground(uri))
         app.media.open_stream(self.key, uri, profile.resolution,
@@ -2328,8 +2326,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
                 message=f"no media-player source on {self.key}",
             )
         log.info("SetMediaPlayer: ending %s's media player", self.key)
-        app.dispatch(StopVideo(key=self.key))
-        _theme_background_returns(app, self.key)
+        app.dispatch(StopVideo(key=self.key))   # the choice ends; the theme's returns
         return MediaPlayerResult(
             ok=True, key=self.key, uri="", playing=False,
             message=f"media-player source cleared for {self.key}",
@@ -2405,7 +2402,7 @@ class SetBackground(Command[BackgroundResult]):
             # would normally clear ``background_path``, but we set it
             # right after on the same dispatch thread, so the next
             # render reads the new value.
-            StopVideo(key=self.key).execute(app)
+            StopVideo(key=self.key, keep_override=True).execute(app)   # the picture is next
             app.settings.set_background_path(self.key, str(self.path))
             app.settings.set_background(self.key, PictureBackground(str(self.path)))
             _invalidate_scene(app, self.key)

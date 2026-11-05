@@ -575,7 +575,7 @@ End the screen-capture session for a device.
 
 ### `StopVideo`
 
-Clear the device's playback override AND the persisted bg override.
+The user's Stop: the background they chose ends -- a picture, a video, the media player or a module -- and the theme's own returns, its video playing again (``_theme_background_returns``), as the C#'s ``ClosePlayer`` does for its player.  Every UI's Stop is this one Command, so none has to send a second to bring the theme back.
 
 *Command* → `VideoResult`
 

@@ -142,10 +142,8 @@ def test_a_tick_puts_the_stream_s_frame_on_the_panel(app: App) -> None:
     assert _wire_grows(app, sent), "no frame reached the wire"
 
 
-def test_the_url_stops_what_played_before(
-    app: App, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The trap: the URL was recorded over a playing video, which played on."""
+def _decode_without_ffmpeg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every video loads as one black frame -- no ffmpeg needed."""
     from tests.test_video_playback import _encoded_frame
     from trcc.services.media import Playback
 
@@ -153,6 +151,13 @@ def test_the_url_stops_what_played_before(
         self._playbacks[device_key] = Playback(frames=[_encoded_frame(0xFF000000, 320, 320)])
         return self._playbacks[device_key]
     monkeypatch.setattr(MediaService, "load_video", fake_load)
+
+
+def test_the_url_stops_what_played_before(
+    app: App, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The trap: the URL was recorded over a playing video, which played on."""
+    _decode_without_ffmpeg(monkeypatch)
     clip = tmp_path / "bg.mp4"
     clip.write_bytes(b"\x00")
     app.dispatch(PlayVideo(key=_KEY, path=clip))
@@ -582,3 +587,24 @@ def test_one_kind_never_reaches_or_ends_another_kinds_picture() -> None:
     assert media.live(_KEY, PanelSource.MEDIA) is None
     media.close_live(_KEY, PanelSource.MEDIA)
     assert (visual.closed, media.live(_KEY, PanelSource.MODULE)) == (False, visual)
+
+
+def test_a_stream_is_not_played_under_the_themes_video(
+    app: App, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stream unloads and chooses next.  A user's Stop there would end the
+    chosen video and bring the theme's own back -- a second sender on the
+    panel, under the stream."""
+    from tests.conftest import renderable_theme
+    from trcc.core.commands import LoadTheme
+
+    _decode_without_ffmpeg(monkeypatch)
+    theme = renderable_theme(tmp_path / "themes", "Vid")
+    (theme / "Theme.mp4").write_bytes(b"\x00")
+    assert app.dispatch(LoadTheme(key=_KEY, path=theme)).ok
+    clip = tmp_path / "bg.mp4"
+    clip.write_bytes(b"\x00")
+    assert app.dispatch(PlayVideo(key=_KEY, path=clip)).ok          # a choice to end
+
+    assert app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL)).ok
+    assert app.media.playback(_KEY) is None, "the theme's video plays under the stream"
