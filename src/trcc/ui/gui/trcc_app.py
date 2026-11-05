@@ -53,6 +53,7 @@ from ...core.commands import (
     ListLanguages,
     ListModules,
     ProbeVideoDuration,
+    ReadSensors,
     RecentColors,
     RememberColor,
     SetBackground,
@@ -2680,8 +2681,12 @@ class TRCCApp(QMainWindow):
         log.info("_on_overlay_add_requested")
         # The dashboard's rows, read when the list opens -- so an edit made in
         # any UI since is what the user picks from.
+        # With every module's own readings (ReadSensors: in the user's units,
+        # with their explanations) and the modules' titles to name them by.
         self.uc_activity_sidebar.set_panels(
-            list(self._app.dispatch(GetSensorDashboard()).panels))
+            list(self._app.dispatch(GetSensorDashboard()).panels),
+            self._app.dispatch(ReadSensors()).readings,
+            {m.key: m.title for m in self._app.dispatch(ListModules()).modules})
         self.uc_activity_sidebar.setVisible(True)
         self.uc_activity_sidebar.raise_()
 

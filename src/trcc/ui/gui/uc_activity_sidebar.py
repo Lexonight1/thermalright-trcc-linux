@@ -9,12 +9,13 @@ placed (#223, #259, #310).
 """
 
 import logging
+from collections.abc import Mapping, Sequence
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from ...core.models import PanelConfig, percent_only
+from ...core.models import PanelConfig, SensorReading, percent_only
 from ..presentation.sensor_display import activity_rows, format_sensor_value
 
 log = logging.getLogger(__name__)
@@ -137,14 +138,17 @@ class UCActivitySidebar(QWidget):
         )
         main_layout.addWidget(self._scroll)
 
-    def set_panels(self, panels: list[PanelConfig]) -> None:
-        """Rebuild the rows from the sensor dashboard (``GetSensorDashboard``)."""
+    def set_panels(self, panels: list[PanelConfig],
+                   readings: Sequence[SensorReading] = (),
+                   titles: Mapping[str, str] | None = None) -> None:
+        """Rebuild the rows from the sensor dashboard (``GetSensorDashboard``),
+        and each module's own readings from *readings* (``activity_rows``)."""
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
         inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.setSpacing(0)
         self._sensor_items = []
-        for name, category_id, rows in activity_rows(panels):
+        for name, category_id, rows in activity_rows(panels, readings, titles):
             color = CATEGORY_COLORS.get(category_id, _CUSTOM_COLOR)
             header = QLabel(f"  \u25aa {name.upper()}")
             header.setFixedHeight(24)
@@ -153,9 +157,10 @@ class UCActivitySidebar(QWidget):
                 f"background-color: #2A2A2A; padding-top: 3px;"
             )
             inner_layout.addWidget(header)
-            for label, sensor_id, unit, config in rows:
+            for label, sensor_id, unit, config, explanation in rows:
                 config.color = color
                 item = SensorItem(label, sensor_id, unit, config, color)
+                item.setToolTip(explanation)
                 item.clicked.connect(self._on_sensor_clicked)
                 inner_layout.addWidget(item)
                 self._sensor_items.append(item)

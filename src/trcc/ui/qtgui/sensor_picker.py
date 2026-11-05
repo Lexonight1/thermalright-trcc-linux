@@ -235,6 +235,7 @@ class SensorPickerWidget(QWidget):
                 f"{reading.value:>10.2f} {reading.unit}"
             )
             item = QListWidgetItem(text)
+            item.setToolTip(reading.explanation)
             item.setData(Qt.ItemDataRole.UserRole, reading.sensor_id)
             item.setData(
                 Qt.ItemDataRole.UserRole + 1,
@@ -256,7 +257,8 @@ class SensorPickerWidget(QWidget):
                 self._preview.setText(
                     f"{reading.label or sid}: "
                     f"{reading.value:.2f} {reading.unit} "
-                    f"({reading.category})",
+                    f"({reading.category})"
+                    + (f"\n{reading.explanation}" if reading.explanation else ""),
                 )
                 return
 
@@ -286,12 +288,14 @@ class SensorPickerWidget(QWidget):
 
 
 def _matches(reading, query: str) -> bool:
-    """Case-insensitive substring match across id, label, category."""
+    """Case-insensitive substring match across id, label, category and what
+    it measures."""
     log.debug("_matches: reading=%s query=%s", reading, query)
     haystack = " ".join((
         reading.sensor_id,
         reading.label or "",
         reading.category or "",
+        reading.explanation,
     )).lower()
     return query in haystack
 

@@ -4657,3 +4657,71 @@ def test_a_refilled_grid_shows_each_cells_own_reading(qtbot) -> None:
 
     assert grid._cells[0]._live_value == "61"
     assert grid._cells[1]._live_value == ""
+
+
+def _weather_on(app: App) -> object:
+    """A module adding Outside (°C), publishing 21 -- the host keeps it."""
+    from trcc.core.models import ModuleManifest, ModuleMetric
+    from trcc.services.modules import ModuleScope
+
+    host = ModuleScope(app, ModuleManifest(
+        key="weather", title="Weather", summary="s", capabilities=("metrics",),
+        metrics=(ModuleMetric("outside", "Outside", "°C", "The air outside"),)))
+    host.metrics.publish("outside", 21.0)
+    return host
+
+
+def test_a_modules_reading_is_one_click_from_the_overlay(qtbot, gui_app: App) -> None:
+    """Item 10 A2: a module's own readings get their own Activity group, named
+    by the module's title -- no dashboard row to bind first -- with what they
+    measure as the tooltip, and a click adds the reading by its id.
+    MUTATION CHECK: drop the module groups from ``activity_rows``."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel
+
+    from trcc.core.commands import ReadSensors
+    from trcc.ui.gui.uc_activity_sidebar import UCActivitySidebar
+
+    _weather_on(gui_app)
+    sidebar = UCActivitySidebar()
+    qtbot.addWidget(sidebar)
+    added: list = []
+    sidebar.sensor_clicked.connect(added.append)
+    sidebar.set_panels([], gui_app.dispatch(ReadSensors()).readings, {"weather": "Weather"})
+
+    rows = [i for i in sidebar._sensor_items if i.sensor_id == "weather:outside:temp"]
+    assert sidebar._inner is not None
+    headers = [label.text() for label in sidebar._inner.findChildren(QLabel)]
+    assert len(rows) == 1 and rows[0].toolTip() == "The air outside"
+    assert any("WEATHER" in h for h in headers), headers
+    qtbot.mouseClick(rows[0], Qt.MouseButton.LeftButton)
+    assert [(c.mode.name, c.metric) for c in added] == [("HARDWARE", "weather:outside:temp")]
+
+
+def test_both_pickers_explain_a_modules_reading(qtbot, gui_app: App) -> None:
+    """The explanation a module gives a reading is each picker's tooltip --
+    the gui's dialog and qtgui's widget -- and qtgui's search finds it by
+    what it measures."""
+    from PySide6.QtCore import Qt
+
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    from trcc.ui.gui.uc_sensor_picker import SensorPickerDialog
+    from trcc.ui.qtgui.sensor_picker import SensorPickerWidget
+
+    set_assets_dir(_PKG_ASSETS_DIR)
+    _weather_on(gui_app)
+    dlg = SensorPickerDialog(gui_app)
+    try:
+        tips = {r.sensor.id: r.toolTip() for r in dlg._rows}
+        assert tips["weather:outside:temp"] == "The air outside"
+    finally:
+        dlg._timer.stop()
+        dlg.deleteLater()
+
+    widget = SensorPickerWidget(gui_app, _bus(gui_app))
+    qtbot.addWidget(widget)
+    widget._refresh()
+    widget._search.setText("air outside")
+    shown = [widget._sensor_list.item(i) for i in range(widget._sensor_list.count())]
+    assert [(i.data(Qt.ItemDataRole.UserRole), i.toolTip()) for i in shown] == [
+        ("weather:outside:temp", "The air outside")]

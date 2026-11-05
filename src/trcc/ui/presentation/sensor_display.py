@@ -99,6 +99,7 @@ def group_sensors(
             category=r.category,
             unit=r.unit,
             source=source,
+            explanation=r.explanation,
         ))
 
     groups: dict[str, list[SensorInfo]] = {}
@@ -162,15 +163,25 @@ def source_label(sensor_id: str) -> str:
 #: What a clicked Activity row adds: a HARDWARE cell on its sensor, unit shown
 #: (the C# / 89%-mask default).  The pair is filled by whoever knows the DC
 #: table; this layer only carries the id.
-ActivityRow = tuple[str, str, str, OverlayElementConfig]
+#: One row: (label, sensor id, unit, the element it adds, its explanation).
+ActivityRow = tuple[str, str, str, OverlayElementConfig, str]
+
+#: The category id of a module's own group -- no C# category: the custom
+#: colour.
+MODULE_GROUP = -1
 
 
 def activity_rows(
     panels: Sequence[PanelConfig],
+    readings: Sequence[SensorReading] = (),
+    titles: Mapping[str, str] | None = None,
 ) -> list[tuple[str, int, list[ActivityRow]]]:
     """The Activity sidebar, from the sensor dashboard: one group per panel,
-    ``(name, category_id, rows)`` with one ``(label, sensor_id, unit, config)``
-    per BOUND row.
+    ``(name, category_id, rows)`` with one ``(label, sensor_id, unit, config,
+    explanation)`` per BOUND row -- then one group per module that adds its
+    own readings (*readings* whose category is ``module:<key>``), named by
+    *titles*, so a module's reading is one click away without first binding
+    it on the dashboard.
 
     The C# Activity list IS the dashboard panel list, custom panels included
     -- #310 expected exactly that ("the dashboard shows them, the overlay
@@ -178,15 +189,30 @@ def activity_rows(
     could bind -- a board probe, a voltage, one DIMM -- could be placed (#223,
     #259).  An unbound row has nothing to add and is not listed.
     """
-    groups = [
-        (panel.name, panel.category_id, [(b.label or b.sensor_id, b.sensor_id, b.unit,
-                       OverlayElementConfig(mode=OverlayMode.HARDWARE,
-                                            mode_sub=1, metric=b.sensor_id))
-                      for b in panel.sensors if b.sensor_id])
-        for panel in panels
-    ]
+    explained = {r.sensor_id: r.explanation for r in readings}
+
+    def row(label: str, sensor_id: str, unit: str) -> ActivityRow:
+        log.debug("activity_rows.row: %s (%s)", sensor_id, unit)
+        return (label, sensor_id, unit,
+                OverlayElementConfig(mode=OverlayMode.HARDWARE, mode_sub=1,
+                                     metric=sensor_id),
+                explained.get(sensor_id, ""))
+
+    groups = [(panel.name, panel.category_id,
+               [row(b.label or b.sensor_id, b.sensor_id, b.unit)
+                for b in panel.sensors if b.sensor_id])
+              for panel in panels]
     groups = [group for group in groups if group[2]]
-    log.info("activity_rows: %d panel(s) -> %d group(s), %d row(s)", len(panels),
-             len(groups), sum(len(rows) for *_, rows in groups))
+    listed = {rows[1] for *_, group in groups for rows in group}
+    by_module: dict[str, list[ActivityRow]] = {}
+    for r in readings:
+        if r.category.startswith("module:") and r.sensor_id not in listed:
+            by_module.setdefault(r.category.split(":", 1)[1], []).append(
+                row(r.label or r.sensor_id, r.sensor_id, r.unit))
+    groups += [((titles or {}).get(module, module), MODULE_GROUP, rows)
+               for module, rows in sorted(by_module.items())]
+    log.info("activity_rows: %d panel(s), %d module(s) -> %d group(s), %d row(s)",
+             len(panels), len(by_module), len(groups),
+             sum(len(rows) for *_, rows in groups))
     return groups
 

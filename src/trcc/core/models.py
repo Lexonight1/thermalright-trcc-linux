@@ -2764,6 +2764,8 @@ class SensorInfo:
     category: str
     unit: str
     source: str
+    #: What it measures, in plain words (``SensorReading.explanation``).
+    explanation: str = ""
 
 
 def is_safe_archive_member(name: str) -> bool:

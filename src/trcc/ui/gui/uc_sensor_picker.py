@@ -81,6 +81,9 @@ class SensorRow(QWidget):
             self._cb.setIconSize(QSize(CHECKBOX_SIZE, CHECKBOX_SIZE))
         self._cb.clicked.connect(self._on_checkbox_clicked)
 
+        # What it measures, when its source says (a module's reading does).
+        self.setToolTip(sensor.explanation)
+
         # Name label
         self._name = QLabel(sensor.name, self)
         self._name.setGeometry(NAME_X, 0, NAME_W, ROW_H)
