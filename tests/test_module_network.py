@@ -278,6 +278,8 @@ def rebound_site(tmp_path: Path,
     _Site.seen = []
     cert, key = _self_signed(tmp_path, HOST)
     served = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # TLS 1.2 at least, as every client here asks (CodeQL py/insecure-protocol).
+    served.minimum_version = ssl.TLSVersion.TLSv1_2
     served.load_cert_chain(cert, key)
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Site)
     server.socket = served.wrap_socket(server.socket, server_side=True)
