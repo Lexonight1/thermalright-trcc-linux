@@ -3149,22 +3149,33 @@ class ModuleServices(ABC):
     @abstractmethod
     def panel_keys(self) -> tuple[str, ...]: ...
 
+    # *module*, where a call takes it: the module asking.  Where panel *key*
+    # has that module in a box over its theme (``DeviceSettings.inset``), the
+    # answer is the box's -- its size, its source, ending it -- so a module
+    # draws in a box exactly as it draws a background, knowing neither.
+
     @abstractmethod
-    def panel_size(self, key: str) -> tuple[int, int] | None: ...
+    def panel_size(self, key: str, module: str | None = None) -> tuple[int, int] | None: ...
 
     @abstractmethod
     def show_source(self, module: str, key: str, source: FrameSource,
                     fps: float) -> None: ...
 
     @abstractmethod
-    def end_source(self, key: str, keep_choice: bool = False) -> None: ...
+    def end_source(self, key: str, keep_choice: bool = False,
+                   module: str | None = None) -> None: ...
 
     @abstractmethod
-    def source(self, key: str) -> FrameSource | None: ...
+    def source(self, key: str, module: str | None = None) -> FrameSource | None: ...
 
     @abstractmethod
     def panel_source(self, key: str) -> str | None:
         """The module panel *key*'s chosen background belongs to, if any."""
+
+    @abstractmethod
+    def draws(self, module: str, key: str) -> bool:
+        """Whether *module* draws on panel *key* -- its background, or the
+        box over its theme."""
 
     @abstractmethod
     def module_settings(self, module: str) -> dict[str, Any]: ...

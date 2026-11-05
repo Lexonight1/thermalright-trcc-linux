@@ -103,7 +103,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 11 | 8 |
 | [`ContentStore`](#contentstore) | 33 | 0 | 1 |
-| [`ModuleServices`](#moduleservices) | 36 | 0 | 1 |
+| [`ModuleServices`](#moduleservices) | 37 | 0 | 1 |
 
 ---
 
@@ -1759,14 +1759,15 @@ write_preview(theme_dir: 'Path', png: 'bytes') -> Path
 
 The App's side of every :class:`ModuleHost`: the same calls, each told which module is asking where it matters.  ``ModuleScope`` binds the key, checks the capability, and takes back on switch-off what the module still holds.  The App implements it; a test passes a fake.
 
-**You implement (36):**
+**You implement (37):**
 
 ```python
 add_background_kind(module: 'str', kind: 'BackgroundKind') -> None
 add_led_source(module: 'str', source: 'LedSource') -> None
 data_root() -> Path
+draws(module: 'str', key: 'str') -> bool
 encode_png(frame: 'RawFrame') -> bytes
-end_source(key: 'str', keep_choice: 'bool' = False) -> None
+end_source(key: 'str', keep_choice: 'bool' = False, module: 'str | None' = None) -> None
 fetch(url: 'str', allow: 'Callable[[str], bool]') -> bytes
 fit_png(png: 'bytes', size: 'tuple[int, int]') -> bytes
 gl_surface() -> type[GlSurface] | None
@@ -1778,7 +1779,7 @@ module_settings(module: 'str') -> dict[str, Any]
 open_hid(vid: 'int', pid: 'int', report_id: 'int') -> Transport
 panel_keys() -> tuple[str, ...]
 panel_settings(module: 'str', key: 'str') -> dict[str, Any]
-panel_size(key: 'str') -> tuple[int, int] | None
+panel_size(key: 'str', module: 'str | None' = None) -> tuple[int, int] | None
 panel_source(key: 'str') -> str | None
 preferences() -> Preferences
 publish(event: 'Event') -> None
@@ -1791,7 +1792,7 @@ show_source(module: 'str', key: 'str', source: 'FrameSource', fps: 'float') -> N
 smbuses() -> tuple[SmBus, ...]
 sound_input() -> SoundInput
 sound_problem() -> str
-source(key: 'str') -> FrameSource | None
+source(key: 'str', module: 'str | None' = None) -> FrameSource | None
 subscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None
 substitute(cls: '_C') -> _C
 unsubscribe(event_type: 'type[_E]', handler: 'Callable[[_E], None]') -> None

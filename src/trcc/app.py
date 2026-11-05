@@ -66,6 +66,7 @@ from .core.models import (
     DeviceInfo,
     DeviceQuirks,
     HardwareMetrics,
+    InsetChoice,
     ModuleBackground,
     PanelPicture,
     PanelSource,
@@ -624,19 +625,34 @@ class App(CommandBus, ModuleServices):
         log.debug("panel_keys: %s", keys)
         return keys
 
-    def panel_size(self, key: str) -> tuple[int, int] | None:
-        """Panel *key*'s size, None until reported; raises when absent."""
+    def panel_size(self, key: str, module: str | None = None) -> tuple[int, int] | None:
+        """Panel *key*'s size, None until reported; raises when absent --
+        the box's, upright, when *key* has *module* in a box."""
         profile = self.get(key).profile
+        if profile is not None and (inset := self._box(key, module)) is not None:
+            from .core.geometry import inset_rect, oriented_canvas
+            box = inset_rect(oriented_canvas(
+                profile, self.settings.for_device(key).orientation), inset)
+            log.debug("panel_size: %s %s's box -> %dx%d", key, module,
+                      box.width, box.height)
+            return box.width, box.height
         log.debug("panel_size: %s -> %s", key, profile and profile.resolution)
         return None if profile is None else profile.resolution
 
     def show_source(self, module: str, key: str, source: FrameSource,
                     fps: float) -> None:
         """*module*'s *source* becomes panel *key*'s background: the video
-        stops, the choice is saved, a driver sends it, every UI hears."""
+        stops, the choice is saved, a driver sends it, every UI hears.  Where
+        *key* has *module* in a box, it goes in the box instead, and the
+        theme -- its video too -- plays on under it."""
         from .core.commands import StopVideo
         from .core.commands.device import _publish_background
         from .services.source_driver import SourceDriver
+        if self._box(key, module) is not None:
+            log.info("show_source: %s's box <- %s (%s, %g fps)", key,
+                     source.name, module, fps)
+            self.media.open_inset(key, source)
+            return
         log.info("show_source: %s <- %s (%s, %g fps)", key, source.name,
                  module, fps)
         self.dispatch(StopVideo(key=key, keep_override=True))   # the module is next
@@ -645,12 +661,22 @@ class App(CommandBus, ModuleServices):
         self.add_task(SourceDriver(self, key, PanelSource.MODULE, 1.0 / fps))
         _publish_background(self, key)
 
-    def end_source(self, key: str, keep_choice: bool = False) -> None:
+    def end_source(self, key: str, keep_choice: bool = False,
+                   module: str | None = None) -> None:
         """Stop panel *key*'s module source; the theme's own background --
         its video playing again -- returns.  *keep_choice* keeps the module
-        as the panel's choice, to resume when it comes back."""
+        as the panel's choice, to resume when it comes back.  Where *key*
+        has *module* in a box, the box closes instead -- and without
+        *keep_choice* it is no longer chosen."""
         from .core.commands.device import _theme_background_returns
         from .services.source_driver import task_key
+        if self._box(key, module) is not None:
+            log.info("end_source: %s's box (%s) keep_choice=%s", key, module,
+                     keep_choice)
+            self.media.close_inset(key)
+            if not keep_choice:
+                self.settings.set_inset(key, None)
+            return
         log.info("end_source: %s keep_choice=%s", key, keep_choice)
         self.media.close_live(key, PanelSource.MODULE)
         self.remove_task(task_key(key, PanelSource.MODULE))
@@ -658,10 +684,28 @@ class App(CommandBus, ModuleServices):
             self.settings.end_background(key, ModuleBackground)
         _theme_background_returns(self, key)
 
-    def source(self, key: str) -> FrameSource | None:
-        """The module source drawing panel *key* now, if any."""
-        frame_log.debug("App.source")
+    def source(self, key: str, module: str | None = None) -> FrameSource | None:
+        """The module source drawing panel *key* now, if any -- the box's,
+        when *key* has *module* in a box."""
+        frame_log.debug("App.source: %s %s", key, module)
+        if self._box(key, module) is not None:
+            return self.media.inset(key)
         return self.media.live(key, PanelSource.MODULE)
+
+    def draws(self, module: str, key: str) -> bool:
+        """Whether *module* draws on panel *key*: its background, or its box."""
+        found = (self._box(key, module) is not None
+                 or self.panel_source(key) == module)
+        log.debug("draws: %s on %s -> %s", module, key, found)
+        return found
+
+    def _box(self, key: str, module: str | None) -> InsetChoice | None:
+        """Panel *key*'s box, when it holds *module* (and *module* is named)."""
+        inset = self.settings.for_device(key).inset
+        found = inset if module is not None and inset is not None \
+            and inset.module == module else None
+        frame_log.debug("_box: %s %s -> %s", key, module, found)
+        return found
 
     def panel_source(self, key: str) -> str | None:
         """The module panel *key*'s chosen background belongs to."""

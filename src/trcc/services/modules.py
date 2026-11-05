@@ -110,17 +110,17 @@ class ModuleSpec:
 
 
 class _Panels(PanelsPort):
-    def __init__(self, services: ModuleServices) -> None:
-        log.debug("_Panels.__init__")
-        self._services = services
+    def __init__(self, services: ModuleServices, module: str) -> None:
+        log.debug("_Panels.__init__: %s", module)
+        self._services, self._module = services, module
 
     def attached(self) -> tuple[str, ...]:
         log.debug("_Panels.attached")
         return self._services.panel_keys()
 
     def size(self, key: str) -> tuple[int, int] | None:
-        log.debug("_Panels.size")
-        return self._services.panel_size(key)
+        log.debug("_Panels.size: %s %s", self._module, key)
+        return self._services.panel_size(key, module=self._module)
 
 
 class _Background(BackgroundPort):
@@ -134,15 +134,15 @@ class _Background(BackgroundPort):
 
     def end(self, key: str, keep_choice: bool = False) -> None:
         log.info("background.end: %s on %s keep=%s", self._module, key, keep_choice)
-        self._services.end_source(key, keep_choice)
+        self._services.end_source(key, keep_choice, module=self._module)
 
     def source(self, key: str) -> FrameSource | None:
-        log.debug("_Background.source")
-        return self._services.source(key)
+        log.debug("_Background.source: %s %s", self._module, key)
+        return self._services.source(key, module=self._module)
 
     def draws(self, key: str) -> bool:
-        log.debug("_Background.draws")
-        return self._services.panel_source(key) == self._module
+        log.debug("_Background.draws: %s %s", self._module, key)
+        return self._services.draws(self._module, key)
 
 
 class _Settings(SettingsPort):
@@ -371,7 +371,7 @@ class ModuleScope(ModuleHost):
         self._kinds: list[str] = []
         self._watchers: list[Callable[[PanelPicture], None]] = []
         self._ports: dict[str, Any] = {
-            "panels": _Panels(services),
+            "panels": _Panels(services, self._key),
             "background": _Background(services, self._key),
             "settings": _Settings(services, self._key),
             "themes": _Themes(self),
@@ -521,9 +521,9 @@ class ModuleScope(ModuleHost):
         self._ports["lights"].release()
         if end_sources:
             for key in self._services.panel_keys():
-                if (self._services.panel_source(key) == self._key
-                        and self._services.source(key) is not None):
-                    self._services.end_source(key, keep_choice=True)
+                if (self._services.draws(self._key, key)
+                        and self._services.source(key, module=self._key) is not None):
+                    self._services.end_source(key, keep_choice=True, module=self._key)
 
     def _need(self, capability: str) -> None:
         """Refuse a capability the manifest does not declare."""

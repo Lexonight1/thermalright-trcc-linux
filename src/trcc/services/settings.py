@@ -596,6 +596,15 @@ class Settings:
             self.for_device(key).released = released
             self._save()
 
+    def set_inset(self, key: str, choice: InsetChoice | None) -> None:
+        """Put a module's picture in a box over *key*'s theme, or take the
+        box away (``None``) -- the one writer of ``DeviceSettings.inset``."""
+        log.info("set_inset: key=%s %s -> %s", key, self.for_device(key).inset,
+                 choice)
+        with self._lock:
+            self.for_device(key).inset = choice
+            self._save()
+
     def set_mask_visible(self, key: str, visible: bool) -> None:
         """Toggle mask visibility for the device."""
         log.info("set_mask_visible: key=%s visible=%s", key, visible)

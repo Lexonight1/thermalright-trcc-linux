@@ -288,3 +288,40 @@ def test_an_unreadable_box_is_no_box(saved: Any) -> None:
     from trcc.services.settings import _device_settings_from_dict
 
     assert _device_settings_from_dict({"inset": saved}).inset is None
+
+
+def test_a_module_draws_in_its_box_through_its_own_host_calls(tmp_path: Path) -> None:
+    """A module knows nothing of boxes: where a panel has it in one, the
+    calls it already makes -- size, show, draws, source, end -- are the
+    box's, and the theme under it is left alone.  Switched off, the box
+    closes and stays chosen; ended by the module, it is no longer chosen.
+    MUTATION CHECK: drop the box branch from ``App.show_source``."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.models import InsetChoice, ModuleManifest, ThemeBackground
+    from trcc.services.modules import ModuleScope
+
+    from .mock_platform import MockPlatform
+
+    key = "87ad:70db"
+    app = App(MockPlatform([{"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 11,
+                             "sub": 5}], tmp_path), renderer=QtRenderer())
+    app.discover_and_connect()
+    host = ModuleScope(app, ModuleManifest(key="viz", title="Viz", summary="s",
+                                           capabilities=("panels", "background")))
+    s = app.settings.for_device(key)
+    assert host.panels.size(key) == (854, 480)            # no box: the panel
+    app.settings.set_inset(key, InsetChoice("viz"))
+    assert host.panels.size(key) == (285, 160)            # a third, its shape
+    first = _Alternates()
+    host.background.show(key, cast(Any, first), 30)
+    assert app.media.inset(key) is first and app.media.live(key) is None
+    assert s.background == ThemeBackground()
+    assert host.background.draws(key) and host.background.source(key) is first
+    assert not app.draws("other", key)
+    host.release()
+    assert (first.closed, app.media.inset(key), s.inset) == (1, None, InsetChoice("viz"))
+    second = _Alternates()
+    host.background.show(key, cast(Any, second), 30)
+    host.background.end(key)
+    assert (second.closed, s.inset, host.background.draws(key)) == (1, None, False)
