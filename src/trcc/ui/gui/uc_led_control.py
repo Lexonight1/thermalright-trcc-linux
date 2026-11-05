@@ -93,6 +93,10 @@ PREVIEW_W, PREVIEW_H = 460, 460
 MODE_Y = 227
 MODE_X_START = 590
 MODE_W, MODE_H = 93, 62
+#: The mode tiles' corner in the background art, measured on the rendered
+#: panel (8 px each way); the highlight follows it, or a checked tile shows
+#: square corners over a rounded one.
+MODE_RADIUS = 8
 MODE_SPACING = 10
 
 # Color wheel — C#: ucColorA1 at (617, 335) 216x216, shown for ALL styles
@@ -1763,11 +1767,12 @@ class UCLedControl(QWidget):
         if active:
             return (
                 "QPushButton { background: rgba(33, 150, 243, 60); "
-                "color: white; border: none; font-size: 10px; }"
+                f"color: white; border: none; border-radius: {MODE_RADIUS}px; "
+                "font-size: 10px; }"
             )
         return (
             "QPushButton { background: transparent; color: #ccc; "
-            "border: none; font-size: 10px; }"
+            f"border: none; border-radius: {MODE_RADIUS}px; font-size: 10px; }}"
             "QPushButton:checked { background: rgba(33, 150, 243, 60); "
             "color: white; }"
             "QPushButton:hover { background: rgba(255, 255, 255, 20); }"
