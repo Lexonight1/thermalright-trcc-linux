@@ -17,7 +17,14 @@ from typing import Any
 
 from ..core.errors import ThemeError
 from ..core.logs import per_frame, recurring_warning
-from ..core.models import OverlayElement, ThemeDir, element_family, percent_only
+from ..core.models import (
+    OVERLAY_DEFAULT_COLOR,
+    OVERLAY_DEFAULT_SIZE,
+    OverlayElement,
+    ThemeDir,
+    element_family,
+    percent_only,
+)
 from ..core.ports import Renderer
 from . import _dc as Dc
 from ._clock import clock_text
@@ -172,6 +179,24 @@ def effective_overlay_layout(
         len(out), minted,
     )
     return out
+
+
+def _text_style(element: Mapping[str, Any]) -> dict[str, Any]:
+    """How an element's text looks -- colour, size, weight, slant, family.
+
+    Every kind draws its text with the same five, so they are read once, with
+    the element defaults from ``core.models``.  They were read three times
+    here (text, metric, clock), each with its own literal defaults.
+    """
+    style = {
+        "color": str(element.get("color", OVERLAY_DEFAULT_COLOR)),
+        "size": int(element.get("size", OVERLAY_DEFAULT_SIZE)),
+        "bold": bool(element.get("bold", False)),
+        "italic": bool(element.get("italic", False)),
+        "family": element_family(element),
+    }
+    frame_log.debug("_text_style: %s", style)
+    return style
 
 
 class OverlayService:
@@ -398,16 +423,11 @@ class OverlayService:
             return
         x = int(element.get("x", 0))
         y = int(element.get("y", 0))
-        size = int(element.get("size", 16))
-        frame_log.debug("draw_text %s: %r at (%d, %d) size=%d", source, text, x, y, size)
+        frame_log.debug("draw_text %s: %r at (%d, %d)", source, text, x, y)
         self._r.draw_text(
             surface,
             x=x, y=y, text=text,
-            color=str(element.get("color", "#ffffff")),
-            size=size,
-            bold=bool(element.get("bold", False)),
-            italic=bool(element.get("italic", False)),
-            family=element_family(element),
+            **_text_style(element),
         )
 
     def _draw_metric(
@@ -459,11 +479,7 @@ class OverlayService:
         self._r.draw_text(
             surface,
             x=x, y=y, text=text,
-            color=str(element.get("color", "#ffffff")),
-            size=int(element.get("size", 16)),
-            bold=bool(element.get("bold", False)),
-            italic=bool(element.get("italic", False)),
-            family=element_family(element),
+            **_text_style(element),
         )
 
     def _draw_clock(
@@ -493,9 +509,5 @@ class OverlayService:
         self._r.draw_text(
             surface,
             x=x, y=y, text=text,
-            color=str(element.get("color", "#ffffff")),
-            size=int(element.get("size", 16)),
-            bold=bool(element.get("bold", False)),
-            italic=bool(element.get("italic", False)),
-            family=element_family(element),
+            **_text_style(element),
         )
