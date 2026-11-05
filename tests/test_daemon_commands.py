@@ -306,8 +306,10 @@ def test_exactly_these_commands_run_in_the_caller() -> None:
     marked = {name for name in dir(C)
               if getattr(getattr(C, name), "RUNS_IN_CALLER", False) is True}
 
+    # InstallFullFfmpeg (2026-11-05): sudo and the package manager ask in the
+    # user's own terminal, which the shared App does not have -- as RunSetup.
     assert marked == {"StopDaemon", "DaemonStatus", "RunSetup", "RunUpgrade",
-                      "GenerateDebugReport"}
+                      "GenerateDebugReport", "InstallFullFfmpeg"}
 
 
 
