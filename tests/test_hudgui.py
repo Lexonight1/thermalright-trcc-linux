@@ -606,3 +606,52 @@ def test_showing_the_settings_sends_nothing(window: Any, monkeypatch: Any) -> No
     view.show_state()                       # new values on every control
     assert (view.unit_box.currentData(), view.hdd_box.isChecked()) == ("F", True)
     assert sent == []
+
+
+# ── About ────────────────────────────────────────────────────────────────
+
+
+def _about(window: Any) -> Any:
+    window.bar.buttons["About"].click()
+    return window.panel("About")
+
+
+def test_about_shows_the_apps_word_on_updates_and_how_to_upgrade(
+        window: Any, qtbot: Any) -> None:
+    """The App's answer, as every window hears it; "How to upgrade" only
+    when a newer TRCC is out, and it says the command, never runs one.
+    MUTATION CHECK: drop the ``update_checked`` connection."""
+    from trcc.core.events import UpdateChecked
+
+    view = _about(window)
+    assert view.upgrade_button.isHidden()
+    window._bus.update_checked.emit(UpdateChecked(ok=True, latest_version="99.0.0",
+                                                  update_available=True))
+    qtbot.waitUntil(lambda: view.update_line.text() == "Version 99.0.0 is out",
+                    timeout=2000)
+    assert not view.upgrade_button.isHidden()
+    told: list[tuple[str, str]] = []
+    view.tell = lambda title, message: told.append((title, message))
+    view.upgrade_button.click()
+    assert told and told[0][0] == "Upgrade TRCC" and told[0][1]
+
+
+def test_about_saves_the_diagnostic_report(window: Any, tmp_path: Path) -> None:
+    """MUTATION CHECK: drop ``output_path`` from the GenerateDebugReport."""
+    view = _about(window)
+    target = tmp_path / "report.txt"
+    view.choose_report_file = lambda: str(target)
+    told: list[str] = []
+    view.tell = lambda title, message: told.append(message)
+    view._on_report()
+    assert target.is_file() and told == [f"Saved to {target}"]
+
+
+def test_about_lists_every_credit(window: Any) -> None:
+    from PySide6.QtWidgets import QLabel
+
+    from trcc.core.credits import GROUPS
+
+    view = _about(window)
+    text = " ".join(label.text() for label in view.findChildren(QLabel))
+    assert all(credit.name in text for _, credits in GROUPS for credit in credits)

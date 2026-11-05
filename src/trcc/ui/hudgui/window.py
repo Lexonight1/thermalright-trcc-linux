@@ -32,12 +32,13 @@ from PySide6.QtGui import (
     QPixmap,
     QResizeEvent,
 )
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from ...core.logs import per_frame
 from ..bus_bridge import BusBridge
 from ..device_selection import DeviceSelection
 from ..qt_preview import FRAME_EDGE
+from .about import About
 from .chrome import CHROME_HEIGHT, ChromeBar
 from .control_center import ControlCenter
 from .devices import DevicesView
@@ -107,20 +108,27 @@ class HudWindow(QWidget):
         """*item*'s panel -- made on its first click, then the same one."""
         if item not in self._panels:
             log.info("HudWindow.panel: making %s's", item)
-            if item == "Devices":
+            self._panels[item] = self._make(item)
+        return self._panels[item]
+
+    def _make(self, item: str) -> QWidget:
+        """A new panel for menu *item*."""
+        log.debug("HudWindow._make: %s", item)
+        match item:
+            case "Devices":
                 devices = DevicesView(self._app, self._bus, self._selection)
                 self._bus.frames_resumed.connect(devices.panel.preview.refresh)
                 self._bus.follow_previews(devices.panel.preview)
-                self._panels[item] = devices
-            elif item == "Sensors":
-                self._panels[item] = SensorsView(self._app, self._bus)
-            elif item == "Modules":
-                self._panels[item] = modules_panel(self._app, self._bus)
-            elif item == "Control Center":
-                self._panels[item] = ControlCenter(self._app, self._bus)
-            else:
-                self._panels[item] = _placeholder(item)
-        return self._panels[item]
+                return devices
+            case "Sensors":
+                return SensorsView(self._app, self._bus)
+            case "Modules":
+                return modules_panel(self._app, self._bus)
+            case "Control Center":
+                return ControlCenter(self._app, self._bus)
+            case "About":
+                return About(self._app, self._bus)
+        raise ValueError(f"no hudgui panel for menu item {item!r}")
 
     # ── The menu: a toggle group ───────────────────────────────────────
 
@@ -184,11 +192,3 @@ class HudWindow(QWidget):
         if (qapp := QApplication.instance()) is not None:
             qapp.quit()
 
-
-def _placeholder(item: str) -> QWidget:
-    """What a panel shows before its own contents are built."""
-    log.debug("_placeholder: %s", item)
-    label = QLabel(f"{item} -- coming next.", None)
-    label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-    label.setStyleSheet("color: #dfe5ea; font-size: 12pt;")
-    return label

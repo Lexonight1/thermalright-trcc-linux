@@ -5,7 +5,6 @@ licensing: every work TRCC uses, who made it and its licence.  All of it is
 on the Control Center page's top bar; it scrolls, so everything fits."""
 from __future__ import annotations
 
-import html
 import logging
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from ...core.credits import GROUPS, INSPIRATIONS, WE_LOVE, WHAT_TRCC_DOES, Credit
 from ...core.logs import per_frame
+from ..presentation.credit_line import credit_html
 from .base import paint_page
 from .constants import Colors, Sizes
 
@@ -62,17 +62,8 @@ def _cell() -> QFrame:
 
 def _credit(credit: Credit) -> QLabel:
     """Name, who made it, its licence (a link to its text), what it gave."""
-    log.debug("_credit: %s (%s)", credit.name, credit.licence_url or "no link")
-    licence = html.escape(credit.licence)
-    if credit.licence_url and licence:
-        licence = (f"<a href='{html.escape(credit.licence_url, quote=True)}'"
-                   f" style='color:{Colors.PAGE_GOLD}'>{licence}</a>")
-    who = ", ".join(part for part in (html.escape(credit.author), licence) if part)
-    used = (f"<br><span style='color:#b3b3b3'>{html.escape(credit.used_for)}</span>"
-            if credit.used_for else "")
-    return _label(f"<b style='color:white; font-size:11pt'>{html.escape(credit.name)}</b>"
-                  f"<span style='color:{Colors.PAGE_GOLD}'>&nbsp; {who}</span>{used}",
-                  "font-size: 9pt;", rich=True)
+    log.debug("_credit: %s", credit.name)
+    return _label(credit_html(credit, Colors.PAGE_GOLD), "font-size: 9pt;", rich=True)
 
 
 class UCThanks(QWidget):
