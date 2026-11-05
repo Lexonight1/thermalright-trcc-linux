@@ -88,7 +88,6 @@ from ..results import (
     GameModeResult,
     GameModeTickResult,
     LcdSnapshotResult,
-    LoopVideoResult,
     MaskApplyResult,
     MaskPositionResult,
     MaskVisibilityResult,
@@ -3532,8 +3531,8 @@ class VideoStatus(Query[VideoStatusResult]):
     """Ask what a device's video playback is doing.  Read-only.
 
     The query half of the video surface: :class:`PlayVideo` /
-    :class:`StopVideo` / :class:`PauseVideo` / :class:`SeekVideo` /
-    :class:`LoopVideo` change it, this one reports it, and
+    :class:`StopVideo` / :class:`PauseVideo` / :class:`SeekVideo` change
+    it, this one reports it, and
     :class:`TickDisplay` advances it.  Without this, a UI wanting only to
     *know* had to reach for ``app.media.playback(key)`` — which raises under
     ``TRCC_DAEMON=1``, where the UI holds an ``AppProxy``.
@@ -3561,7 +3560,6 @@ class VideoStatus(Query[VideoStatusResult]):
             cursor=playback.cursor,
             frame_count=playback.frame_count,
             fps=playback.fps,
-            loop=playback.loop,
             message=(f"playing frame {playback.cursor}/{playback.frame_count} "
                      f"@ {playback.fps} fps"
                      f"{' (paused)' if playback.paused else ''}"),
@@ -3622,27 +3620,6 @@ class SeekVideo(Command[SeekVideoResult]):
             ok=True, key=self.key,
             cursor=playback.cursor, frame_count=playback.frame_count,
             message=f"Seeked to frame {playback.cursor}",
-        )
-
-@dataclass(frozen=True, slots=True)
-class LoopVideo(Command[LoopVideoResult]):
-    """Toggle whether playback wraps to frame 0 or sticks at the last frame."""
-    key: str
-    loop: bool
-
-    def execute(self, app: App) -> LoopVideoResult:
-        log.debug("execute: app=%s", app)
-        playback = app.media.playback(self.key)
-        if playback is None:
-            return LoopVideoResult(
-                ok=False, key=self.key, loop=self.loop,
-                message=f"No active video playback for {self.key}",
-            )
-        playback.set_loop(self.loop)
-        state = "looping" if self.loop else "single-pass"
-        return LoopVideoResult(
-            ok=True, key=self.key, loop=self.loop,
-            message=f"Video set to {state}",
         )
 
 @dataclass(frozen=True, slots=True)

@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**161 endpoints.**
+**160 endpoints.**
 
 ## Running it
 
@@ -49,7 +49,6 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/display/game` | `GameModeResult` | Switch game mode and/or set its CPU threshold. |
 | `POST /devices/{key}/display/keepalive` | `KeepaliveResult` | Run a keepalive burst (resend the last frame N times). |
 | `POST /devices/{key}/display/load-video` | `ThemeResult` | Stage a video as a one-file theme and apply it to the device. |
-| `POST /devices/{key}/display/loop-video` | `LoopVideoResult` | Toggle whether playback wraps or sticks at the last frame. |
 | `POST /devices/{key}/display/mask` | `MaskApplyResult` | Apply a user-supplied mask. |
 | `POST /devices/{key}/display/mask-position` | `MaskPositionResult` | — |
 | `POST /devices/{key}/display/mask-visible` | `MaskVisibilityResult` | — |

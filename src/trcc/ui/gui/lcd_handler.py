@@ -47,7 +47,6 @@ from trcc.core.commands import (
     SetMaskPosition,
     SetMediaPlayer,
     SetOrientation,
-    StopVideo,
     ToggleVideo,
     UploadCustomMask,
     VideoStatus,
@@ -766,14 +765,6 @@ class LCDHandler(BaseHandler):
         self._set_video_playing(playing, reason="pause_changed")
         if self._pm.ui_active:
             self._w['preview'].set_playing(playing)
-
-    def stop_video(self) -> None:
-        self.log.info("stop_video: device=%s", self._device_key)
-        # StopVideo publishes VideoStopped → the bus_bridge observer
-        # routes back to ``on_video_stopped`` which stops the timer.
-        self._app.dispatch(StopVideo(key=self._device_key))
-        self._w['preview'].set_playing(False)
-        self._w['preview'].show_video_controls(False)
 
     def seek(self, frame: int) -> None:
         """Jump playback to *frame* -- the slider counts frames, so no maths."""

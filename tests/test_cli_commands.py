@@ -914,14 +914,6 @@ def test_display_seek_negative_rejected(
     assert result.exit_code != 0
 
 
-def test_display_loop_no_playback(cli_runner: CliRunner, cli_app) -> None:
-    del cli_app
-    result = cli_runner.invoke(
-        _app(), ["display", "loop-video", "0402:3922", "off"],
-    )
-    assert result.exit_code != 0
-
-
 def test_display_list_masks_empty(
     cli_runner: CliRunner, cli_app, tmp_path,
 ) -> None:

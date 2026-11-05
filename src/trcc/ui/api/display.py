@@ -10,7 +10,6 @@ from pathlib import Path
 from fastapi import (
     APIRouter,
     File,
-    Form,
     HTTPException,
     Request,
     UploadFile,
@@ -36,7 +35,6 @@ from trcc.core.commands import (
     LoadImage,
     LoadTheme,
     LoadVideo,
-    LoopVideo,
     PauseVideo,
     PlayVideo,
     ProbeVideoDuration,
@@ -79,7 +77,6 @@ from trcc.core.results import (
     GameModeResult,
     KeepaliveResult,
     LcdSnapshotResult,
-    LoopVideoResult,
     MaskApplyResult,
     MaskPositionResult,
     MasksListResult,
@@ -128,7 +125,6 @@ from .schemas import (
     GameModeRequest,
     KeepaliveRequest,
     LoadVideoRequest,
-    LoopVideoRequest,
     MaskApplyRequest,
     MaskPositionRequest,
     MaskUploadRequest,
@@ -455,8 +451,8 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
 
     Read-only — returns ``playing=False`` (and zeros elsewhere) when
     no playback is loaded.  Use ``play-video`` to start, ``stop-video``
-    to clear, ``pause-video`` / ``seek-video`` / ``loop-video`` to
-    control an active playback.
+    to clear, ``pause-video`` / ``seek-video`` to control an active
+    playback.  A video always loops.
     """
     log.info("api GET /devices/{key}/display/video-status: key=%s", key)
     result = request.app.state.trcc.dispatch(VideoStatus(key=key))
@@ -469,7 +465,6 @@ def video_status(key: str, request: Request) -> VideoStatusResponse:
         cursor=result.cursor or 0,
         frame_count=result.frame_count or 0,
         fps=result.fps or 0,
-        loop=result.loop,
     )
 
 
@@ -765,7 +760,6 @@ async def create_theme(
     background: UploadFile = File(...),
     mask: UploadFile | None = File(None),
     overlay: UploadFile | None = File(None),
-    loop: bool = Form(True),
 ) -> CreateThemeResponse:
     """Create + apply a custom theme from uploaded multipart files.
 
@@ -782,8 +776,9 @@ async def create_theme(
         the background lands.
       * ``overlay``    — optional JSON file with ``{"elements": [...]}``
         shape.  Dispatched via ``SetOverlayConfig`` + ``EnableOverlay``.
-      * ``loop``       — passed to ``PlayVideo`` via ``LoopVideo`` when
-        the background is animated.
+      A video background always loops, as the Windows app's does; the
+      ``loop`` field this route once took is gone (an unknown form field is
+      ignored, so a client still sending it is not refused).
 
     Legacy's ``metric`` form-field shorthand (``metric=cpu_temp:10,20``)
     is NOT supported here yet — it requires the ``build_overlay_config``
@@ -792,12 +787,11 @@ async def create_theme(
     """
     log.info(
         "api POST /devices/{key}/display/create-theme: key=%s "
-        "background=%s mask=%s overlay=%s loop=%s",
+        "background=%s mask=%s overlay=%s",
         key,
         background.filename,
         mask.filename if mask is not None else None,
         overlay.filename if overlay is not None else None,
-        loop,
     )
     uploads_dir = staging_dir(request)
     # Staged uploads a Command still reads stay: PlayVideo and ApplyMask
@@ -839,10 +833,6 @@ async def create_theme(
             )
             http_error_if_failed(play_result)
             kept.add(bg_path)
-            if not loop:
-                request.app.state.trcc.dispatch(
-                    LoopVideo(key=key, loop=False),
-                )
         else:
             load_result = request.app.state.trcc.dispatch(
                 LoadImage(key=key, path=bg_path),
@@ -1215,19 +1205,6 @@ def seek_video(key: str, body: SeekVideoRequest,
     return result
 
 
-@router.post("/loop-video")
-def loop_video(key: str, body: LoopVideoRequest,
-               request: Request) -> LoopVideoResult:
-    """Toggle whether playback wraps or sticks at the last frame."""
-    log.info(
-        "api POST /devices/{key}/display/loop-video: key=%s loop=%s",
-        key, body.loop,
-    )
-    result = request.app.state.trcc.dispatch(
-        LoopVideo(key=key, loop=body.loop),
-    )
-    http_error_if_failed(result)
-    return result
 
 
 @router.post("/upload-mask")

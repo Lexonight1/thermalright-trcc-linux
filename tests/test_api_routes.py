@@ -849,14 +849,6 @@ def test_display_seek_negative_rejected(api_client: TestClient) -> None:
     assert resp.status_code == 422
 
 
-def test_display_loop_no_playback(api_client: TestClient) -> None:
-    resp = api_client.post(
-        "/devices/0402:3922/display/loop-video",
-        json={"loop": False},
-    )
-    assert resp.status_code == 400
-
-
 @pytest.mark.parametrize("resolution", API_TEST_RESOLUTIONS)
 def test_display_masks_listing_empty(
     api_client: TestClient, resolution: tuple[int, int],

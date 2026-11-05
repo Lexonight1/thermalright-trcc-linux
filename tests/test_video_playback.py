@@ -1994,3 +1994,26 @@ def test_a_connecting_panel_warns_once_per_frame_command_but_every_one_shot(
         with pytest.raises(DeviceNotConnectedError):
             _require_connected_device(ticking_app, _KEY, level=logging.INFO)
     assert warned() == 3
+
+
+def test_a_video_always_loops() -> None:
+    """The last frame is followed by the first -- every video loops, as the
+    Windows app's player does (``UCBoFangQiKongZhi.Timer_Get_Image`` wraps).
+    The ``LoopVideo`` switch that could make one stop at its end is gone: the
+    C# never had one (his call, 2026-11-05)."""
+    playback = Playback(frames=[_encoded_frame(0xFF000000, 8, 8)] * 3, fps=15)
+    seen = [playback.cursor]
+    for _ in range(4):
+        playback.advance()
+        seen.append(playback.cursor)
+    assert seen == [0, 1, 2, 0, 1]
+
+
+def test_a_video_still_decoding_holds_at_what_it_has() -> None:
+    """Not the end of the video, only of what is decoded: wrapping there would
+    restart a video half-read (#264)."""
+    playback = Playback(frames=[_encoded_frame(0xFF000000, 8, 8)] * 2, fps=15,
+                        complete=False)
+    playback.advance()
+    playback.advance()
+    assert playback.cursor == 1

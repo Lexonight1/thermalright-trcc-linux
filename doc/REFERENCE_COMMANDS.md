@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**171 total: 121 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**170 total: 120 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -213,17 +213,6 @@ Every attached device — the answer to "what is here right now?".
 *Query* → `DevicesListResult`
 
 Takes no arguments.
-
-### `LoopVideo`
-
-Toggle whether playback wraps to frame 0 or sticks at the last frame.
-
-*Command* → `LoopVideoResult`
-
-| Field | Type | Required |
-|---|---|---|
-| `key` | `str` | yes |
-| `loop` | `bool` | yes |
 
 ### `PauseVideo`
 

@@ -15,7 +15,9 @@ recorded twice drifts, and this pair already had.
 """
 from __future__ import annotations
 
+import ast
 import sys
+from collections import Counter
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -301,9 +303,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     "PauseVideo": (frozenset({"cli", "api"}), (
         "gap: toggle the per-device playback pause flag"
     )),
-    "LoopVideo": (frozenset({"cli", "api"}), (
-        "gap: toggle whether playback wraps or sticks at the last frame"
-    )),
     "UploadBootAnimation": (frozenset({"cli", "api"}), (
         "gap: upload a boot animation to a SCSI LCD's flash"
     )),
@@ -505,28 +504,33 @@ _QT_VIRTUALS = frozenset({
 _FRAMEWORK_ENTRIES = frozenset({"main", "run", "launch", "build_app"})
 
 
-def _identifier_corpus() -> str:
-    """Every line of src/ and tests/, for a name-reference check."""
-    return "\n".join(
-        f.read_text(encoding="utf-8")
-        for root in (_SRC, _ROOT / "tests")
-        for f in root.rglob("*.py")
-    )
+def _code_references() -> Counter[str]:
+    """How often each name is USED in code, across src/ and tests/: every
+    ``ast.Name`` and ``ast.Attribute``, and a string that is exactly an
+    identifier (``getattr(obj, "name")``, a Qt slot by name).
+
+    NOT text tokens.  They counted a function's own log line
+    (``"stop_video: device=%s"``), a comment naming it, and a same-named
+    function in another UI as callers -- so the gui's ``stop_video`` sat dead
+    with the gui credited for Stop, until 2026-11-05.
+    """
+    refs: Counter[str] = Counter()
+    for root in (_SRC, _ROOT / "tests"):
+        for f in root.rglob("*.py"):
+            for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Name):
+                    refs[node.id] += 1
+                elif isinstance(node, ast.Attribute):
+                    refs[node.attr] += 1
+                elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                      and node.value.isidentifier()):
+                    refs[node.value] += 1
+    return refs
 
 
 def _dispatching_functions_never_referenced() -> list[str]:
     """``file:line name`` for every ui/ function that dispatches but is dead."""
-    import ast
-    import re
-
-    # Every identifier and every ``def`` name, counted ONCE.  A regex per
-    # function over the 8 MB corpus cost 140 ms a name -- 31 s, half the
-    # suite (2026-10-10).  ``\bname\b`` matches exactly the whole-word
-    # tokens of ``\w+``, so the counts are the same -- compared on 412 names.
-    from collections import Counter
-    blob = _identifier_corpus()
-    tokens = Counter(re.findall(r"\w+", blob))
-    defs = Counter(re.findall(r"\bdef\s+(\w+)", blob))
+    refs = _code_references()
     dead: list[str] = []
     for path in layers.files("ui"):  # modules' ui/ too
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
@@ -545,9 +549,7 @@ def _dispatching_functions_never_referenced() -> list[str]:
                 and sub.func.attr in ("dispatch", "_dispatch")
                 for sub in ast.walk(node)
             )
-            if not dispatches:
-                continue
-            if tokens[node.name] - defs[node.name] == 0:
+            if dispatches and refs[node.name] == 0:
                 dead.append(f"{path.relative_to(_SRC)}:{node.lineno} {node.name}")
     return dead
 

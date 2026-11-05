@@ -587,7 +587,6 @@ class Playback:
     fps: int = _DEFAULT_FPS
     cursor: int = 0
     paused: bool = False
-    loop: bool = True
     #: Whether these frames were decoded at their NATIVE size, so the
     #: compositor still has to fit them (``DeviceSettings.fit_mode``).  The
     #: decode size IS the origin -- ``load_video`` is told ``None`` for user
@@ -675,7 +674,9 @@ class Playback:
             # more arrives -- wrapping now would restart a video half-read.
             frame_log.debug("advance: holding at %d of %d decoded", self.cursor, decoded)
         else:
-            self.cursor = 0 if self.loop else decoded - 1
+            # The end: back to the first frame -- a video always loops, as
+            # the C#'s player does (UCBoFangQiKongZhi.Timer_Get_Image wraps).
+            self.cursor = 0
         return frame
 
     def seek(self, frame_index: int) -> None:
@@ -691,11 +692,6 @@ class Playback:
         if paused != self.paused:
             log.info("Playback.pause: %s → %s", self.paused, paused)
         self.paused = paused
-
-    def set_loop(self, loop: bool) -> None:
-        if loop != self.loop:
-            log.info("Playback.set_loop: %s → %s", self.loop, loop)
-        self.loop = loop
 
     def reset(self) -> None:
         log.info("Playback.reset: cursor=%d paused=%s → 0/False",

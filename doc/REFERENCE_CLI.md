@@ -626,19 +626,6 @@ trcc display load-video [OPTIONS] KEY PATH
 | `--end`, `-e` `END_MS` | Cut to here, in milliseconds (default: the file's end). |
 | `--rotation`, `-r` `ROTATION` | Rotation in degrees: 0 / 90 / 180 / 270. |
 
-### `trcc display loop-video`
-
-Toggle whether video wraps at the end or sticks at the last frame.
-
-```bash
-trcc display loop-video KEY STATE
-```
-
-| Argument | Description |
-|---|---|
-| `KEY` | Device key |
-| `STATE` | 'on' (loop) or 'off' (single-pass) |
-
 ### `trcc display mask-position`
 
 Position the mask overlay within the canvas.
@@ -1129,7 +1116,7 @@ trcc display video-duration PATH
 
 ### `trcc display video-status`
 
-Report what the device's video playback is doing (read-only). Answers "is a video loaded, where is it, how fast" without rendering a frame — the query half of the video surface, alongside `play-video` / `stop-video` / `pause-video` / `seek-video` / `loop-video`.
+Report what the device's video playback is doing (read-only). Answers "is a video loaded, where is it, how fast" without rendering a frame — the query half of the video surface, alongside `play-video` / `stop-video` / `pause-video` / `seek-video`.
 
 ```bash
 trcc display video-status KEY

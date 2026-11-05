@@ -334,28 +334,6 @@ Rotation in degrees: 0 / 90 / 180 / 270.
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
-.SS loop\-video
-.PP
-\fBtrcc display loop\-video\fR \fIKEY\fR \fISTATE\fR
-.PP
-Toggle whether video wraps at the end or sticks at the last frame.
-.PP
-Arguments:
-.RS 4
-.TP
-\fBKEY\fR
-Device key
-.TP
-\fBSTATE\fR
-\&'on' (loop) or 'off' (single\-pass)
-.RE
-.PP
-Options:
-.RS 4
-.TP
-\fB\-\-help\fR
-Show this command's help and exit.
-.RE
 .SS mask\-position
 .PP
 \fBtrcc display mask\-position\fR \fIKEY\fR \fIX\fR \fIY\fR
@@ -1169,7 +1147,7 @@ Show this command's help and exit.
 .PP
 \fBtrcc display video\-status\fR \fIKEY\fR
 .PP
-Report what the device's video playback is doing (read\-only). Answers "is a video loaded, where is it, how fast" without rendering a frame  \-  the query half of the video surface, alongside play\-video / stop\-video / pause\-video / seek\-video / loop\-video.
+Report what the device's video playback is doing (read\-only). Answers "is a video loaded, where is it, how fast" without rendering a frame  \-  the query half of the video surface, alongside play\-video / stop\-video / pause\-video / seek\-video.
 .PP
 Arguments:
 .RS 4

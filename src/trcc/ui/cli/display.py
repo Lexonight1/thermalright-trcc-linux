@@ -25,7 +25,6 @@ from trcc.core.commands import (
     LoadImage,
     LoadTheme,
     LoadVideo,
-    LoopVideo,
     PauseVideo,
     PlayVideo,
     ProbeVideoDuration,
@@ -80,7 +79,6 @@ from ._ctx import (
     dispatch_echo,
     emit_json,
     get_app,
-    parse_on_off,
     recover_or_exit,
     resolution_for,
     wait_until_interrupted,
@@ -662,20 +660,10 @@ def video_status(
 
     Answers "is a video loaded, where is it, how fast" without rendering a
     frame — the query half of the video surface, alongside ``play-video`` /
-    ``stop-video`` / ``pause-video`` / ``seek-video`` / ``loop-video``.
+    ``stop-video`` / ``pause-video`` / ``seek-video``.
     """
     log.info("cli display video-status: key=%s", key)
     dispatch_echo(VideoStatus(key=key))
-
-
-@app.command("loop-video")
-def loop_video(
-    key: str = typer.Argument(..., help="Device key"),
-    state: str = typer.Argument(..., help="'on' (loop) or 'off' (single-pass)"),
-) -> None:
-    """Toggle whether video wraps at the end or sticks at the last frame."""
-    log.info("cli display loop-video: key=%s state=%s", key, state)
-    dispatch_echo(LoopVideo(key=key, loop=parse_on_off(state)))
 
 
 @app.command("upload-mask")

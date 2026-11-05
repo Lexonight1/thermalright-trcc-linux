@@ -567,7 +567,6 @@ class VideoStatusResult(Result):
     cursor: int | None = None
     frame_count: int | None = None
     fps: int | None = None
-    loop: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1005,12 +1004,6 @@ class SeekVideoResult(Result):
     key: str = ""
     cursor: int = 0
     frame_count: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class LoopVideoResult(Result):
-    key: str = ""
-    loop: bool = True
 
 
 @dataclass(frozen=True, slots=True)

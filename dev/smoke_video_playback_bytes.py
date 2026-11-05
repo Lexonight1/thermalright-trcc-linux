@@ -157,7 +157,6 @@ def main() -> int:
         playback = Playback(
             frames=[_make_raw_frame(c) for c in expected],
             fps=15,
-            loop=True,
         )
         media._playbacks[info.key] = playback
 

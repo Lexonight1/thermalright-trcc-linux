@@ -286,10 +286,6 @@ class SeekVideoRequest(BaseModel):
     frame: int = Field(..., ge=0)
 
 
-class LoopVideoRequest(BaseModel):
-    loop: bool
-
-
 class MaskUploadRequest(BaseModel):
     """Server-side mask path — same shape as theme import requests."""
     source: str
@@ -597,7 +593,7 @@ class VideoStatusResponse(ResultBase):
     ``playing`` is False when there is no active playback for the
     device; the other fields are zero / empty in that case.  Read-only —
     state-changing routes are :class:`PlayVideo` / :class:`StopVideo` /
-    :class:`PauseVideo` / :class:`SeekVideo` / :class:`LoopVideo`.
+    :class:`PauseVideo` / :class:`SeekVideo`.  A video always loops.
     """
     key: str = ""
     playing: bool = False
@@ -605,7 +601,6 @@ class VideoStatusResponse(ResultBase):
     cursor: int = 0
     frame_count: int = 0
     fps: int = 0
-    loop: bool = False
 
 
 class BootAnimationRequest(BaseModel):
