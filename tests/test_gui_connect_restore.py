@@ -22,6 +22,7 @@ import pytest
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
+from trcc.core.models import VideoBackground
 
 from .mock_platform import MockPlatform
 
@@ -113,7 +114,7 @@ def test_a_session_restart_replays_the_saved_theme_and_video_background(
     app.settings.set_current_theme(_KEY, str(theme.resolve()))
     video = tmp_path / "my_background.mp4"
     video.write_bytes(b"\x00\x00\x00\x18ftypmp42")      # magic only; decode is stubbed
-    app.settings.set_background_path(_KEY, str(video))
+    app.settings.set_background(_KEY, VideoBackground(str(video)))   # what the last run chose
     assert not app.active_themes, "fixture drift: a restart starts with none"
 
     app.start_session()

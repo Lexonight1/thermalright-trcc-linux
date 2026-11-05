@@ -803,6 +803,10 @@ class BackgroundChoice:
     """
 
     kind: ClassVar[str] = ""
+    #: Which source this choice puts on the panel -- what every UI is told
+    #: (``DeviceSettings.display_source``).  A picture or a video is the
+    #: background slot, as the theme's own is.
+    source: ClassVar[PanelSource] = PanelSource.BACKGROUND
 
     def __init_subclass__(cls, kind: str = "", **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -854,12 +858,14 @@ class VideoBackground(BackgroundChoice, kind="video"):
 @dataclass(frozen=True)
 class MediaPlayerBackground(BackgroundChoice, kind="media"):
     """The media player: a local file or a stream URL."""
+    source: ClassVar[PanelSource] = PanelSource.MEDIA
     uri: str
 
 
 @dataclass(frozen=True)
 class ModuleBackground(BackgroundChoice, kind="module"):
     """A module draws the background (the Visualizer's audio visual)."""
+    source: ClassVar[PanelSource] = PanelSource.MODULE
     module: str
 
 
@@ -1026,26 +1032,48 @@ class DeviceSettings:
 
     @property
     def display_source(self) -> PanelSource:
-        """Where this panel's background comes from -- the ONE reading of
-        :data:`DISPLAY_SOURCE_FIELDS`.  The snapshot every UI shows, the
-        restore and the save all ask here, so they cannot disagree."""
+        """Where this panel's background comes from: a cast, which goes on
+        top, else the one choice.  The snapshot every UI shows, the restore
+        and the save all ask here, so they cannot disagree."""
         found = (PanelSource.SCREENCAST if self.screencast_region is not None
-                 else PanelSource.MEDIA if self.media_player_uri
-                 else PanelSource.MODULE if self.module_source
-                 else PanelSource.BACKGROUND)
+                 else self.background.source)
         frame_log.debug("DeviceSettings.display_source: %s", found.value)
         return found
 
     @property
     def on_panel(self) -> tuple[object, ...]:
-        """What the panel shows: its theme, then every display source, in
-        :data:`DISPLAY_SOURCE_FIELDS` order -- what a change of the panel is
-        measured against (the slideshow's "taken" check, ``Settings``'
-        change count)."""
-        shown = (self.current_theme,
-                 *(getattr(self, name) for name in DISPLAY_SOURCE_FIELDS))
+        """What the panel shows: its theme, a cast, the choice -- what a
+        change of the panel is measured against (the slideshow's "taken"
+        check, ``Settings``' change count)."""
+        shown = (self.current_theme, self.screencast_region, self.background)
         frame_log.debug("DeviceSettings.on_panel: %s", shown)
         return shown
+
+    @property
+    def chosen_file(self) -> str | None:
+        """The picture or video the user chose, else None -- the theme's
+        own, the media player and a module are not a file override."""
+        chosen = self.background
+        found = (chosen.path if isinstance(chosen, (PictureBackground, VideoBackground))
+                 else None)
+        frame_log.debug("DeviceSettings.chosen_file: %s", found)
+        return found
+
+    @property
+    def chosen_media(self) -> str | None:
+        """The media player's source, when it is the choice."""
+        chosen = self.background
+        found = chosen.uri if isinstance(chosen, MediaPlayerBackground) else None
+        frame_log.debug("DeviceSettings.chosen_media: %s", found)
+        return found
+
+    @property
+    def chosen_module(self) -> str | None:
+        """The module drawing the background, when it is the choice."""
+        chosen = self.background
+        found = chosen.module if isinstance(chosen, ModuleBackground) else None
+        frame_log.debug("DeviceSettings.chosen_module: %s", found)
+        return found
 
 
 @dataclass

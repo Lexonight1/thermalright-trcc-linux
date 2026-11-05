@@ -26,7 +26,7 @@ from trcc.core.commands import (
     StopScreencast,
 )
 from trcc.core.events import Event, ScreencastStopped
-from trcc.core.models import SCREENCAST_TICK_S, PanelSource, RawFrame
+from trcc.core.models import SCREENCAST_TICK_S, MediaPlayerBackground, PanelSource, RawFrame
 from trcc.services.source_driver import TELL_AFTER_S, SourceDriver
 from trcc.services.source_driver import task_key as _live_task_key
 
@@ -1403,7 +1403,7 @@ def test_a_stream_whose_sends_keep_failing_tells_every_ui_once(app: App) -> None
     told: list[ErrorOccurred] = []
     app.events.subscribe(ErrorOccurred, told.append)
     app.media.open_live(_KEY, PanelSource.MEDIA, _Failing())
-    app.settings.set_media_player_uri(_KEY, _Failing.name)
+    app.settings.set_background(_KEY, MediaPlayerBackground(_Failing.name))
     driver = SourceDriver(app, _KEY, PanelSource.MEDIA, STREAM_TICK_S)
 
     for now in range(round(TELL_AFTER_S / STREAM_TICK_S) + 20):

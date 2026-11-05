@@ -32,8 +32,11 @@ from trcc.core.models import (
     FitMode,
     Kind,
     MediaKind,
+    MediaPlayerBackground,
     OverlayElement,
+    PictureBackground,
     Theme,
+    VideoBackground,
 )
 from trcc.services.settings import Settings
 
@@ -89,10 +92,19 @@ def app(tmp_home: Path) -> App:
     return a
 
 
+def _choose(app: App, key: str, path: str | Path) -> None:
+    """The user chose *path* for the background -- a picture or a video, by
+    its kind -- as SetBackground / PlayVideo record it."""
+    chosen = (VideoBackground(str(path)) if MEDIA.kind_of(Path(path)) is MediaKind.ANIMATED
+              else PictureBackground(str(path)))
+    app.settings.set_background(key, chosen)
+
+
 # Tests pretend the device under key ``0402:3922`` is connected — that
 # product is in the registry with native_resolution (320, 320), so
 # ``_resolve_resolution`` resolves through the registry fallback without
 # the test having to construct a fake device.
+
 _TEST_DEVICE_KEY = "0402:3922"
 _TEST_RES = (320, 320)
 
@@ -762,18 +774,18 @@ def test_restore_keeps_cloud_background_explicit_load_clears_it(
     source = _write_theme_with_dc(tmp_home, "source")
     app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
     app.settings.set_current_theme(_TEST_DEVICE_KEY, str(source.resolve()))
-    app.settings.set_background_path(_TEST_DEVICE_KEY, "/some/cloud/a078.mp4")
+    _choose(app, _TEST_DEVICE_KEY, "/some/cloud/a078.mp4")
 
     # Restore (reset_overrides=False) — the cloud background survives.
     app.dispatch(RestoreDeviceState(key=_TEST_DEVICE_KEY))
-    assert (app.settings.for_device(_TEST_DEVICE_KEY).background_path
+    assert (app.settings.for_device(_TEST_DEVICE_KEY).chosen_file
             == "/some/cloud/a078.mp4"), (
         "RestoreDeviceState must NOT clear the user's cloud background"
     )
 
     # Explicit load (default reset_overrides=True) reverts to the theme's bg.
     app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source))
-    assert app.settings.for_device(_TEST_DEVICE_KEY).background_path is None
+    assert app.settings.for_device(_TEST_DEVICE_KEY).chosen_file is None
 
 
 def test_save_theme_repoints_current_theme(
@@ -861,7 +873,7 @@ def test_save_theme_bakes_cloud_background_override(
     cloud_bg = tmp_home / "cloud_pool" / "fancy_bg.png"
     cloud_bg.parent.mkdir(parents=True)
     cloud_bg.write_bytes(_png_bytes(red=0x99))
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_bg))
+    _choose(app, _TEST_DEVICE_KEY, str(cloud_bg))
 
     result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-bg"))
     assert result.ok is True
@@ -895,7 +907,7 @@ def test_save_theme_references_cloud_video_from_library(
     cloud_video.parent.mkdir(parents=True)
     fake_mp4_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
     cloud_video.write_bytes(fake_mp4_bytes)
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+    _choose(app, _TEST_DEVICE_KEY, str(cloud_video))
 
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="with-cloud-video"))
 
@@ -937,7 +949,7 @@ def test_save_theme_copies_a_video_out_of_the_cloud_library(
     cloud_video = cloud_dir / "a077.mp4"
     video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
     cloud_video.write_bytes(video_bytes)
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+    _choose(app, _TEST_DEVICE_KEY, str(cloud_video))
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="cloudvid")).ok
     saved = user_theme_dir / "cloudvid"
@@ -968,7 +980,7 @@ def test_resave_onto_self_keeps_referenced_background(
     cloud_video.parent.mkdir(parents=True)
     video_bytes = b"\x00\x00\x00\x20ftypisom..." * 100
     cloud_video.write_bytes(video_bytes)
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_video))
+    _choose(app, _TEST_DEVICE_KEY, str(cloud_video))
 
     # First save stores the video in the library + references it, clears the
     # override, and re-points the active theme at the saved dir → next save has
@@ -985,7 +997,7 @@ def test_resave_onto_self_keeps_referenced_background(
     assert first_ref.startswith(f"web/{w}{h}/") and first_ref.endswith(".mp4")
     assert not (saved / "Theme.mp4").exists()      # referenced, never bundled
     assert app.themes.background_path(app.themes.load(saved)) is not None
-    assert app.settings.for_device(_TEST_DEVICE_KEY).background_path is None
+    assert app.settings.for_device(_TEST_DEVICE_KEY).chosen_file is None
     assert app.active_themes[_TEST_DEVICE_KEY].path == saved
 
     # Re-save onto the same name (overwrite) — the background ref must survive.
@@ -1015,7 +1027,7 @@ def test_save_theme_references_catalog_image_background(
     lib_dir.mkdir(parents=True, exist_ok=True)
     lib_image = lib_dir / "a023.png"
     lib_image.write_bytes(_png_bytes(red=0x30))
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(lib_image))
+    _choose(app, _TEST_DEVICE_KEY, str(lib_image))
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="catref")).ok
     saved = user_theme_dir / "catref"
@@ -1145,7 +1157,7 @@ def test_saved_theme_video_background_plays_via_reference(
     picked_video.parent.mkdir(parents=True, exist_ok=True)
     video_bytes = b"\x00\x00\x00\x20ftypisom" * 50
     picked_video.write_bytes(video_bytes)
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(picked_video))
+    _choose(app, _TEST_DEVICE_KEY, str(picked_video))
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="vid")).ok
     w, h = _TEST_RES
@@ -1182,7 +1194,7 @@ def test_every_animated_background_saves_and_reloads(
     picked = tmp_home / "picked" / f"clip{ext}"
     picked.parent.mkdir(parents=True, exist_ok=True)
     picked.write_bytes(b"ANIMATED" * 64)
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(picked))
+    _choose(app, _TEST_DEVICE_KEY, str(picked))
 
     saved = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="anim"))
 
@@ -1213,7 +1225,7 @@ def test_a_zip_export_never_writes_an_animation_as_00_png(
     picked = tmp_home / "picked" / "clip.gif"
     picked.parent.mkdir(parents=True, exist_ok=True)
     picked.write_bytes(b"GIF89a" + b"\0" * 64)
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(picked))
+    _choose(app, _TEST_DEVICE_KEY, str(picked))
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="anim")).ok
     archive = tmp_home / "anim.zip"
 
@@ -1284,7 +1296,7 @@ def test_save_theme_clears_all_overrides_after_save(
     cloud_bg.parent.mkdir(parents=True)
     cloud_bg.write_bytes(_png_bytes(red=0x33))
     cloud_mask.write_bytes(_png_bytes(red=0x44))
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_bg))
+    _choose(app, _TEST_DEVICE_KEY, str(cloud_bg))
     app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_mask))
     app.settings.add_user_overlay_element(
         _TEST_DEVICE_KEY,
@@ -1297,7 +1309,7 @@ def test_save_theme_clears_all_overrides_after_save(
     app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="full-state"))
 
     s = app.settings.for_device(_TEST_DEVICE_KEY)
-    assert s.background_path is None
+    assert s.chosen_file is None
     assert s.mask_path is None
     assert s.current_theme == str((user_theme_dir / "full-state").resolve())
     saved_elements = app.active_themes[_TEST_DEVICE_KEY].config.get(
@@ -1359,7 +1371,7 @@ def test_save_then_reload_resolves_library_assets_not_source(
     cloud_bg.parent.mkdir(parents=True)
     cloud_bg.write_bytes(_png_bytes(red=0x99))
     cloud_mask.write_bytes(_png_bytes(red=0xAA))
-    app.settings.set_background_path(_TEST_DEVICE_KEY, str(cloud_bg))
+    _choose(app, _TEST_DEVICE_KEY, str(cloud_bg))
     app.settings.set_mask_path(_TEST_DEVICE_KEY, str(cloud_mask))
 
     assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="roundtrip")).ok
@@ -1447,7 +1459,7 @@ def test_save_theme_references_media_player_uri_and_url(
                       ("web", "https://test-streams.mux.dev/x/y.m3u8")):
         source = _write_theme_with_real_pngs(tmp_home, f"src_{name}")
         app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
-        app.settings.set_media_player_uri(_TEST_DEVICE_KEY, uri)
+        app.settings.set_background(_TEST_DEVICE_KEY, MediaPlayerBackground(uri))
 
         assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name=name)).ok
         saved = user_theme_dir / name
@@ -2160,7 +2172,7 @@ def test_save_theme_references_the_devices_own_library(
     assert lib_dir.name == "1600720l"
     lib_image = lib_dir / "a077.png"
     lib_image.write_bytes(_png_bytes(red=0x44))
-    app.settings.set_background_path(key, str(lib_image))
+    _choose(app, key, str(lib_image))
 
     assert app.dispatch(SaveTheme(key=key, name="skuref")).ok
     saved = app.platform.paths().user_theme_dir(w, h) / "skuref"
@@ -2206,7 +2218,7 @@ def test_save_theme_falls_back_when_the_sku_library_is_absent(
     lib_dir.mkdir(parents=True, exist_ok=True)
     lib_image = lib_dir / "a078.png"
     lib_image.write_bytes(_png_bytes(red=0x45))
-    app.settings.set_background_path(key, str(lib_image))
+    _choose(app, key, str(lib_image))
 
     assert app.dispatch(SaveTheme(key=key, name="genref")).ok
     saved = app.platform.paths().user_theme_dir(w, h) / "genref"
@@ -2289,7 +2301,7 @@ def test_save_establishes_the_theme_through_one_path(
     assert s.current_theme == str(target.resolve()), (
         "the persisted pointer must agree with the live theme"
     )
-    assert s.mask_path is None and s.background_path is None, (
+    assert s.mask_path is None and s.chosen_file is None, (
         "a saved theme owns its assets — the device overrides nothing"
     )
     assert [e.id for e in (s.user_overlay_elements or [])] == [
@@ -3130,4 +3142,4 @@ def test_a_media_player_theme_with_a_video_reloads_with_its_media_player(
 
     assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=saved)).ok
 
-    assert app.settings.for_device(_TEST_DEVICE_KEY).media_player_uri == str(clip)
+    assert app.settings.for_device(_TEST_DEVICE_KEY).chosen_media == str(clip)

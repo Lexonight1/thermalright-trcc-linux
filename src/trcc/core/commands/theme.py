@@ -308,7 +308,9 @@ class LoadTheme(Command[ThemeResult]):
         # A picked theme ends the panel's background choice: its own
         # background takes the panel -- or the media player, module or cast
         # it carries, each choosing itself below.  One TRCC shows by itself
-        # (``picked=False``) leaves the choice alone.
+        # (``picked=False``) leaves the choice alone.  The module drawing
+        # is read FIRST: the reset is what ends it.
+        drawing = app.settings.for_device(self.key).chosen_module
         if self.reset_overrides and self.picked:
             app.settings.set_background(self.key, ThemeBackground())
         # A module's background (an audio visual) is a background like a
@@ -321,9 +323,9 @@ class LoadTheme(Command[ThemeResult]):
             log.info("LoadTheme: %s shown by TRCC, not picked -- the panel's "
                      "background choice stays", theme.name)
         if self.reset_overrides and self.picked and module_bg is None:
-            if app.settings.for_device(self.key).module_source is not None:
+            if drawing is not None:
                 log.info("LoadTheme: %s has no module background — ending "
-                         "the one drawing", theme.name)
+                         "the %s one drawing", theme.name, drawing)
                 app.settings.set_module_source(self.key, None)
                 _publish_background(app, self.key)
             if app.settings.for_device(self.key).pending_background is not None:
@@ -602,9 +604,11 @@ class LoadTheme(Command[ThemeResult]):
             # A refused play recorded no choice, so the one that was drawing
             # still stood: the status kept naming it and the next reconnect
             # brought it back over this theme.
-            if app.settings.for_device(self.key).module_source is not None:
-                log.info("LoadTheme: %s — ending the module background that "
-                         "was drawing", theme.name)
+            # ``drawing``, read before a picked load reset the choice: after
+            # it the choice is the theme's, and the UIs were never told.
+            if drawing is not None:
+                log.info("LoadTheme: %s — ending the %s background that "
+                         "was drawing", theme.name, drawing)
                 app.settings.set_module_source(self.key, None)
                 app.settings.end_background(self.key, ModuleBackground)
                 _publish_background(app, self.key)
@@ -878,10 +882,8 @@ class SaveTheme(Command[ThemeResult]):
 
         # A theme whose background a module draws is kept with that module:
         # listed only while it is on (``user_theme_dirs``).
-        module = (device_settings.module_source
-                  if device_settings.module_source
-                  and app.background_kind_of(device_settings.module_source)
-                  else None)
+        chosen = device_settings.chosen_module
+        module = chosen if chosen and app.background_kind_of(chosen) else None
         paths = app.platform.paths()
         target = (paths.user_module_theme_dir(module, w, h) if module
                   else paths.user_theme_dir(w, h)) / self.name
@@ -892,7 +894,7 @@ class SaveTheme(Command[ThemeResult]):
             "SaveTheme: source=%s target=%s resolution=%dx%d "
             "bg_override=%r mask_override=%r user_elements=%d",
             theme.path, target, w, h,
-            device_settings.background_path,
+            device_settings.chosen_file,
             device_settings.mask_path,
             len(device_settings.user_overlay_elements or ()),
         )
@@ -1003,7 +1005,7 @@ class SaveTheme(Command[ThemeResult]):
                                        width, height)
         # The background is one thing: a picture, a video -- or an audio
         # visual, its settings in its own JSON like any library asset.
-        module = (s.module_source if s.display_source is PanelSource.MODULE
+        module = (s.chosen_module if s.display_source is PanelSource.MODULE
                   else None)
         bg_ref = (self._store_module_background(app, module) if module
                   else self._store_background(app, theme, s, width, height))
@@ -1051,12 +1053,10 @@ class SaveTheme(Command[ThemeResult]):
                      s.screencast_region, manifest["screencast"])
         # Media-player source (a URI — local path or URL/stream) when its toggle
         # is on — store it in the user library and reference it by URI.
-        if s.media_player_uri:
-            manifest["media_player"] = app.themes.store_media_player(
-                s.media_player_uri,
-            )
+        if media := s.chosen_media:
+            manifest["media_player"] = app.themes.store_media_player(media)
             log.info("SaveTheme: media_player %r → reference %s",
-                     s.media_player_uri, manifest["media_player"])
+                     media, manifest["media_player"])
         return manifest
 
     @staticmethod
@@ -1133,7 +1133,7 @@ class SaveTheme(Command[ThemeResult]):
         ``DeviceSettings.background_path`` (override) wins over the source theme.
         """
         src = self._pick_asset(
-            s.background_path, app.themes.background_path(theme), "background",
+            s.chosen_file, app.themes.background_path(theme), "background",
         )
         if src is None:
             log.warning("SaveTheme: source theme %r has no background",
@@ -1412,7 +1412,7 @@ class ExportCurrentTheme(Command[ThemeExportResult]):
 
         manifest = SaveTheme._live_manifest(app, theme, s, name, *resolution)
         bg = SaveTheme._pick_asset(
-            s.background_path, app.themes.background_path(theme), "background",
+            s.chosen_file, app.themes.background_path(theme), "background",
         )
         mask = (SaveTheme._pick_asset(
             s.mask_path, app.themes.mask_path(theme), "mask",
@@ -2161,20 +2161,25 @@ class RestoreDeviceState(Command[ThemeResult]):
                      "already running", self.key)
         elif source is PanelSource.MODULE or s.pending_background:
             log.info("RestoreDeviceState: %s resuming its module background "
-                     "(%s, waiting %s)", self.key, s.module_source,
+                     "(%s, waiting %s)", self.key, s.chosen_module,
                      s.pending_background)
             app.resume_background(self.key)
-        elif source is PanelSource.MEDIA and s.media_player_uri:
+        elif media := s.chosen_media:
             log.info("RestoreDeviceState: %s resuming its media player %s",
-                     self.key, s.media_player_uri)
-            app.dispatch(SetMediaPlayer(key=self.key, uri=s.media_player_uri))
-        elif s.background_path:
-            # SetBackground: a picked IMAGE is a background too -- PlayVideo
-            # refused it ("unsupported video extension '.png'") on every
-            # restore; SetBackground draws an image and plays a video.
+                     self.key, media)
+            app.dispatch(SetMediaPlayer(key=self.key, uri=media))
+        elif chosen := s.chosen_file:
+            # The picture or video the USER chose -- never the theme's own,
+            # which its reload above already plays.  It was read from
+            # ``background_path``, where the theme's video was stored as if
+            # picked, and a restart replaced the user's choice with it.
+            # SetBackground draws an image and plays a video.
             log.info("RestoreDeviceState: %s restoring its background %s",
-                     self.key, s.background_path)
-            app.dispatch(SetBackground(key=self.key, path=Path(s.background_path)))
+                     self.key, chosen)
+            app.dispatch(SetBackground(key=self.key, path=Path(chosen)))
+        else:
+            log.info("RestoreDeviceState: %s shows its theme's own background",
+                     self.key)
 
         return ThemeResult(
             ok=True, key=self.key, theme_name=theme.name,

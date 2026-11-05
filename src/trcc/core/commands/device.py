@@ -1960,7 +1960,7 @@ def _cast_chosen(app: App, key: str, source: FrameSource | None) -> bool:
 
 def _stream_chosen(app: App, key: str, source: FrameSource | None) -> bool:
     """A stream is chosen while the saved media player names ITS url."""
-    uri = app.settings.for_device(key).media_player_uri
+    uri = app.settings.for_device(key).chosen_media
     chosen = source is not None and uri == source.name
     frame_log.debug("_stream_chosen: %s -> %s", key, chosen)
     return chosen
@@ -1968,7 +1968,8 @@ def _stream_chosen(app: App, key: str, source: FrameSource | None) -> bool:
 
 def _module_chosen(app: App, key: str, source: FrameSource | None) -> bool:
     """A module's picture is chosen while a module is saved as the source."""
-    chosen = source is not None and app.settings.for_device(key).module_source is not None
+    chosen = (source is not None
+              and app.settings.for_device(key).chosen_module is not None)
     frame_log.debug("_module_chosen: %s -> %s", key, chosen)
     return chosen
 
@@ -2075,14 +2076,15 @@ class ClearModuleSource(Command[Result]):
         pending = s.pending_background
         waiting = bool(pending) and app.background_owner(
             (pending or "").split("/", 1)[0]) == self.module
+        chosen = s.chosen_module
         log.info("ClearModuleSource: %s %s (draws %s, waiting %s)", self.key,
-                 self.module, s.module_source, waiting)
+                 self.module, chosen, waiting)
         title = _module_title(app, self.module)
-        if s.module_source != self.module and not waiting:
+        if chosen != self.module and not waiting:
             return Result(ok=True, message=f"{title} draws nothing on {self.key}")
         if waiting:
             app.settings.set_pending_background(self.key, None)
-        if s.module_source == self.module:
+        if chosen == self.module:
             app.end_source(self.key)
         return Result(ok=True, message=f"{title} ended on {self.key}")
 
@@ -2318,7 +2320,7 @@ class SetMediaPlayer(Command[MediaPlayerResult]):
 
     def _clear(self, app: App) -> MediaPlayerResult:
         """End the media player: stop it, and the theme's own video resumes."""
-        if app.settings.for_device(self.key).media_player_uri is None:
+        if app.settings.for_device(self.key).chosen_media is None:
             log.info("SetMediaPlayer: %s has no media player — nothing to end",
                      self.key)
             return MediaPlayerResult(
@@ -3685,8 +3687,8 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             date_format=icu_date_pattern(clocks.get("date", "")),
             screencast_region=s.screencast_region,
             display_source=s.display_source.value,
-            module_title=_module_title(app, s.module_source),
-            media_player_uri=s.media_player_uri,
+            module_title=_module_title(app, s.chosen_module),
+            media_player_uri=s.chosen_media,
             screencast_rect=screencast_box(app, self.key),
             screencast_hide_border=s.screencast_hide_border,
             screencast_canvas=(None if profile is None

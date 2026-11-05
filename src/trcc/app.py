@@ -656,7 +656,7 @@ class App(CommandBus, ModuleServices):
 
     def panel_source(self, key: str) -> str | None:
         """The module panel *key*'s chosen background belongs to."""
-        found = self.settings.for_device(key).module_source
+        found = self.settings.for_device(key).chosen_module
         log.debug("panel_source: %s -> %s", key, found)
         return found
 
@@ -765,7 +765,7 @@ class App(CommandBus, ModuleServices):
         have = {info.key for info in self.modules.infos()}
         panels: dict[str, list[str]] = {}
         for key in self.settings.device_keys():
-            chosen = self.settings.for_device(key).module_source
+            chosen = self.settings.for_device(key).chosen_module
             if chosen is not None and chosen not in have:
                 panels.setdefault(chosen, []).append(key)
         wanted = tuple(WantedModule(key=module, panels=tuple(keys))
@@ -795,7 +795,7 @@ class App(CommandBus, ModuleServices):
                 self.settings.set_pending_background(key, None)
                 kind.play(key, payload)
                 return
-        chosen = s.module_source
+        chosen = s.chosen_module
         if chosen is None or (module is not None and chosen != module):
             log.debug("resume_background: %s has no module background", key)
             return
@@ -1163,7 +1163,7 @@ class App(CommandBus, ModuleServices):
         # reload (which may reset the override) and before the mask (so the mask
         # still composites on top).  User-uploaded backgrounds (under
         # ``user_content_dir``) are native-res and stay.
-        bgp = s.background_path
+        bgp = s.chosen_file
         if bgp:
             bg_path = Path(bgp)
             if (bg_path.parent.parent == web_root

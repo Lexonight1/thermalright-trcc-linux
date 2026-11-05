@@ -37,12 +37,10 @@ from ..core.models import (
     SPLIT_OVERLAY_MAP,
     DeviceSettings,
     MediaKind,
-    PictureBackground,
     ProductInfo,
     RawFrame,
     RenderContent,
     Theme,
-    VideoBackground,
 )
 from ..core.ports import ContentStore, Paths, Renderer
 from ..core.protocol import (
@@ -90,16 +88,6 @@ _WIDESCREEN_SPLIT_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
 #: resolved.  A frozen value rather than ``None`` so every caller asks one
 #: question -- ``content.background is None`` -- instead of two.
 _NO_BACKGROUND = RenderContent(None, None)
-
-
-def _chosen_file(s: DeviceSettings) -> str | None:
-    """The picture or video the user chose for the background, else None --
-    the theme's own, the media player and a module are not a file override."""
-    chosen = s.background
-    found = (chosen.path if isinstance(chosen, (PictureBackground, VideoBackground))
-             else None)
-    frame_log.debug("_chosen_file: %s -> %s", chosen.kind, found)
-    return found
 
 
 def _is_widescreen_split(visual_size: tuple[int, int]) -> bool:
@@ -1292,7 +1280,7 @@ class DisplayService:
         # takes precedence over the active theme's own bg.  Set by
         # LoadCloudTheme; cleared by LoadTheme on local-theme select.
         s = self._settings.for_device(info.key)
-        if (chosen := _chosen_file(s)) is not None:
+        if (chosen := s.chosen_file) is not None:
             override = Path(chosen)
             if override.exists():
                 log.debug(
@@ -1465,7 +1453,7 @@ class DisplayService:
         pb = self._media.playback(info.key)
         if pb is not None and pb.frames:
             source: tuple[Any, ...] = ("playback", pb.serial, pb.cursor)
-        elif (chosen := _chosen_file(s)) is not None:
+        elif (chosen := s.chosen_file) is not None:
             # A picture or video the user chose beats the theme's own.
             source = ("override", chosen)
         else:

@@ -10,6 +10,7 @@ import pytest
 from trcc.core.models import (
     HARDWARE_METRICS,
     METRICS,
+    BackgroundChoice,
     HardwareMetrics,
     oriented_resolution,
     parse_resolution,
@@ -201,33 +202,49 @@ def test_every_display_source_field_is_a_device_setting() -> None:
     assert set(DISPLAY_SOURCE_FIELDS) <= names
 
 
-@pytest.mark.parametrize(("field", "value", "source"), [
-    ("screencast_region", (0, 0, 64, 48, False), "screencast"),
-    ("media_player_uri", "rtsp://cam/live", "media"),
-    ("module_source", "visualizer", "module"),
-    ("background_path", "/some/picture.png", "background"),
-])
-def test_each_source_reads_as_itself_through_the_one_rule(
-    tmp_home: Path, field: str, value: object, source: str,
-) -> None:
-    """Set through the REAL setters, so the one-source rule (``_only_source``)
-    and the reading (``display_source``) are proven together: whatever was
-    set last is the source, and the snapshot value every UI reads is its name.
+def _choices() -> list[BackgroundChoice]:
+    from trcc.core.models import (
+        MediaPlayerBackground,
+        ModuleBackground,
+        PictureBackground,
+        ThemeBackground,
+        VideoBackground,
+    )
+    return [ThemeBackground(), PictureBackground("/some/picture.png"),
+            VideoBackground("/some/clip.mp4"), MediaPlayerBackground("rtsp://cam/live"),
+            ModuleBackground("visualizer")]
 
-    MUTATION CHECK: drop a field from ``DISPLAY_SOURCE_FIELDS`` and the
-    previous source is not cleared -- its reading wins and this fails."""
+
+@pytest.mark.parametrize("choice", _choices(), ids=repr)
+def test_each_choice_reads_as_its_own_source(
+        tmp_home: Path, choice: BackgroundChoice) -> None:
+    """Chosen through the REAL writer, the source every UI is told is the
+    one the choice names -- a picture or a video is the background slot.
+
+    MUTATION CHECK: have ``display_source`` ignore the choice and media /
+    module read as the background."""
+    from trcc.services.settings import Settings
+
+    from .conftest import FakePlatform
+
+    settings = Settings(FakePlatform(tmp_home).paths())
+    settings.set_background("0402:3922", choice)
+    assert settings.for_device("0402:3922").display_source is choice.source
+
+
+@pytest.mark.parametrize("choice", _choices(), ids=repr)
+def test_a_cast_reads_as_the_source_over_any_choice(
+        tmp_home: Path, choice: BackgroundChoice) -> None:
+    """A cast goes ON TOP: while it runs it is the source, whatever is chosen."""
     from trcc.core.models import PanelSource
     from trcc.services.settings import Settings
 
     from .conftest import FakePlatform
 
     settings = Settings(FakePlatform(tmp_home).paths())
-    for other, other_value in (("set_screencast_region", (1, 2, 3, 4, False)),
-                               ("set_media_player_uri", "rtsp://x/y"),
-                               ("set_module_source", "rgb")):
-        getattr(settings, other)("0402:3922", other_value)
-    getattr(settings, f"set_{field}")("0402:3922", value)
-    assert settings.for_device("0402:3922").display_source is PanelSource(source)
+    settings.set_background("0402:3922", choice)
+    settings.set_screencast_region("0402:3922", (0, 0, 64, 48, False))
+    assert settings.for_device("0402:3922").display_source is PanelSource.SCREENCAST
 
 
 def test_a_panel_with_no_source_shows_its_background() -> None:
@@ -237,9 +254,7 @@ def test_a_panel_with_no_source_shows_its_background() -> None:
 
 _PANEL_WRITES = [("set_current_theme", "/themes/Theme2"),
                  ("set_screencast_region", (0, 0, 64, 48, False)),
-                 ("set_media_player_uri", "rtsp://cam/live"),
-                 ("set_module_source", "visualizer"),
-                 ("set_background_path", "/some/picture.png")]
+                 *(("set_background", c) for c in _choices()[1:])]
 
 
 @pytest.mark.parametrize(("setter", "value"), _PANEL_WRITES)

@@ -23,7 +23,7 @@ import pytest
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, ListModules, RestoreDeviceState
-from trcc.core.models import WantedModule
+from trcc.core.models import ModuleBackground, ThemeBackground, WantedModule
 from trcc.ui.presentation.module_catalog import wanted_line
 
 from .conftest import renderable_theme
@@ -63,7 +63,7 @@ def chose_the_visualizer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     app = App(MockPlatform(_SPECS, tmp_path / "root"), renderer=QtRenderer())
     theme = renderable_theme(app.platform.paths().theme_dir(320, 320), "Theme1")
     app.settings.set_current_theme(_KEY, str(theme))
-    app.settings.set_module_source(_KEY, "visualizer")
+    app.settings.set_background(_KEY, ModuleBackground("visualizer"))
     return app
 
 
@@ -78,20 +78,20 @@ def test_a_module_that_is_here_is_not_wanted(tmp_path: Path) -> None:
     """The Visualizer present, and the same choice: nothing to tell anyone --
     the module itself resumes the panel."""
     app = App(MockPlatform(_SPECS, tmp_path / "root"), renderer=QtRenderer())
-    app.settings.set_module_source(_KEY, "visualizer")
+    app.settings.set_background(_KEY, ModuleBackground("visualizer"))
     assert app.modules_wanted() == ()
 
 
 def test_every_panel_that_chose_it_is_named(chose_the_visualizer: App) -> None:
     """Attached or not: a choice survives an unplug, so the saved settings
     are asked, never the bus."""
-    chose_the_visualizer.settings.set_module_source(_OTHER, "visualizer")
+    chose_the_visualizer.settings.set_background(_OTHER, ModuleBackground("visualizer"))
     assert chose_the_visualizer.modules_wanted() == (
         WantedModule(key="visualizer", panels=(_KEY, _OTHER)),)
 
 
 def test_a_panel_that_chose_nothing_wants_nothing(chose_the_visualizer: App) -> None:
-    chose_the_visualizer.settings.set_module_source(_KEY, None)
+    chose_the_visualizer.settings.set_background(_KEY, ThemeBackground())
     assert chose_the_visualizer.modules_wanted() == ()
 
 
@@ -130,11 +130,11 @@ def test_a_restore_with_no_saved_theme_keeps_the_choice(
     _hide_the_modules(tmp_path, monkeypatch, module_root)
     app = App(MockPlatform(_SPECS, tmp_path / "root"), renderer=QtRenderer())
     renderable_theme(app.platform.paths().theme_dir(320, 320), "Theme1")
-    app.settings.set_module_source(_KEY, "visualizer")
+    app.settings.set_background(_KEY, ModuleBackground("visualizer"))
     assert app.settings.for_device(_KEY).current_theme is None
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
-    assert (app.settings.for_device(_KEY).module_source, app.modules_wanted()) == (
+    assert (app.settings.for_device(_KEY).chosen_module, app.modules_wanted()) == (
         "visualizer", (WantedModule(key="visualizer", panels=(_KEY,)),))
 
 
@@ -152,7 +152,7 @@ def test_the_cli_says_it(no_modules: None, cli_runner: Any, cli_app: App) -> Non
     """MUTATION CHECK: drop the ``listed.wanted`` loop from ``cli/module.py``."""
     from trcc.ui.cli.main import app as cli
 
-    cli_app.settings.set_module_source(_KEY, "visualizer")
+    cli_app.settings.set_background(_KEY, ModuleBackground("visualizer"))
 
     out = cli_runner.invoke(cli, ["system", "modules", "list"]).output
     assert f"Your panel {_KEY} uses visualizer" in out, out
@@ -170,7 +170,7 @@ def test_the_window_says_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 
     _hide_the_modules(tmp_path, monkeypatch, module_root)
     app = App(MockPlatform(_SPECS, tmp_path / "root"), renderer=QtRenderer())
-    app.settings.set_module_source(_KEY, "visualizer")
+    app.settings.set_background(_KEY, ModuleBackground("visualizer"))
     assert app.dispatch(ConnectDevice(key=_KEY)).ok
     win = _open(app, qtbot, key=_KEY)
     try:
@@ -200,7 +200,7 @@ def test_the_api_serves_it(no_modules: None, tmp_path: Path) -> None:
     from .test_api_routes import loopback_client
 
     api_app = App(platform=FakePlatform(tmp_path), renderer=QtRenderer())
-    api_app.settings.set_module_source(_KEY, "visualizer")
+    api_app.settings.set_background(_KEY, ModuleBackground("visualizer"))
     with loopback_client(build_app(trcc=api_app)) as client:
         body = client.get("/system/modules").json()
 

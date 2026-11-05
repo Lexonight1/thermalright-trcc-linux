@@ -37,7 +37,7 @@ from trcc.core.commands import (
     SetMediaPlayer,
 )
 from trcc.core.events import BackgroundChanged, ErrorOccurred, Event
-from trcc.core.models import SOUND_RATE, PanelSource, RawFrame
+from trcc.core.models import SOUND_RATE, MediaPlayerBackground, PanelSource, RawFrame
 from trcc.core.ports import CaptureNotReady, GlSurface
 from trcc.modules.visualizer.adapters import pipes as pipes_module
 from trcc.modules.visualizer.adapters import projectm as projectm_module
@@ -292,7 +292,7 @@ def _reader(app: App) -> Any:
 def _chosen(app: App) -> tuple[str | None, dict[str, Any]]:
     """The panel's background module, and the visualizer's own choice."""
     s = app.settings.for_device(_KEY)
-    return s.module_source, s.module_settings.get("visualizer", {})
+    return s.chosen_module, s.module_settings.get("visualizer", {})
 
 
 def _wire(app: App) -> list[Any]:
@@ -407,7 +407,7 @@ def test_a_visual_that_cannot_play_changes_nothing(
     result = app.dispatch(PlayVisual(key=_KEY, visual=visual, preset=preset))
     assert (result.ok, result.message) == (False, problem)
     assert _reader(app) is None
-    assert app.settings.for_device(_KEY).module_source is None
+    assert app.settings.for_device(_KEY).chosen_module is None
 
 
 def test_a_milkdrop_preset_plays_from_the_visuals_folder(app: App) -> None:
@@ -427,8 +427,8 @@ def test_a_tick_puts_the_visual_s_picture_on_the_panel(app: App) -> None:
 def test_another_source_ends_the_visual_within_a_tick(app: App) -> None:
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     reader = _reader(app)
-    app.settings.set_media_player_uri(_KEY, "https://example.test/a.m3u8")
-    assert app.settings.for_device(_KEY).module_source is None       # exclusive
+    app.settings.set_background(_KEY, MediaPlayerBackground("https://example.test/a.m3u8"))
+    assert app.settings.for_device(_KEY).chosen_module is None       # exclusive
     app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE))
     assert reader.closed and _reader(app) is None
 
@@ -440,7 +440,7 @@ def test_a_failed_visual_ends_and_says_why(app: App) -> None:
     assert not app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MODULE)).ok
     assert [e.message for e in heard] == ["the sound stopped"]
     assert _reader(app) is None
-    assert app.settings.for_device(_KEY).module_source is None
+    assert app.settings.for_device(_KEY).chosen_module is None
 
 
 def test_starting_up_is_not_a_failure(app: App) -> None:
@@ -479,7 +479,7 @@ def test_a_media_player_replaces_the_visual(app: App,
     monkeypatch.setattr(MediaService, "stream_reader", _FakeReader)
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     app.dispatch(SetMediaPlayer(key=_KEY, uri="https://example.test/a.m3u8"))
-    assert app.settings.for_device(_KEY).module_source is None
+    assert app.settings.for_device(_KEY).chosen_module is None
 
 
 def test_the_centre_picture_is_the_user_s(app: App, tmp_path: Path) -> None:
@@ -522,7 +522,7 @@ def test_the_api_plays_lists_and_confines_the_centre_picture(
 
     stopped = client.post(f"/devices/{_KEY}/display/visual", json={"visual": ""})
     assert stopped.status_code == 200
-    assert app.settings.for_device(_KEY).module_source is None
+    assert app.settings.for_device(_KEY).chosen_module is None
 
 
 
@@ -591,7 +591,7 @@ def test_a_computer_that_cannot_hear_says_so_up_front(
 
     assert (played.ok, played.message) == (False, why)
     assert [e.message for e in heard] == [why]
-    assert app.settings.for_device(_KEY).module_source is None
+    assert app.settings.for_device(_KEY).chosen_module is None
     assert app.dispatch(VisualTile(visual="trcc-pipes", size=32)).ok
 
 
@@ -1149,7 +1149,7 @@ def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
     app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
     changes.clear()
     app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Plain")))
-    assert app.settings.for_device(_KEY).module_source is None
+    assert app.settings.for_device(_KEY).chosen_module is None
     assert _KEY in [e.key for e in changes]                 # every UI hears
     app.media.close_live(_KEY, PanelSource.MODULE)                            # what a restart leaves
     assert app.dispatch(RestoreDeviceState(key=_KEY)).ok
@@ -1190,7 +1190,7 @@ def test_an_unplayable_visual_theme_does_not_keep_the_last_visual(
     changes.clear()
     folder = _visual_theme(app, tmp_path, {"visual": "no-such-visual"})
     assert app.dispatch(LoadTheme(key=_KEY, path=folder)).ok
-    assert app.settings.for_device(_KEY).module_source is None
+    assert app.settings.for_device(_KEY).chosen_module is None
     assert app.dispatch(LcdSnapshot(key=_KEY)).display_source != "module"
     assert _KEY in [e.key for e in changes]                 # every UI hears
     app.media.close_live(_KEY, PanelSource.MODULE)                            # what a restart leaves

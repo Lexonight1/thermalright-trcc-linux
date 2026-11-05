@@ -81,40 +81,45 @@ def _video_theme(app: App, root: Path) -> None:
     assert app.dispatch(LoadTheme(key=_KEY, path=theme)).ok
 
 
-@pytest.mark.xfail(strict=True, reason=_BUG)
-@pytest.mark.parametrize(("field", "value"), [
-    ("module_source", "visualizer"),
-    ("media_player_uri", "/music/song.mp4"),
+@pytest.mark.parametrize("chosen", [
+    "module", "media",
 ])
 def test_a_restart_over_a_video_theme_keeps_the_panels_choice(
-    app: App, tmp_path: Path, field: str, value: str,
+    app: App, tmp_path: Path, chosen: str,
 ) -> None:
+    """Bug #1: the reload played the theme's own video, recorded as a pick."""
+    from trcc.core.models import MediaPlayerBackground, ModuleBackground
+
     _video_theme(app, tmp_path)
-    setattr(app.settings.for_device(_KEY), field, value)   # what the last run saved
+    choice = {"module": ModuleBackground("visualizer"),
+              "media": MediaPlayerBackground("/music/song.mp4")}[chosen]
+    app.settings.for_device(_KEY).background = choice      # what the last run saved
     app.dispatch(RestoreDeviceState(key=_KEY))
-    assert getattr(app.settings.for_device(_KEY), field) == value
+    assert app.settings.for_device(_KEY).background == choice
 
 
-@pytest.mark.xfail(strict=True, reason=_BUG)
 def test_a_restart_over_a_video_theme_keeps_the_users_picture(
     app: App, tmp_path: Path,
 ) -> None:
+    """Bug #2: the restore replayed ``background_path`` -- the theme's video."""
+    from trcc.core.models import PictureBackground
+
     _video_theme(app, tmp_path)
     picture = tmp_path / "mine.png"
     picture.write_bytes((tmp_path / "themes" / "VideoTheme" / "00.png").read_bytes())
-    app.settings.for_device(_KEY).background_path = str(picture)
+    app.settings.for_device(_KEY).background = PictureBackground(str(picture))
     app.dispatch(RestoreDeviceState(key=_KEY))
-    assert app.settings.for_device(_KEY).background_path == str(picture)
+    assert app.settings.for_device(_KEY).background == PictureBackground(str(picture))
 
 
-@pytest.mark.xfail(strict=True, reason=_BUG)
 def test_switching_a_module_off_over_a_video_theme_keeps_the_choice(
     app: App, tmp_path: Path,
 ) -> None:
+    """Bug #3: the theme's video playing again erased the kept module."""
     _video_theme(app, tmp_path)
     app.show_source("visualizer", _KEY, _Waiting(), 30.0)
     app.end_source(_KEY, keep_choice=True)                  # the module switched off
-    assert app.settings.for_device(_KEY).module_source == "visualizer"
+    assert app.settings.for_device(_KEY).chosen_module == "visualizer"
 
 
 @pytest.mark.xfail(strict=True, reason=_BUG)
@@ -203,17 +208,17 @@ def test_the_migration_agrees_with_what_the_panel_showed(
     module_source: str | None,
 ) -> None:
     """Whatever the old fields held, the one choice names the same source the
-    old ``display_source`` reported -- a user upgrading sees no change."""
+    old ``display_source`` reported -- a user upgrading sees no change.  That
+    reading is spelled here, as it was: media, then module, then the
+    background slot."""
     from trcc.core.models import DeviceSettings, PanelSource, background_choice_from_fields
 
-    old = DeviceSettings(background_path=background_path,
-                         media_player_uri=media_player_uri,
-                         module_source=module_source)
+    was = (PanelSource.MEDIA if media_player_uri
+           else PanelSource.MODULE if module_source
+           else PanelSource.BACKGROUND)
     choice = background_choice_from_fields(background_path, media_player_uri,
                                            module_source, theme_dir="/themes/T")
-    source = {"media": PanelSource.MEDIA, "module": PanelSource.MODULE}.get(
-        choice.kind, PanelSource.BACKGROUND)
-    assert source is old.display_source
+    assert DeviceSettings(background=choice).display_source is was
 
 
 def test_a_saved_themes_symlinked_video_is_the_themes_own(tmp_path: Path) -> None:

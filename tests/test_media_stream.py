@@ -35,7 +35,7 @@ from trcc.core.commands import (
     SetMediaPlayer,
 )
 from trcc.core.events import ErrorOccurred
-from trcc.core.models import PanelSource, RawFrame
+from trcc.core.models import PanelSource, RawFrame, ThemeBackground
 from trcc.core.ports import CaptureNotReady, FrameSource
 from trcc.services.media import MediaService
 from trcc.services.media_stream import StreamReader, explain_failure
@@ -176,7 +176,7 @@ def test_only_web_schemes_are_opened(app: App, uri: str) -> None:
 def test_another_source_ends_the_stream_within_a_tick(app: App) -> None:
     app.dispatch(SetMediaPlayer(key=_KEY, uri=_URL))
     reader = _reader(app)
-    app.settings.set_media_player_uri(_KEY, None)    # what any other source does
+    app.settings.set_background(_KEY, ThemeBackground())   # what any other choice does
 
     app.dispatch(CaptureSourceFrame(key=_KEY, kind=PanelSource.MEDIA))
 
