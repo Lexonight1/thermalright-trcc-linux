@@ -708,3 +708,27 @@ def test_tiles_flow_to_the_visible_width_not_the_tabs(window: Any, qtbot: Any) -
     assert grid._columns == 1
     viewport.resize(1000, viewport.height())
     assert grid._columns == grid._fit() == (1000 + 10) // 130
+
+
+def test_every_panel_fits_the_minimum(window: Any, qtbot: Any) -> None:
+    """``PANEL_MIN`` is the least room any panel needs -- measured, so a
+    panel that grows past it fails here instead of being squeezed (the
+    drop was 6 px shorter than the device panel when this was written).
+    MUTATION CHECK: shrink ``PANEL_MIN``."""
+    from trcc.ui.hudgui.chrome import MENU
+    from trcc.ui.hudgui.window import DROP_WIDTH, PANEL_MIN
+
+    window.bar.buttons["Devices"].click()
+    devices = window.panel("Devices")
+    devices.menu.buttons[_KEY].click()
+    qtbot.waitUntil(devices.panel.isVisible)
+    for tab in devices.panel.pages:
+        devices.panel.tabs.tabs[tab].click()
+        need = devices.minimumSizeHint()
+        assert need.width() <= PANEL_MIN.width() and need.height() <= PANEL_MIN.height(), tab
+    for item in MENU:
+        panel = window.panel(item)
+        need = panel.minimumSizeHint()
+        assert need.width() <= PANEL_MIN.width() and need.height() <= PANEL_MIN.height(), item
+        assert panel.minimumSize() == PANEL_MIN, item       # given, even while hidden
+    assert window.width() >= DROP_WIDTH and window.drop.width() >= DROP_WIDTH

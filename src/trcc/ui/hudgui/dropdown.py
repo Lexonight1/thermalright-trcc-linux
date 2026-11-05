@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QMargins, QPropertyAnimation, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPaintEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
@@ -29,8 +29,8 @@ frame_log = per_frame(__name__)
 SLIDE_MS = 180
 #: The elbow: its top bar's height and its side bar's width, in pixels.
 ELBOW_TOP, ELBOW_SIDE = 22, 16
-#: The space the frame takes before the contents start.
-_INSET = (ELBOW_SIDE + 14, ELBOW_TOP + 12, 16, 14)
+#: The space the frame takes around the contents: left, top, right, bottom.
+INSET = QMargins(ELBOW_SIDE + 14, ELBOW_TOP + 12, 16, 14)
 
 
 def _chrome(rect: QRectF) -> QLinearGradient:
@@ -59,7 +59,7 @@ class DropPanel(QWidget):
         self._slide.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._slide.finished.connect(self._slid)
         self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(*_INSET)
+        self._layout.setContentsMargins(INSET)
         self._layout.setSpacing(18)
         self._content: QWidget = QLabel("", self)
         self._layout.addWidget(self._content, stretch=1)

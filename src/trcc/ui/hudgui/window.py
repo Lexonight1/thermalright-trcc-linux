@@ -23,7 +23,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import (
     QCloseEvent,
     QGuiApplication,
@@ -41,13 +41,12 @@ from ...core.logs import per_frame
 from ..bus_bridge import BusBridge
 from ..device_selection import DeviceSelection
 from ..qt_modules import ModulesView
-from ..qt_preview import FRAME_EDGE
 from ..qt_words import retranslate
 from .about import About
 from .chrome import CHROME_HEIGHT, ChromeBar
 from .control_center import ControlCenter
 from .devices import DevicesView
-from .dropdown import DropPanel
+from .dropdown import INSET, DropPanel
 from .modules import modules_panel
 from .sensors import SensorsView
 from .words import language
@@ -61,9 +60,16 @@ frame_log = per_frame(__name__)
 
 #: The glass under a dropped-down panel.
 GLASS = Path(__file__).parent / "assets" / "glass.png"
-#: A dropped-down panel's height: a device panel's tab bar, the preview's
-#: bezel, and the frame around them.
-DROP_HEIGHT = FRAME_EDGE + 120
+#: The least room any panel is given -- the device panel's own minimum
+#: (menu, preview and its tabs; measured 1166 x 578 on 2026-11-05), so no
+#: panel is ever squeezed, nor laid out tiny while hidden (the tiles were:
+#: one to a row).  ``test_every_panel_fits_the_minimum`` keeps it true.
+PANEL_MIN = QSize(1170, 580)
+#: A dropped-down panel: the minimum and the frame around it.
+DROP_HEIGHT = PANEL_MIN.height() + INSET.top() + INSET.bottom()
+#: The narrowest the window drops down -- wider than a small screen, rather
+#: than squeezing the panel.
+DROP_WIDTH = PANEL_MIN.width() + INSET.left() + INSET.right()
 
 
 class HudWindow(QWidget):
@@ -120,6 +126,7 @@ class HudWindow(QWidget):
         if item not in self._panels:
             log.info("HudWindow.panel: making %s's", item)
             made = self._panels[item] = self._make(item)
+            made.setMinimumSize(PANEL_MIN)
             self._translate(made)
         return self._panels[item]
 
@@ -155,8 +162,9 @@ class HudWindow(QWidget):
         else:
             self.active = item
             self.drop.set_content(self.panel(item))
-            self.resize(self.width(), CHROME_HEIGHT + DROP_HEIGHT)
-            self.drop.drop(tr(item, self._lang), CHROME_HEIGHT, self.width(), DROP_HEIGHT)
+            width = max(self.width(), DROP_WIDTH)
+            self.resize(width, CHROME_HEIGHT + DROP_HEIGHT)
+            self.drop.drop(tr(item, self._lang), CHROME_HEIGHT, width, DROP_HEIGHT)
         self.bar.set_active(self.active)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
