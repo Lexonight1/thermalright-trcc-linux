@@ -39,6 +39,7 @@ from ..bus_bridge import BusBridge
 from ..device_selection import DeviceSelection
 from ..qt_preview import FRAME_EDGE
 from .chrome import CHROME_HEIGHT, ChromeBar
+from .control_center import ControlCenter
 from .devices import DevicesView
 from .dropdown import DropPanel
 from .modules import modules_panel
@@ -115,6 +116,8 @@ class HudWindow(QWidget):
                 self._panels[item] = SensorsView(self._app, self._bus)
             elif item == "Modules":
                 self._panels[item] = modules_panel(self._app, self._bus)
+            elif item == "Control Center":
+                self._panels[item] = ControlCenter(self._app, self._bus)
             else:
                 self._panels[item] = _placeholder(item)
         return self._panels[item]

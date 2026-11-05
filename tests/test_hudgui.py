@@ -540,3 +540,57 @@ def test_modules_is_the_shared_list_and_follows_a_switch_from_another_ui(
                                                  enabled=not module.enabled)).ok
     qtbot.waitUntil(lambda: view.switches[module.key].isChecked() is not module.enabled,
                     timeout=3000)
+
+
+# ── Control Center ───────────────────────────────────────────────────────
+
+
+def _control_center(window: Any) -> Any:
+    window.bar.buttons["Control Center"].click()
+    return window.panel("Control Center")
+
+
+def test_control_center_changes_the_apps_settings(window: Any) -> None:
+    """Each control sends its Command, and the App holds the change.
+    MUTATION CHECK: send ``SetTempUnit(unit="C")`` from ``_on_unit``."""
+    from trcc.core.commands import ControlCenterSnapshot, GetAutostartStatus
+
+    view = _control_center(window)
+    view.unit_box.setCurrentIndex(view.unit_box.findData("F"))
+    view.hdd_box.setChecked(True)
+    view.refresh_box.setValue(7)
+    view.refresh_box.editingFinished.emit()
+    view.autostart_box.setChecked(True)
+    view.language_box.setCurrentIndex(view.language_box.findData("de"))
+    held = window._app.dispatch(ControlCenterSnapshot())
+    assert (held.temp_unit, held.hdd_enabled, held.refresh_interval_s, held.language) == (
+        "F", True, 7.0, "de")
+    assert window._app.dispatch(GetAutostartStatus()).enabled
+    assert view.note.text() == ""
+
+
+def test_control_center_follows_a_change_from_another_ui(window: Any, qtbot: Any) -> None:
+    """MUTATION CHECK: drop the ``app_settings_changed`` connection."""
+    from trcc.core.commands import SetHddEnabled, SetRefreshInterval, SetTempUnit
+
+    view = _control_center(window)
+    for command in (SetTempUnit(unit="F"), SetHddEnabled(enabled=True),
+                    SetRefreshInterval(seconds=9.0)):
+        assert window._app.dispatch(command).ok      # e.g. the CLI
+    qtbot.waitUntil(lambda: (view.unit_box.currentData(), view.hdd_box.isChecked(),
+                             view.refresh_box.value()) == ("F", True, 9), timeout=2000)
+
+
+def test_showing_the_settings_sends_nothing(window: Any, monkeypatch: Any) -> None:
+    """Putting the App's values on the controls must not echo them back.
+    MUTATION CHECK: drop the signal blockers in ``show_state``."""
+    from trcc.core.commands import SetHddEnabled, SetTempUnit
+
+    view = _control_center(window)
+    sent: list[Any] = []
+    monkeypatch.setattr(view, "_send", sent.append)
+    assert window._app.dispatch(SetTempUnit(unit="F")).ok
+    assert window._app.dispatch(SetHddEnabled(enabled=True)).ok
+    view.show_state()                       # new values on every control
+    assert (view.unit_box.currentData(), view.hdd_box.isChecked()) == ("F", True)
+    assert sent == []
