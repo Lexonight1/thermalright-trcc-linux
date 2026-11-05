@@ -116,7 +116,7 @@ def test_only_the_stripped_families_name_a_fuller_ffmpeg() -> None:
             "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/"
             "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
             " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing"),
-        "LinuxOS[SUSE-family]": "sudo zypper install opi && opi codecs",
+        "LinuxOS[SUSE-family]": "sudo zypper install opi && opi -n codecs",
     }
     assert LinuxOS(_EL_FAMILY).full_ffmpeg_hint() == (
         "sudo dnf install --nogpgcheck https://mirrors.rpmfusion.org/free/el/"

@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**173 total: 123 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**174 total: 124 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -1323,6 +1323,14 @@ Takes no arguments.
 Read the sensor-dashboard layout, auto-mapping any unbound row.
 
 *Query* → `SensorDashboardResult`
+
+Takes no arguments.
+
+### `InstallFullFfmpeg`
+
+Swap this system's ffmpeg for one that plays Apple (HEVC) video -- the steps ``RunSetup`` offered (``Platform.full_ffmpeg_hint``), run once the user said yes.  They add a third-party repository (RPM Fusion, Packman via opi), so a UI only ever runs this on an explicit yes.
+
+*Command* → `SetupResult`
 
 Takes no arguments.
 

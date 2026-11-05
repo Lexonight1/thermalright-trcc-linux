@@ -167,6 +167,13 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "route one day"
     )),
 
+    "InstallFullFfmpeg": (frozenset({"cli"}), (
+        "scoped: setup's offer to swap in an ffmpeg that plays Apple (HEVC) video "
+        "(2026-11-05).  It adds a third-party repository and runs sudo and the "
+        "package manager in a terminal, so only `trcc system setup` asks -- a "
+        "window or a REST client has no terminal to run it in.  Every UI shows "
+        "the same advice when a video cannot play")),
+
     # ── Dispatched from shared ui/presentation, so no skin is credited ────
     **{name: (frozenset(), (
         "scoped: the trimmer's live preview (2026-11-05, ffmpeg port inc 5). "

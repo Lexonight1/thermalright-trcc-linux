@@ -455,10 +455,11 @@ class LinuxFamily:
     #: :data:`_LINUX_INSTALL_PKGS`.  A missing row means "unconfirmed", not
     #: "same as Debian" — guessing is what #207 was.
     packages: Mapping[str, str] = field(default_factory=dict)
-    #: The line that gets an ffmpeg decoding every format, where this
-    #: family's own leaves some out; "" where it does not
-    #: (``Platform.full_ffmpeg_hint``).
-    full_ffmpeg: str = ""
+    #: The commands that get an ffmpeg decoding every format, where this
+    #: family's own leaves some out; () where it does not.  Argument lists,
+    #: run without a shell (``Platform.install_full_ffmpeg``); the hint shown
+    #: is the same steps joined (``Platform.full_ffmpeg_hint``) -- one fact.
+    full_ffmpeg_steps: tuple[tuple[str, ...], ...] = ()
 
 
 #: The name every TRCC release package goes by (rpm, deb, pacman): an owner
@@ -489,9 +490,10 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         # Stock ffmpeg-free cannot decode HEVC (measured 2026-11-05, Fedora
         # 42 and 44: "no decoder found for: hevc").  RPM Fusion's own two
         # steps, rpmfusion.org/Configuration and /Howto/Multimedia.
-        full_ffmpeg=("sudo dnf install https://mirrors.rpmfusion.org/free/fedora/"
-                     "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
-                     " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing"),
+        full_ffmpeg_steps=(
+            ("sudo", "dnf", "install", "https://mirrors.rpmfusion.org/free/fedora/"
+             "rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"),
+            ("sudo", "dnf", "swap", "ffmpeg-free", "ffmpeg", "--allowerasing")),
     ),
     LinuxFamily(
         name="Debian-family", manager="apt",
@@ -521,7 +523,10 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         # adds Packman for this release and swaps ffmpeg; measured to play
         # HEVC on both, 2026-11-05.  opi, not Packman's URL: Packman is
         # reported to close on 2026-12-31, and opi is what openSUSE keeps.
-        full_ffmpeg="sudo zypper install opi && opi codecs",
+        # -n (non-interactive): setup runs it only after the user said yes to
+        # this very line, and fed answers through a pipe opi's menu recursed
+        # until it crashed (measured); -n is the form measured to work.
+        full_ffmpeg_steps=(("sudo", "zypper", "install", "opi"), ("opi", "-n", "codecs")),
     ),
     LinuxFamily(
         name="Void", manager="xbps-install",
@@ -560,9 +565,10 @@ _EL_FAMILY = LinuxFamily(
     # repo (rpmfusion.org/Configuration) and the same swap; measured on Rocky
     # 9 to play HEVC, 2026-11-05.  EPEL and CRB are already on wherever
     # ffmpeg-free is installed -- it does not install without them.
-    full_ffmpeg=("sudo dnf install --nogpgcheck https://mirrors.rpmfusion.org/free/el/"
-                 "rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm"
-                 " && sudo dnf swap ffmpeg-free ffmpeg --allowerasing"),
+    full_ffmpeg_steps=(
+        ("sudo", "dnf", "install", "--nogpgcheck", "https://mirrors.rpmfusion.org/free/el/"
+         "rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm"),
+        ("sudo", "dnf", "swap", "ffmpeg-free", "ffmpeg", "--allowerasing")),
 )
 
 #: ``ID=`` values that mean Enterprise Linux, and the ``ID_LIKE`` token that
@@ -1019,7 +1025,7 @@ class LinuxOS(BaseOS, key="linux"):
         """
         super().__init__()
         self._family = family if family is not None else self._detect_family()
-        self._full_ffmpeg = self._family.full_ffmpeg     # Platform.full_ffmpeg_hint
+        self._full_ffmpeg_steps = self._family.full_ffmpeg_steps   # Platform.full_ffmpeg_hint
         log.info("LinuxOS: family=%s manager=%s",
                  self._family.name, self._family.manager or "(none)")
 

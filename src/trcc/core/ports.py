@@ -3668,6 +3668,13 @@ class PackageManager(ABC):
     def install_argv(self, package: str) -> tuple[str, ...]:
         """Argv that installs *package*.  Empty when this OS has no manager."""
 
+    @abstractmethod
+    def run(self, steps: tuple[tuple[str, ...], ...]) -> int:
+        """Run *steps* -- argument lists, no shell -- in the user's terminal,
+        so sudo and the manager can ask; stop at the first failure and return
+        its exit, 0 when all ran.  Only on a person's explicit yes
+        (``Platform.install_full_ffmpeg``)."""
+
 
 class AutostartManager(ABC):
     """Start-with-the-computer, per OS.
@@ -4024,9 +4031,10 @@ class Platform(ABC):
         brew, BSD → pkg / pkg_add.
         """
 
-    #: What :meth:`full_ffmpeg_hint` answers -- data, set by a platform whose
-    #: usual ffmpeg leaves formats out (``LinuxOS`` takes its family's).
-    _full_ffmpeg: str = ""
+    #: The commands :meth:`full_ffmpeg_hint` shows and :meth:`install_full_ffmpeg`
+    #: runs -- data, set by a platform whose usual ffmpeg leaves formats out
+    #: (``LinuxOS`` takes its family's).  Argument lists, never a shell line.
+    _full_ffmpeg_steps: tuple[tuple[str, ...], ...] = ()
 
     def full_ffmpeg_hint(self) -> str:
         """One line that swaps this OS's ffmpeg for a build that decodes every
@@ -4038,8 +4046,20 @@ class Platform(ABC):
         video -- and each names its own way to a full one: Fedora and EL
         RPM Fusion's, openSUSE ``opi codecs``.
         """
-        log.debug("%s.full_ffmpeg_hint: %r", type(self).__name__, self._full_ffmpeg)
-        return self._full_ffmpeg
+        line = " && ".join(" ".join(step) for step in self._full_ffmpeg_steps)
+        log.debug("%s.full_ffmpeg_hint: %r", type(self).__name__, line)
+        return line
+
+    def install_full_ffmpeg(self) -> int:
+        """Run :meth:`full_ffmpeg_hint`'s steps -- the user said yes -- through
+        this OS's package manager (:meth:`packages`), and return the first
+        non-zero exit, 0 when all ran; 1 when there is nothing to run here."""
+        if not self._full_ffmpeg_steps:
+            log.info("%s.install_full_ffmpeg: no steps on this platform", type(self).__name__)
+            return 1
+        log.info("%s.install_full_ffmpeg: %d step(s)", type(self).__name__,
+                 len(self._full_ffmpeg_steps))
+        return self.packages().run(self._full_ffmpeg_steps)
 
     @abstractmethod
     def no_devices_hint(self) -> str:

@@ -29,6 +29,7 @@ import shutil
 import subprocess
 
 from ...core.ports import PackageManager
+from ._elevate import run_steps
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +58,16 @@ def _run(argv: list[str]) -> str | None:
     return out or None
 
 
-class NoPackageManager(PackageManager):
+class _InTerminal(PackageManager):
+    """What every manager shares: running steps it was handed, in the user's
+    terminal (``_elevate.run_steps``) -- written once, not per manager."""
+
+    def run(self, steps: tuple[tuple[str, ...], ...]) -> int:
+        log.info("%s.run: %d step(s)", type(self).__name__, len(steps))
+        return run_steps(steps)
+
+
+class NoPackageManager(_InTerminal):
     """The honest default: this OS cannot be asked.
 
     Returns None everywhere, so callers fall back to the static install hint.
@@ -83,7 +93,7 @@ class NoPackageManager(PackageManager):
         return ()
 
 
-class Rpm(PackageManager):
+class Rpm(_InTerminal):
     """Fedora / RHEL / CentOS Stream / Rocky / AlmaLinux.
 
     ``owns`` uses rpm rather than dnf: it reads the local rpmdb directly, needs
@@ -134,7 +144,7 @@ class Rpm(PackageManager):
         return argv
 
 
-class Pacman(PackageManager):
+class Pacman(_InTerminal):
     """Arch and its family (CachyOS, Manjaro, EndeavourOS) -- ``pacman``.
 
     Measured 2026-11-04 in ``docker.io/library/archlinux`` (pacman 7.1.0):

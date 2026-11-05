@@ -265,6 +265,9 @@ class _Packages(PackageManager):
     def install_argv(self, package: str) -> tuple[str, ...]:
         return ()
 
+    def run(self, steps: tuple[tuple[str, ...], ...]) -> int:
+        return 0
+
 
 def _el(epel: bool) -> LinuxOS:
     from trcc.adapters.system.linux import _EL_FAMILY

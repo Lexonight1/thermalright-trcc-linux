@@ -703,6 +703,10 @@ class SensorsResult(Result):
 class SetupResult(Result):
     exit_code: int = 0
     warnings: list[str] = field(default_factory=list)
+    #: The commands that would bring an ffmpeg playing Apple (HEVC) video,
+    #: when this one cannot and the platform knows how -- what a terminal UI
+    #: offers to run (``InstallFullFfmpeg``); "" when there is nothing to offer.
+    full_ffmpeg: str = ""
 
 
 @dataclass(frozen=True, slots=True)

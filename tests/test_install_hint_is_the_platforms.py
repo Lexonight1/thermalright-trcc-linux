@@ -228,10 +228,12 @@ def test_setup_tells_the_user_how_to_play_apple_videos(
     from trcc.app import App
     from trcc.core.commands import RunSetup
 
-    monkeypatch.setattr(fake_platform, "_full_ffmpeg", advice)
+    monkeypatch.setattr(fake_platform, "_full_ffmpeg_steps",
+                        ((tuple(advice.split()),) if advice else ()))
     app = App(fake_platform, video_tool=_Decoders(*missing))
     try:
-        assert app.dispatch(RunSetup(dry_run=True)).warnings == told
+        result = app.dispatch(RunSetup(dry_run=True))
+        assert (result.warnings, result.full_ffmpeg) == (told, advice if told else "")
     finally:
         app.close()
 
@@ -271,3 +273,115 @@ def test_both_measured_wordings_of_a_missing_codec_are_read(said: str) -> None:
     MUTATION CHECK: drop the openSUSE arm -- its users get the raw error."""
     assert FfmpegTool(full_ffmpeg_hint=_rpm_fusion)._explain(said) == (
         f"this ffmpeg cannot play HEVC video -- to get one that can: {_RPM_FUSION}")
+
+
+
+def test_the_steps_run_in_order_without_a_shell_and_stop_at_a_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Argument lists, never a shell line; RPM Fusion's ``$(rpm -E %fedora)``
+    is asked of rpm; root drops ``sudo``; a failed step stops the rest.
+
+    MUTATION CHECK: keep going after a failure -- the swap runs after the
+    repository did not install."""
+    import subprocess
+    from types import SimpleNamespace
+
+    from trcc.adapters.system import _elevate
+
+    ran: list[list[str]] = []
+
+    def run(argv: list[str], **_k: object) -> SimpleNamespace:
+        ran.append(argv)
+        if argv[:2] == ["rpm", "-E"]:
+            return SimpleNamespace(returncode=0, stdout="44\n")
+        return SimpleNamespace(returncode=1 if argv[-1] == "fails" else 0, stdout="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(_elevate.os, "geteuid", lambda: 1000)
+    assert _elevate.run_steps((
+        ("sudo", "dnf", "install", "https://x/release-$(rpm -E %fedora).rpm"),
+        ("sudo", "dnf", "swap", "a", "b"))) == 0
+    assert ran == [["rpm", "-E", "%fedora"],
+                   ["sudo", "dnf", "install", "https://x/release-44.rpm"],
+                   ["sudo", "dnf", "swap", "a", "b"]]
+
+    ran.clear()
+    monkeypatch.setattr(_elevate.os, "geteuid", lambda: 0)
+    assert _elevate.run_steps((("sudo", "zypper", "fails"), ("opi", "codecs"))) == 1
+    assert ran == [["zypper", "fails"]]
+
+
+class _Fixable(FfmpegTool):
+    """HEVC missing until the install runs."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fixed = False
+
+    def lacks_decoders(self, codecs: tuple[str, ...]) -> tuple[str, ...]:
+        return () if self.fixed else codecs
+
+
+@pytest.mark.parametrize(("fixes", "ok"), [(True, True), (False, False)])
+def test_installing_the_full_ffmpeg_reports_what_really_happened(
+    fake_platform, monkeypatch: pytest.MonkeyPatch, fixes: bool, ok: bool,
+) -> None:
+    """Judged by asking ffmpeg again, not by exit codes.
+
+    MUTATION CHECK: report ok from the exit code -- a run that exits 0 but
+    leaves HEVC missing says "installed"."""
+    from trcc.app import App
+    from trcc.core.commands import InstallFullFfmpeg
+
+    tool = _Fixable()
+
+    def install(self: object) -> int:
+        tool.fixed = fixes
+        return 0
+
+    monkeypatch.setattr(fake_platform, "_full_ffmpeg_steps", (("sudo", "dnf", "swap", "a", "b"),))
+    monkeypatch.setattr(type(fake_platform), "install_full_ffmpeg", install)
+    app = App(fake_platform, video_tool=tool)
+    try:
+        result = app.dispatch(InstallFullFfmpeg())
+    finally:
+        app.close()
+    assert result.ok is ok
+    assert result.message == ("The full ffmpeg is installed -- Apple videos will play." if ok else
+                              "The full ffmpeg was not installed (exit 0) -- Apple videos still "
+                              "will not play.  To try by hand: sudo dnf swap a b")
+
+
+@pytest.mark.parametrize(("terminal", "answer", "installs"), [
+    (True, "y\n", True), (True, "\n", False), (False, "y\n", False)],
+    ids=["yes", "default-no", "no-terminal"])
+def test_setup_offers_the_full_ffmpeg_to_a_person_at_the_terminal(
+    tmp_path: Path, cli_runner, monkeypatch: pytest.MonkeyPatch,
+    terminal: bool, answer: str, installs: bool,
+) -> None:
+    """His ask (2026-11-05): warn, and offer to install it.  Default No (a
+    third-party repository); never without a terminal.
+
+    MUTATION CHECK: default the question to yes -- the empty answer installs."""
+    from tests.mock_platform import MockPlatform
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli import system as cli_system
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import _CliRenderer
+
+    ran: list[str] = []
+    platform = MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path)
+    platform._full_ffmpeg_steps = (("sudo", "dnf", "swap", "ffmpeg-free", "ffmpeg"),)
+    monkeypatch.setattr(type(platform), "setup", lambda self, dry_run=False: 0)
+    monkeypatch.setattr(type(platform), "install_full_ffmpeg",
+                        lambda self: ran.append("install") or 0)
+    monkeypatch.setattr(FfmpegTool, "lacks_decoders", lambda self, codecs: codecs)
+    monkeypatch.setattr(cli_system, "_at_a_terminal", lambda: terminal)
+    _ctx.set_platform(platform)
+    _ctx.set_renderer(_CliRenderer())
+    out = cli_runner.invoke(cli, ["system", "setup"], input=answer)
+
+    assert ran == (["install"] if installs else []), out.output
+    assert ("Install the full ffmpeg now" in out.output) is terminal

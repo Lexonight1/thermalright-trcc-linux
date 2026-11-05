@@ -22,6 +22,7 @@ from ...core.commands import (
     GetPaths,
     GetPlatformInfo,
     GetSensorDashboard,
+    InstallFullFfmpeg,
     ListDisks,
     ListDiskSensors,
     ListFans,
@@ -77,13 +78,35 @@ def setup(
     simply means "apply", which is what anyone passing it intended; there is
     no confirmation of our own to skip, and the sudo password prompt is not
     something a flag here can or should suppress.
+
+    One question IS asked, and ``--yes`` does not answer it: where this
+    system's ffmpeg cannot play Apple (HEVC) video, setup offers to install a
+    full one.  That adds a third-party repository, so it is asked of a person
+    at the terminal, defaults to No, and is never asked on ``--dry-run`` or
+    with no terminal (the install script, CI).
     """
     log.info("cli system setup: yes=%s dry_run=%s", yes, dry_run)
     result = get_app().dispatch(RunSetup(dry_run=dry_run))
     typer.echo(result.message)
     for warning in result.warnings:
         typer.echo(f"  warning: {warning}", err=True)
+    if result.full_ffmpeg and not dry_run and _at_a_terminal():
+        log.info("cli system setup: offering the full ffmpeg")
+        if typer.confirm("Install the full ffmpeg now, so Apple videos play?  This runs:\n"
+                         f"  {result.full_ffmpeg}\n", default=False):
+            installed = get_app().dispatch(InstallFullFfmpeg())
+            typer.echo(installed.message, err=not installed.ok)
+        else:
+            log.info("cli system setup: full ffmpeg declined")
     raise typer.Exit(code=result.exit_code)
+
+
+def _at_a_terminal() -> bool:
+    """Whether a person can answer a question here -- not the install script,
+    not CI, not a pipe."""
+    there = sys.stdin.isatty()
+    log.debug("_at_a_terminal: %s", there)
+    return there
 
 
 @app.command("sensors")

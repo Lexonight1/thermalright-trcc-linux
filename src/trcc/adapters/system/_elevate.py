@@ -13,6 +13,8 @@ is more robust than a ``PYTHONPATH=`` env var, which sudo's ``env_reset`` /
 from __future__ import annotations
 
 import logging
+import os
+import re
 import site
 import subprocess
 import sys
@@ -47,3 +49,46 @@ def reexec_as_root(snippet: str) -> int:
         log.exception("reexec_as_root: sudo re-exec failed")
         return 1
     return result.returncode
+
+
+#: An rpm macro written as the shell would expand it, as RPM Fusion's own
+#: instructions spell it: ``$(rpm -E %fedora)``.  Steps run without a shell,
+#: so the runner expands it by asking rpm.
+_RPM_MACRO = re.compile(r"\$\(rpm -E (%\w+)\)")
+
+
+def _rpm_macro(found: re.Match[str]) -> str:
+    """``rpm -E %fedora`` -> ``44``; the text left as it was if rpm cannot say."""
+    try:
+        ran = subprocess.run(["rpm", "-E", found.group(1)], capture_output=True,
+                             text=True, check=False, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.warning("_rpm_macro: could not ask rpm for %s (%s)", found.group(1), e)
+        return found.group(0)
+    value = ran.stdout.strip()
+    log.debug("_rpm_macro: %s -> %r", found.group(1), value)
+    return value or found.group(0)
+
+
+def run_steps(steps: tuple[tuple[str, ...], ...]) -> int:
+    """Run *steps* in order, each an argument list -- no shell -- with the
+    terminal, so ``sudo`` and the package manager can ask; the first non-zero
+    exit stops them and is returned, 0 when all ran.  Already root (the
+    install script runs setup as root), a leading ``sudo`` is dropped."""
+    root = hasattr(os, "geteuid") and os.geteuid() == 0
+    for step in steps:
+        argv = [_RPM_MACRO.sub(_rpm_macro, arg) for arg in step]
+        if root and argv[:1] == ["sudo"]:
+            argv = argv[1:]
+        log.info("run_steps: %s", " ".join(argv))
+        try:
+            code = subprocess.run(argv, check=False).returncode
+        except OSError as e:
+            log.warning("run_steps: could not run %s (%s)", argv[0], e)
+            return 127
+        if code:
+            log.warning("run_steps: %s exited %d -- the rest are not run", argv[0], code)
+            return code
+    log.info("run_steps: %d step(s) done", len(steps))
+    return 0
+

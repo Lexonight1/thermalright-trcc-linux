@@ -718,10 +718,12 @@ class RunSetup(Command[SetupResult]):
         # An iPhone records HEVC, which some distros' ffmpeg leaves out --
         # Fedora's stock ffmpeg-free.  Told here, where the user is setting
         # up, rather than when the first Apple video will not play.
+        offer = ""
         if (full := app.platform.full_ffmpeg_hint()) and app.video_tool.lacks_decoders(("hevc",)):
             log.warning("RunSetup.execute: this ffmpeg has no HEVC decoder")
             warnings.append("Apple videos (HEVC) will not play with this ffmpeg -- "
                             f"to get the full one: {full}")
+            offer = full
         log.info("RunSetup.execute: exit=%d, %d permission warning(s): %s",
                  code, len(warnings), warnings)
         return SetupResult(
@@ -729,7 +731,39 @@ class RunSetup(Command[SetupResult]):
             message=f"Setup completed with exit code {code}",
             exit_code=code,
             warnings=warnings,
+            full_ffmpeg=offer,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class InstallFullFfmpeg(Command[SetupResult]):
+    """Swap this system's ffmpeg for one that plays Apple (HEVC) video --
+    the steps ``RunSetup`` offered (``Platform.full_ffmpeg_hint``), run once
+    the user said yes.  They add a third-party repository (RPM Fusion,
+    Packman via opi), so a UI only ever runs this on an explicit yes.
+
+    In the caller's process, in its terminal: sudo and the package manager
+    ask their own questions there, and nothing times them out.  Says what
+    happened by asking the video tool again, not by trusting exit codes.
+    """
+    RUNS_IN_CALLER: ClassVar[bool] = True
+    WAITS_ON_USER: ClassVar[bool] = True
+
+    def execute(self, app: App) -> SetupResult:
+        steps = app.platform.full_ffmpeg_hint()
+        log.info("InstallFullFfmpeg.execute: %s", steps or "(nothing to run here)")
+        if not steps:
+            return SetupResult(ok=False, exit_code=1,
+                               message="There is no fuller ffmpeg to install on this system.")
+        code = app.platform.install_full_ffmpeg()
+        if lacking := app.video_tool.lacks_decoders(("hevc",)):
+            log.warning("InstallFullFfmpeg.execute: exit %d, still lacking %s", code, lacking)
+            return SetupResult(ok=False, exit_code=code or 1, message=(
+                f"The full ffmpeg was not installed (exit {code}) -- Apple videos "
+                f"still will not play.  To try by hand: {steps}"))
+        log.info("InstallFullFfmpeg.execute: done, HEVC decodes now")
+        return SetupResult(ok=True, exit_code=0,
+                           message="The full ffmpeg is installed -- Apple videos will play.")
 
 @dataclass(frozen=True, slots=True)
 class RunHealthCheck(Query[HealthReportResult]):

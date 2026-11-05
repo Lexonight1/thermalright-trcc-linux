@@ -6,12 +6,12 @@ Every abstract contract in the tree: what a new implementation must write, what 
 
 Ordered **cheapest to extend first** — the ports at the top are where this codebase welcomes a contributor, the ones at the bottom are where it does not yet.
 
-93 ports.
+94 ports.
 
 | port | implement | inherit | implementations |
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 4 | 4 |
-| [`Command`](#command) | 1 | 1 | 173 |
+| [`Command`](#command) | 1 | 1 | 174 |
 | [`CpuSource`](#cpusource) | 1 | 5 | 11 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
@@ -77,15 +77,16 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`HardwarePort`](#hardwareport) | 4 | 0 | 1 |
 | [`MemorySource`](#memorysource) | 4 | 0 | 2 |
 | [`ModuleStore`](#modulestore) | 4 | 0 | 1 |
-| [`PackageManager`](#packagemanager) | 4 | 0 | 3 |
 | [`PaintedVisual`](#paintedvisual) | 4 | 3 | 13 |
 | [`Paths`](#paths) | 4 | 15 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 5 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
+| [`_InTerminal`](#_interminal) | 4 | 1 | 3 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
 | [`BulkTransport`](#bulktransport) | 5 | 2 | 2 |
 | [`DdpListener`](#ddplistener) | 5 | 0 | 1 |
 | [`GlVisual`](#glvisual) | 5 | 0 | 2 |
+| [`PackageManager`](#packagemanager) | 5 | 0 | 3 |
 | [`PreviewRun`](#previewrun) | 5 | 0 | 1 |
 | [`RamLights`](#ramlights) | 5 | 0 | 1 |
 | [`ScsiTransport`](#scsitransport) | 5 | 0 | 4 |
@@ -100,7 +101,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 8 | 1 |
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 13 | 9 | 1 |
-| [`Platform`](#platform) | 25 | 10 | 8 |
+| [`Platform`](#platform) | 25 | 11 | 8 |
 | [`ContentStore`](#contentstore) | 33 | 0 | 1 |
 | [`ModuleServices`](#moduleservices) | 36 | 0 | 1 |
 
@@ -136,7 +137,7 @@ execute(app: 'App') -> R_co
 
 **You inherit (1):** `refusal`
 
-**Implementations (173):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `MarkFirstRunDone` · `ModuleIcon` · `OpenRgbPorts` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewClip` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopClipPreview` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickClipPreview` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UnlockModuleDevices` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
+**Implementations (174):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallFullFfmpeg` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `MarkFirstRunDone` · `ModuleIcon` · `OpenRgbPorts` · `PauseVideo` · `PlayVideo` · `PlayVisual` · `PreviewClip` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `SleepDevice` · `StartScreencast` · `StopClipPreview` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickClipPreview` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UnlockModuleDevices` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
 
 ## CpuSource
 
@@ -1182,23 +1183,6 @@ root() -> Path
 
 **Implementations (1):** `FolderModuleStore`
 
-## PackageManager
-
-`core/ports.py`
-
-What the OS's package manager can tell us about a missing tool.
-
-**You implement (4):**
-
-```python
-install_argv(package: 'str') -> tuple[str, ...]
-installed(package: 'str') -> bool
-owns(path: 'str') -> str | None
-provides(path: 'str') -> str | None
-```
-
-**Implementations (3):** `NoPackageManager` · `Pacman` · `Rpm`
-
 ## PaintedVisual
 
 `modules/visualizer/adapters/_painted.py`
@@ -1275,6 +1259,25 @@ write_byte_data(address: 'int', register: 'int', value: 'int') -> None
 
 **Implementations (1):** `LinuxSmBus`
 
+## _InTerminal
+
+`adapters/system/_packages.py`
+
+What every manager shares: running steps it was handed, in the user's terminal (``_elevate.run_steps``) -- written once, not per manager.
+
+**You implement (4):**
+
+```python
+install_argv(package: 'str') -> tuple[str, ...]
+installed(package: 'str') -> bool
+owns(path: 'str') -> str | None
+provides(path: 'str') -> str | None
+```
+
+**You inherit (1):** `run`
+
+**Implementations (3):** `NoPackageManager` · `Pacman` · `Rpm`
+
 ## BaseVisual
 
 `modules/visualizer/adapters/_base.py`
@@ -1348,6 +1351,24 @@ render() -> RawFrame
 ```
 
 **Implementations (2):** `KarmaViz` · `TrccPipes`
+
+## PackageManager
+
+`core/ports.py`
+
+What the OS's package manager can tell us about a missing tool.
+
+**You implement (5):**
+
+```python
+install_argv(package: 'str') -> tuple[str, ...]
+installed(package: 'str') -> bool
+owns(path: 'str') -> str | None
+provides(path: 'str') -> str | None
+run(steps: 'tuple[tuple[str, ...], ...]') -> int
+```
+
+**Implementations (3):** `NoPackageManager` · `Pacman` · `Rpm`
 
 ## PreviewRun
 
@@ -1682,7 +1703,7 @@ usb_power_state(vid: 'int', pid: 'int', unit: 'str' = '') -> UsbPowerState | Non
 worker_thread_context() -> AbstractContextManager[None]
 ```
 
-**You inherit (10):** `adopt_session` · `full_ffmpeg_hint` · `hard_exit` · `module_devices` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
+**You inherit (11):** `adopt_session` · `full_ffmpeg_hint` · `hard_exit` · `install_full_ffmpeg` · `module_devices` · `ram_access` · `replace_process` · `rgb_hardware` · `smbuses` · `sound_input` · `substitute`
 
 **Implementations (8):** `BsdOS` · `FreeBsdOS` · `GenericBsd` · `LinuxOS` · `MacOSPlatform` · `NetBsdOS` · `OpenBsdOS` · `WindowsPlatform`
 
