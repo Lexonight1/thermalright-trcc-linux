@@ -97,6 +97,8 @@ class UCThemeSetting(BasePanel):
     background_changed = Signal(bool)
     screencast_changed = Signal(bool)
     eyedropper_requested = Signal()  # launch eyedropper color picker
+    #: "C" or "F" picked on a temperature element -- the App's one unit.
+    temp_unit_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
@@ -141,6 +143,7 @@ class UCThemeSetting(BasePanel):
         self.data_table.move(*Layout.DATA_TABLE)
         self.data_table.format_changed.connect(self._on_format_changed)
         self.data_table.text_changed.connect(self._on_text_changed)
+        self.data_table.temp_unit_changed.connect(self.temp_unit_changed)
 
         # Display mode panels
         self.mask_panel = MaskPanel(self)
@@ -188,9 +191,16 @@ class UCThemeSetting(BasePanel):
         self.color_panel.set_color_hex(config.color)
         self.color_panel.set_font_display(config.font_name, config.font_size,
                                               config.font_style)
-        self.data_table.set_mode(config.mode, config.mode_sub)
+        self.data_table.set_mode(config.mode, config.mode_sub,
+                                 temperature=_is_temperature(config))
         if config.mode == OverlayMode.CUSTOM:
             self.data_table.text_input.setText(config.text)
+
+    def show_temp_unit(self, unit: str) -> None:
+        """The App's temperature unit, from any UI -- shown on the °C | °F
+        switch; sends nothing."""
+        log.debug("show_temp_unit: %s", unit)
+        self.data_table.show_temp_unit(unit)
 
     def _on_add_requested(self):
         """Empty cell clicked — show add panel."""
@@ -382,3 +392,12 @@ class UCThemeSetting(BasePanel):
         self.background_panel.set_enabled(source == "background" and background_drawn)
         self.screencast_panel.set_enabled(source == "screencast")
         self.video_panel.set_enabled(source == "media")
+
+
+def _is_temperature(config: OverlayElementConfig) -> bool:
+    """A hardware element whose reading is a temperature -- the one the
+    renderer converts to °F: its format draws a °C (``metric_text``)."""
+    fields = config_fields(config) if config.mode is OverlayMode.HARDWARE else None
+    temperature = fields is not None and "°C" in str(fields.get("format", ""))
+    log.debug("_is_temperature: %s -> %s", config.id, temperature)
+    return temperature

@@ -579,6 +579,7 @@ class TRCCApp(QMainWindow):
                  "hdd=%s", cc.temp_unit, cc.language, cc.active_gpu,
                  cc.refresh_interval_s, cc.hdd_enabled)
         self.uc_about.show_app_settings(cc)
+        self.uc_theme_setting.show_temp_unit(cc.temp_unit)
         self.uc_system_info.set_temp_unit(code)
         self.uc_led_control.set_temp_unit(code)
         self._show_language(cc.language)
@@ -1775,6 +1776,7 @@ class TRCCApp(QMainWindow):
         self.uc_about.close_requested.connect(self._on_about_close_requested)
         self.uc_about.language_changed.connect(self._set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
+        self.uc_theme_setting.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
         self.uc_about.gpu_changed.connect(self._on_gpu_changed)

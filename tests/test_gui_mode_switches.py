@@ -168,3 +168,69 @@ def test_the_video_switch_off_ends_the_media_player(window: Any, qtbot: Any) -> 
 
     assert _snap(window).display_source == "background"
     assert _switches(window) == _THEME
+
+
+# ── an element's own switch: °C | °F, 12H | 24H (2026-11-05) ─────────
+
+
+def _click_side(qtbot: Any, switch: Any, right: bool) -> None:
+    """Click one side of a two-way switch, the way a user does."""
+    from PySide6.QtCore import QPoint, Qt
+
+    x = switch.width() * 3 // 4 if right else switch.width() // 4
+    qtbot.mouseClick(switch, Qt.MouseButton.LeftButton, pos=QPoint(x, switch.height() // 2))
+
+
+def _unit(win: Any) -> str:
+    from trcc.core.commands import ControlCenterSnapshot
+
+    return win._app.dispatch(ControlCenterSnapshot()).temp_unit
+
+
+def test_a_temperature_element_switches_the_temperature_unit(window: Any, qtbot: Any) -> None:
+    """Legacy's overlay editor switched °C/°F on a temperature element; the
+    cutover left the toggle inert (bd880902, 2026-06-23, "deferred pending a
+    decision") and then the button became show/hide only -- the switch was
+    lost.  It is the App's ONE unit, as the About page's radios set it, and
+    a change from any UI shows on it.  MUTATION CHECK: drop the
+    ``uc_theme_setting.temp_unit_changed`` connect in TRCCApp."""
+    from trcc.core.commands import SetTempUnit
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+
+    ts = window.uc_theme_setting
+    table = ts.data_table
+    ts._show_element(OverlayElementConfig(id="t", mode=OverlayMode.HARDWARE,
+                                          metric="cpu:temp"))
+    assert (table.temp_switch.isHidden(), table.unit_btn.isHidden()) == (False, True)
+
+    _click_side(qtbot, table.temp_switch, right=True)
+    qtbot.waitUntil(lambda: _unit(window) == "F", timeout=3000)
+
+    window._app.dispatch(SetTempUnit(unit="C"))                  # another UI
+    qtbot.waitUntil(lambda: table.temp_switch._right is False, timeout=3000)
+
+
+def test_any_other_reading_keeps_its_unit_button(window: Any) -> None:
+    """A load has no °F: it keeps the show/hide-unit button."""
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+
+    ts = window.uc_theme_setting
+    ts._show_element(OverlayElementConfig(id="u", mode=OverlayMode.HARDWARE,
+                                          metric="cpu:usage"))
+    table = ts.data_table
+    assert (table.temp_switch.isHidden(), table.unit_btn.isHidden()) == (True, False)
+
+
+def test_a_clock_element_picks_12h_or_24h(window: Any, qtbot: Any) -> None:
+    """12H | 24H, the chosen one highlighted; picking sends this clock's own
+    format (myModeSub 1 = 12H, 2 = 24H)."""
+    from trcc.core.models import OverlayElementConfig, OverlayMode
+
+    ts = window.uc_theme_setting
+    table = ts.data_table
+    ts._show_element(OverlayElementConfig(id="c", mode=OverlayMode.TIME, mode_sub=1))
+    assert (table.time_switch.isHidden(), table.time_switch._right) == (False, False)
+    picked: list[tuple[int, int]] = []
+    table.format_changed.connect(lambda mode, sub: picked.append((mode, sub)))
+    _click_side(qtbot, table.time_switch, right=True)
+    assert picked == [(OverlayMode.TIME, 2)]
