@@ -507,3 +507,74 @@ def test_an_led_settings_change_releases_the_hold(led_app: App) -> None:
 
     assert _LED_KEY not in led_app.held
     assert _LED_KEY in led_app.led_animation_loop.animating_keys()
+
+
+
+# ── The thumbnail IS the panel's picture -- the Dynamic Island included ───
+
+_WIDE_KEY = "87ad:70db"
+
+
+@pytest.fixture
+def wide(tmp_path: Path) -> Any:
+    """A connected 1600x720 split-mode panel (PM 64, SUB 0) and a 1600x720
+    theme the real renderer draws."""
+    from PySide6.QtGui import QColor, QImage
+
+    app = App(MockPlatform([{"type": "lcd", "vid": "87ad", "pid": "70db",
+                             "pm": 64, "sub": 0}], tmp_path), renderer=QtRenderer())
+    app.discover_and_connect()
+    folder = tmp_path / "themes" / "Wide"
+    folder.mkdir(parents=True)
+    (folder / "trcc.json").write_text(
+        '{"name": "Wide", "width": 1600, "height": 720, "elements": []}',
+        encoding="utf-8")
+    img = QImage(1600, 720, QImage.Format.Format_RGB888)
+    img.fill(QColor(0, 64, 128))
+    assert img.save(str(folder / "00.png"))
+    yield app, app.themes.load(folder)
+    app.close()
+
+
+def _thumbnail_and_panel(app: App, theme: Theme, orientation: int,
+                         split_mode: int) -> tuple[bytes, bytes]:
+    """PNG of ``build_preview_surface``, and of the picture ``build_frame``
+    composed for the same state."""
+    s = app.settings.for_device(_WIDE_KEY)
+    s.orientation, s.split_mode = orientation, split_mode
+    device = app.devices[_WIDE_KEY]
+    app.display.invalidate(_WIDE_KEY)
+    app.display.build_frame(info=device.info, theme=theme, sensors={},
+                            profile=device.profile)
+    panel = app.renderer.encode_png(app.display.rendered_surface(_WIDE_KEY))
+    thumbnail = app.renderer.encode_png(app.display.build_preview_surface(
+        info=device.info, theme=theme, sensors={}, profile=device.profile))
+    return thumbnail, panel
+
+
+@pytest.mark.parametrize("split_mode", [0, 1, 2, 3])
+@pytest.mark.parametrize("orientation", [0, 90, 180, 270])
+def test_the_thumbnail_is_the_panels_own_picture(
+    wide: Any, orientation: int, split_mode: int,
+) -> None:
+    """``build_preview_surface`` -- SaveTheme's ``Theme.png``, and
+    ``BuildPreview`` before a frame was sent -- is the very picture
+    ``build_frame`` composes.  The C#'s ``Theme.png`` is the image its encoder
+    is handed (``SetUCState`` -> ``GenerateImage``, the island drawn in ->
+    ``ImageToJpg``); ours drew no island until 2026-11-05.
+
+    MUTATION CHECK: give the preview the overlay alone, and the island cases
+    fail."""
+    app, theme = wide
+    thumbnail, panel = _thumbnail_and_panel(app, theme, orientation, split_mode)
+    assert thumbnail == panel
+
+
+@pytest.mark.parametrize("split_mode", [1, 2, 3])
+def test_the_thumbnail_draws_the_island(wide: Any, split_mode: int) -> None:
+    """Not vacuous: an island style changes the thumbnail -- the equality
+    above could otherwise hold with the island missing from both."""
+    app, theme = wide
+    off, _ = _thumbnail_and_panel(app, theme, 0, 0)
+    on, _ = _thumbnail_and_panel(app, theme, 0, split_mode)
+    assert on != off

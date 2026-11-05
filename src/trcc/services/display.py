@@ -367,12 +367,8 @@ class DisplayService:
         # overlay (Dynamic Island) -- 1600x720 widescreen only, an asset picked
         # by (split_mode, rotation, SUB byte) as the C# does.  ``composite``
         # copies its base, so the cached bg+mask is never drawn into.
-        layers: list[Layer] = [Overlay(overlay_key, overlay_surface)]
-        if s.split_mode and _is_widescreen_split(visual_size):
-            split = self._split_layer(info, s.split_mode, s.orientation,
-                                      profile.sub if profile is not None else 0)
-            if split is not None:
-                layers.append(split)
+        layers = self._layers_over_background(
+            info, s, overlay_key, overlay_surface, visual_size, profile)
         surface = draw_all(bg_surface, layers, self._r)
 
         # Brightness dim (before rotation — matches C# order)
@@ -466,13 +462,20 @@ class DisplayService:
         *,
         profile: DeviceProfile | None = None,
     ) -> Any:
-        """Same pipeline as ``build_frame`` but returns the surface pre-encode.
+        """The panel's picture as composed, before the wire: the same layers as
+        ``build_frame`` -- background + mask, overlay, the Dynamic Island on
+        1600x720 -- and its brightness, as a renderer surface with no encode.
 
-        Used by the GUI preview panel — gives callers a renderable
-        Renderer surface (QImage for QtRenderer) without paying for the
-        RGB565/JPEG encode step.  Honors user orientation + brightness
-        + device-side rotation so what the preview shows matches what
-        the device would receive byte-for-byte.
+        What the C# hands its encoder (``UCScreenImage.SetUCState`` ->
+        ``GenerateImage``, the island drawn in) and saves as ``Theme.png``
+        (``FormCZTV.ImageToJpg`` / ``ImageTo565``): SaveTheme's thumbnail, and
+        ``BuildPreview`` before the panel was sent a frame.  It drew no island
+        until 2026-11-05, so a saved 1600x720 theme's tile lacked it.
+
+        NOT the wire bytes: the display angle sizes the canvas but does not
+        turn the picture, and the panel's mount rotation and the encode are
+        the wire's (``build_frame``).  Only a landscape theme at a portrait
+        angle comes back turned, as the glass shows it.
         """
         frame_log.debug("build_preview_surface: key=%s theme=%s",
                   info.key, theme.name)
@@ -505,8 +508,8 @@ class DisplayService:
             background=bg_surface,
         )
 
-        surface = draw_all(bg_surface, [Overlay(overlay_key, overlay_surface)],
-                           self._r)
+        surface = draw_all(bg_surface, self._layers_over_background(
+            info, s, overlay_key, overlay_surface, visual_size, profile), self._r)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         if post_rotate:
@@ -1537,6 +1540,25 @@ class DisplayService:
                 user_sig, s.temp_unit)
 
     # ── Split-mode overlay (Dynamic Island / Levita widescreen) ───────
+
+    def _layers_over_background(
+        self, info: ProductInfo, s: DeviceSettings, overlay_key: Any,
+        overlay_surface: Any, visual_size: tuple[int, int],
+        profile: DeviceProfile | None,
+    ) -> list[Layer]:
+        """What is drawn over the background, in order: the overlay, then the
+        split overlay (Dynamic Island) -- 1600x720 widescreen only, an asset
+        picked by (split_mode, rotation, SUB byte) as the C# does.  The wire
+        and the preview both draw these, so they cannot disagree."""
+        layers: list[Layer] = [Overlay(overlay_key, overlay_surface)]
+        if s.split_mode and _is_widescreen_split(visual_size):
+            split = self._split_layer(info, s.split_mode, s.orientation,
+                                      profile.sub if profile is not None else 0)
+            if split is not None:
+                layers.append(split)
+        frame_log.debug("_layers_over_background: %s %d layer(s)", info.key,
+                        len(layers))
+        return layers
 
     def _split_layer(
         self,
