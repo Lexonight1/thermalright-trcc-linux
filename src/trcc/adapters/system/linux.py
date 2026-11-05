@@ -473,7 +473,10 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
     LinuxFamily(
         name="Fedora-family", manager="dnf",
         install_cmd="sudo dnf install {pkg}",
-        package_upgrade=f"sudo dnf install {RELEASES_URL}/download/trcc-linux-latest.noarch.rpm",
+        # One RPM per Fedora Python (release.yml); the shell picks the one
+        # built for this Fedora, as doc/GUIDE_INSTALL.md does.
+        package_upgrade=(f"sudo dnf install {RELEASES_URL}/download/"
+                         "trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm"),
         # Advised by BINARY PATH, not package name.  Both shared names are
         # wrong here and both fail in a way that looks like success:
         #   p7zip  -> 7zip-standalone, ships ['7za'] and NO 7z

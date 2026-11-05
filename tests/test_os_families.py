@@ -58,7 +58,9 @@ def test_linux_family_uses_its_own_manager(family: LinuxFamily) -> None:
 
 #: The one native package each family can install -- the release's fixed-name
 #: download, never the family's repo: no distro repo carries trcc-linux.
-_NATIVE_PACKAGE = {"dnf": "trcc-linux-latest.noarch.rpm",
+#: dnf names the RPM for the reader's Fedora: the unversioned alias is the
+#: fc44 build, which dnf refuses on Fedora 45 (python(abi) = 3.14).
+_NATIVE_PACKAGE = {"dnf": "trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm",
                    "apt": "trcc-linux-latest_all.deb",
                    "pacman": "trcc-linux-latest-any.pkg.tar.zst"}
 
