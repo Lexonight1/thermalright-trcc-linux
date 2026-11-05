@@ -1491,6 +1491,59 @@ def test_a_module_that_is_not_installed_saves_the_themes_own_background(
     manifest = _json.loads((user_theme_dir / "Kept" / "trcc.json").read_text(encoding="utf-8"))
     assert manifest.get("background"), manifest
 
+
+def _switch(app: App) -> str:
+    return app.settings.for_device(_TEST_DEVICE_KEY).background_mode
+
+
+def test_a_theme_saved_with_the_background_off_comes_back_off(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """The C# saves its LIVE background switch (``myBjxs``) and a theme click
+    applies it.  Ours copied the source theme's, and never applied it (work
+    list 25, #7).  MUTATION CHECK: save the source theme's flag again."""
+    import json as _json
+
+    from trcc.core.commands import LoadTheme, SetBackgroundMode
+
+    source = _write_theme_with_real_pngs(tmp_home, "src_bg")
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source)).ok
+    assert app.dispatch(SetBackgroundMode(key=_TEST_DEVICE_KEY, mode="transparent")).ok
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="BgOff")).ok
+    manifest = _json.loads((user_theme_dir / "BgOff" / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest["background_display"] is False
+
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source)).ok
+    assert _switch(app) == "theme"                  # a theme with it on turns it on
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=user_theme_dir / "BgOff")).ok
+    assert _switch(app) == "transparent"            # and the saved one, off
+
+
+def test_a_restore_keeps_the_background_switch(app: App, tmp_home: Path) -> None:
+    """Only a PICK applies the theme's switch -- a reconnect or restart keeps
+    the panel's own, as every other override survives one."""
+    from trcc.core.commands import LoadTheme, SetBackgroundMode
+
+    source = _write_theme_with_real_pngs(tmp_home, "src_restore")
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source)).ok
+    assert app.dispatch(SetBackgroundMode(key=_TEST_DEVICE_KEY, mode="transparent")).ok
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source,
+                                  reset_overrides=False)).ok
+    assert _switch(app) == "transparent"
+
+
+def test_a_colour_fill_survives_a_theme_with_the_background_on(
+    app: App, tmp_home: Path,
+) -> None:
+    """``color`` has no switch in the C#: a theme with its background on
+    leaves it, it only brings a background back that was OFF."""
+    from trcc.core.commands import LoadTheme, SetBackgroundMode
+
+    source = _write_theme_with_real_pngs(tmp_home, "src_colour")
+    assert app.dispatch(SetBackgroundMode(key=_TEST_DEVICE_KEY, mode="color")).ok
+    assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=source)).ok
+    assert _switch(app) == "color"
+
 def test_media_player_uri_persists_and_is_mutually_exclusive(
     app: App, tmp_home: Path,
 ) -> None:

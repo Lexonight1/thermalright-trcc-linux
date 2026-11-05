@@ -90,6 +90,7 @@ from .device import (
     ApplyMask,
     PlayVideo,
     SetBackground,
+    SetBackgroundMode,
     SetMaskPosition,
     SetMediaPlayer,
     StartScreencast,
@@ -212,6 +213,23 @@ class LoadTheme(Command[ThemeResult]):
         app.settings.set_pending_background(self.key, ref)
         return None
 
+    def _apply_background_switch(self, app: App, theme: Theme) -> None:
+        """A picked theme sets the background switch to its own, as the C#'s
+        theme click does: ``Theme_Click_Event`` -> ``ReadSystemConfiguration``
+        reads ``myBjxs`` (FormCZTV.cs:6956) and ``SetDrawBkImage`` draws the
+        background or not.  A mask's file does not (``ThemeMask`` reads with
+        ``readMyMode: false``), nor does a restore.  Off is ``transparent``;
+        on brings the theme's background back if it was off -- a ``color``
+        fill, which the C# has no switch for, is left as it is."""
+        shown = theme.config.get("background_display", True) is not False
+        mode = app.settings.for_device(self.key).background_mode
+        wanted = ("transparent" if not shown
+                  else "theme" if mode == "transparent" else mode)
+        log.info("LoadTheme: %s's background switch is %s -- mode %s -> %s",
+                 theme.name, "on" if shown else "off", mode, wanted)
+        if wanted != mode:
+            SetBackgroundMode(key=self.key, mode=wanted).execute(app)
+
     def _loaded(
         self, theme: Theme, path: str, *, ok: bool, message: str,
     ) -> ThemeResult:
@@ -314,6 +332,7 @@ class LoadTheme(Command[ThemeResult]):
         drawing = app.settings.for_device(self.key).chosen_module
         if self.reset_overrides and self.picked:
             app.settings.set_background(self.key, ThemeBackground())
+            self._apply_background_switch(app, theme)
         # A module's background (an audio visual) is a background like a
         # picture or a video: a theme picked without one ends the one drawing
         # -- its driver ends itself within a tick -- and a restart does not
@@ -1048,6 +1067,10 @@ class SaveTheme(Command[ThemeResult]):
         for field in THEME_FLAG_KEYS:
             if field in theme.config:
                 manifest[field] = theme.config[field]
+        # The background switch as it is NOW, as the C# saves its live
+        # ``myBjxs`` (buttonBCZT_Click / buttonDaoChu_Click) -- it copied the
+        # source theme's, so a theme saved with the background off came back on.
+        manifest["background_display"] = s.background_mode != "transparent"
         # The device's region over the source theme's -- the user may have
         # edited it, and the C# saves its live Jp* (FormCZTV.cs:7290).
         manifest.update(screencast_dc_flags(s))
