@@ -698,6 +698,22 @@ class LoadTheme(Command[ThemeResult]):
                      if sent else f"Theme '{theme.name}' rendered but send failed",
             )
 
+def _module_drawing(app: App, s: DeviceSettings) -> str | None:
+    """The module whose background a theme saved from *s* carries -- the
+    chosen one, when it is what the panel shows (no cast over it) and it is
+    installed.  The ONE reading SaveTheme's folder and its manifest take: the
+    folder read the choice alone, so a cast over a module saved a theme into
+    that module's folder -- listed only while it is on -- with no module
+    background in it; the manifest skipped the installed check, so a module
+    that was not installed saved a theme with no background at all."""
+    chosen = s.chosen_module
+    drawing = (chosen if chosen and s.display_source is PanelSource.MODULE
+               and app.background_kind_of(chosen) is not None else None)
+    log.debug("_module_drawing: chosen %s, source %s -> %s", chosen,
+              s.display_source.value, drawing)
+    return drawing
+
+
 def waiting_module(app: App, key: str) -> str:
     """The title of the module a theme background on *key* waits for -- ""
     when none waits.  Every UI's "module required" notice reads it."""
@@ -881,8 +897,7 @@ class SaveTheme(Command[ThemeResult]):
 
         # A theme whose background a module draws is kept with that module:
         # listed only while it is on (``user_theme_dirs``).
-        chosen = device_settings.chosen_module
-        module = chosen if chosen and app.background_kind_of(chosen) else None
+        module = _module_drawing(app, device_settings)
         paths = app.platform.paths()
         target = (paths.user_module_theme_dir(module, w, h) if module
                   else paths.user_theme_dir(w, h)) / self.name
@@ -1003,8 +1018,7 @@ class SaveTheme(Command[ThemeResult]):
                                        width, height)
         # The background is one thing: a picture, a video -- or an audio
         # visual, its settings in its own JSON like any library asset.
-        module = (s.chosen_module if s.display_source is PanelSource.MODULE
-                  else None)
+        module = _module_drawing(app, s)
         bg_ref = (self._store_module_background(app, module) if module
                   else self._store_background(app, theme, s, width, height))
         if bg_ref is not None:

@@ -1141,6 +1141,23 @@ def test_a_saved_theme_keeps_its_visual_and_plays_it_when_picked(
     assert app.dispatch(LcdSnapshot(key=_KEY)).display_source == "module"
 
 
+
+def test_a_cast_over_the_visual_saves_an_ordinary_theme(
+        app: App, tmp_path: Path) -> None:
+    """A cast goes ON TOP of the visual, and the save keeps the cast: the
+    theme it writes carries no visual, so it is NOT the module's -- it was
+    filed in the visualizer's folder, listed only while that module is on
+    (work list 25, #5).  MUTATION CHECK: file it by the choice alone."""
+    assert app.dispatch(LoadTheme(key=_KEY, path=_theme(tmp_path, "Start"))).ok
+    app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes"))
+    app.settings.set_screencast_region(_KEY, (0, 0, 320, 320, False))   # a cast on top
+    saved = app.dispatch(SaveTheme(key=_KEY, name="Cast"))
+    assert saved.ok, saved.message
+    manifest = json.loads((Path(saved.theme_path) / "trcc.json").read_text())
+    assert Path(saved.theme_path).parent == app.platform.paths().user_theme_dir(320, 320)
+    assert "screencast" in manifest
+    assert not str(manifest.get("background", "")).startswith("visual_background")
+
 def test_picking_a_theme_ends_the_visual_and_a_restart_keeps_it_ended(
         app: App, tmp_path: Path) -> None:
     """The panel shows what was picked last.  MUTATION CHECK: drop the

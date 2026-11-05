@@ -33,6 +33,7 @@ from trcc.core.models import (
     Kind,
     MediaKind,
     MediaPlayerBackground,
+    ModuleBackground,
     OverlayElement,
     PictureBackground,
     Theme,
@@ -1471,6 +1472,24 @@ def test_save_theme_references_media_player_uri_and_url(
         # Ref resolves back to the exact URI/URL (no slash mangling).
         assert app.themes.media_player_uri(app.themes.load(saved)) == uri
 
+
+
+def test_a_module_that_is_not_installed_saves_the_themes_own_background(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+) -> None:
+    """A module that is not installed draws nothing, so the panel shows the
+    theme's own background -- and the save keeps that one.  It looked for the
+    module's background, found no module, and saved a theme with NO
+    background at all (work list 25, #5).  MUTATION CHECK: drop the installed
+    check from ``_module_drawing``."""
+    import json as _json
+
+    source = _write_theme_with_real_pngs(tmp_home, "src_mod")
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
+    app.settings.set_background(_TEST_DEVICE_KEY, ModuleBackground("no-such-module"))
+    assert app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="Kept")).ok
+    manifest = _json.loads((user_theme_dir / "Kept" / "trcc.json").read_text(encoding="utf-8"))
+    assert manifest.get("background"), manifest
 
 def test_media_player_uri_persists_and_is_mutually_exclusive(
     app: App, tmp_home: Path,
