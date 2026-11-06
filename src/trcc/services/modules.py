@@ -53,6 +53,7 @@ from ..core.ports import (
     ModuleHost,
     ModuleServices,
     NetworkPort,
+    OverlayPort,
     PanelsPort,
     PasswordPort,
     RamAccess,
@@ -143,6 +144,28 @@ class _Background(BackgroundPort):
     def draws(self, key: str) -> bool:
         log.debug("_Background.draws")
         return self._services.panel_source(key) == self._module
+
+
+class _Overlay(OverlayPort):
+    def __init__(self, services: ModuleServices, module: str) -> None:
+        log.debug("_Overlay.__init__: %s", module)
+        self._services, self._module = services, module
+
+    def show(self, key: str, source: FrameSource, fps: float) -> None:
+        log.info("overlay.show: %s on %s", self._module, key)
+        self._services.show_overlay(self._module, key, source, fps)
+
+    def end(self, key: str, keep_choice: bool = False) -> None:
+        log.info("overlay.end: %s on %s keep=%s", self._module, key, keep_choice)
+        self._services.end_overlay(key, keep_choice)
+
+    def source(self, key: str) -> FrameSource | None:
+        log.debug("_Overlay.source")
+        return self._services.overlay_source(key)
+
+    def draws(self, key: str) -> bool:
+        log.debug("_Overlay.draws")
+        return self._services.panel_overlay(key) == self._module
 
 
 class _Settings(SettingsPort):
@@ -369,6 +392,7 @@ class ModuleScope(ModuleHost):
         self._ports: dict[str, Any] = {
             "panels": _Panels(services),
             "background": _Background(services, self._key),
+            "overlay": _Overlay(services, self._key),
             "settings": _Settings(services, self._key),
             "themes": _Themes(self),
             "sound": _Sound(services),
@@ -409,6 +433,11 @@ class ModuleScope(ModuleHost):
     def background(self) -> BackgroundPort:
         log.debug("ModuleScope.background")
         return self._port("background")
+
+    @property
+    def overlay(self) -> OverlayPort:
+        log.debug("ModuleScope.overlay")
+        return self._port("overlay")
 
     @property
     def settings(self) -> SettingsPort:
@@ -520,6 +549,9 @@ class ModuleScope(ModuleHost):
                 if (self._services.panel_source(key) == self._key
                         and self._services.source(key) is not None):
                     self._services.end_source(key, keep_choice=True)
+                if (self._services.panel_overlay(key) == self._key
+                        and self._services.overlay_source(key) is not None):
+                    self._services.end_overlay(key, keep_choice=True)
 
     def _need(self, capability: str) -> None:
         """Refuse a capability the manifest does not declare."""

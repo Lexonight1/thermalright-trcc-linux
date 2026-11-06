@@ -44,7 +44,13 @@ from ..core.models import (
     RenderContent,
     Theme,
 )
-from ..core.ports import ContentStore, Paths, Renderer
+from ..core.ports import (
+    CaptureNotReady,
+    ContentStore,
+    FrameSource,
+    Paths,
+    Renderer,
+)
 from ..core.protocol import (
     DEFAULT_PROFILE,
     DeviceProfile,
@@ -332,6 +338,12 @@ class DisplayService:
         # final wire bytes matches the last tick, return the cached
         # bytes directly.  Lifts the legacy ``OverlayService.would_change``
         # optimisation (skip on no-op tick) up to the byte level.
+        # A module OVERLAY layer is deliberately NOT part of this key: a
+        # ``FrameSource`` carries no version, so its picture can change
+        # between ticks with no key change.  When one is active we always
+        # rebuild the tail (bg/overlay caches still hit), never serve stale
+        # wire bytes.
+        module_overlay = self._media.overlay(info.key)
         frame_key = (
             bg_key, overlay_key,
             s.brightness, s.orientation, s.split_mode,
@@ -339,7 +351,8 @@ class DisplayService:
             id(resolved_profile),
         )
         if (
-            scene is not None
+            module_overlay is None
+            and scene is not None
             and scene.frame_key == frame_key
             and scene.frame_bytes is not None
         ):
@@ -354,6 +367,17 @@ class DisplayService:
 
         # Compose: bg+mask below, overlay on top
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+
+        # Module OVERLAY layer drawn ON TOP of the theme: the theme's
+        # background keeps playing beneath, and this module's picture is
+        # composited above the theme's mask + metrics.  Placed here, before
+        # split-overlay / brightness / wire-rotation, so the whole frame is
+        # treated as ONE picture (brightness dims it, rotation turns it).
+        # A module draws the panel overlay instead of the background via the
+        # ``overlay`` capability (``host.overlay.show``).
+        if module_overlay is not None:
+            surface = self._composite_module_overlay(
+                surface, module_overlay, info)
 
         # Split-mode overlay (Dynamic Island) — 1600x720 widescreen only.
         # Picks an asset by (split_mode, rotation, SUB byte), as the C# does.
@@ -447,6 +471,23 @@ class DisplayService:
         )
         return encoded
 
+    def invalidate_frame_cache(self, key: str) -> None:
+        """Drop the final (bg+overlay+module-overlay composite) bytes for
+        *key*, so the next ``build_frame`` rebuilds and encodes the tail.
+
+        Needed when a module OVERLAY starts or stops: the overlay is not part
+        of ``frame_key`` (a ``FrameSource`` carries no version), so a static
+        theme's next tick would otherwise serve the cached frame that still has
+        (or no longer has) the overlay in it.  Keeps the bg/overlay layer caches
+        intact -- only the encoded wire bytes are dropped.
+        """
+        scene = self._scenes.get(key)
+        if scene is None:
+            return
+        frame_log.debug("invalidate_frame_cache: key=%s", key)
+        self._scenes[key] = replace(
+            scene, frame_key=None, frame_bytes=None)
+
     def build_preview_surface(
         self,
         info: ProductInfo,
@@ -495,6 +536,10 @@ class DisplayService:
         )
 
         surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+        module_overlay = self._media.overlay(info.key)
+        if module_overlay is not None:
+            surface = self._composite_module_overlay(
+                surface, module_overlay, info)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
         if post_rotate:
@@ -731,6 +776,37 @@ class DisplayService:
         surface = self._apply_post_processing(surface, s, resolved, info.key)
         surface = self._orient_for_wire(surface, s, resolved, info)
         return self._encode_for_wire(surface, resolved)
+
+    def _composite_module_overlay(
+        self,
+        surface: Any,
+        source: FrameSource,
+        info: ProductInfo,
+    ) -> Any:
+        """Composite *source*'s newest picture ON TOP of *surface* (same size).
+
+        The module's ``overlay`` layer sits above the theme (bg + mask +
+        metrics), so the theme's video keeps playing beneath.  A passing gap
+        (``CaptureNotReady``) leaves the frame as it was -- the overlay simply
+        isn't repainted this tick -- and a source that has failed for good
+        (``OSError``) is closed so it stops failing.
+        """
+        try:
+            frame = source.latest()
+        except CaptureNotReady:
+            frame_log.debug("module overlay %s: capture not ready", info.key)
+            return surface
+        except OSError as failed:
+            log.warning("module overlay %s: %s failed, closing: %s",
+                        info.key, source.name or type(source).__name__, failed)
+            self._media.close_overlay(info.key)
+            return surface
+        frame_log.debug("module overlay %s: compositing %s", info.key,
+                        source.name)
+        pic = self._r.from_raw_rgb24(frame)
+        if self._r.surface_size(pic) != self._r.surface_size(surface):
+            pic = self._r.resize(pic, *self._r.surface_size(surface))
+        return self._r.composite(surface, pic, position=(0, 0))
 
     def build_game_frame(
         self,

@@ -35,10 +35,11 @@ from trcc.core.models import (
     FitMode,
     Kind,
     ProductInfo,
+    RawFrame,
     Theme,
     Wire,
 )
-from trcc.core.ports import Renderer
+from trcc.core.ports import FrameSource, Renderer
 from trcc.core.protocol import get_profile
 from trcc.core.toolchain import present
 from trcc.services.background import BackgroundSlot
@@ -1994,3 +1995,154 @@ def test_a_connecting_panel_warns_once_per_frame_command_but_every_one_shot(
         with pytest.raises(DeviceNotConnectedError):
             _require_connected_device(ticking_app, _KEY, level=logging.INFO)
     assert warned() == 3
+
+
+# ── Module OVERLAY layer ──────────────────────────────────────────────
+
+
+class _OverlaySource(FrameSource):
+    """A module's overlay picture: returns *frame*, records how often it
+    was asked."""
+
+    def __init__(self, frame: RawFrame) -> None:
+        self.name = "overlay"
+        self.frame = frame
+        self.latest_calls = 0
+
+    def latest(self) -> RawFrame:
+        self.latest_calls += 1
+        return self.frame
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _overlay_display(tmp_home: Path) -> tuple[_RecordingRenderer, DisplayService]:
+    """A DisplayService wired for the overlay tests (theme + media, no bg)."""
+    renderer = _RecordingRenderer()
+    media = MediaService()
+    display = DisplayService(
+        renderer=renderer,
+        themes=FileContentStore(),
+        overlay=_StubOverlay(renderer),
+        settings=Settings(FakePaths(tmp_home)),
+        media=media, backgrounds=BackgroundSlot(),
+        paths=FakePaths(tmp_home),
+    )
+    return renderer, display
+
+
+def _overlay_theme(tmp_home: Path) -> Theme:
+    theme_dir = tmp_home / "themes" / "static_overlay"
+    theme_dir.mkdir(parents=True, exist_ok=True)
+    (theme_dir / "00.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (theme_dir / "trcc.json").write_text(
+        '{"name":"static_overlay","width":320,"height":320,"elements":[]}',
+    )
+    return Theme(path=theme_dir, name="static_overlay",
+                 resolution=(320, 320), config={})
+
+
+def test_module_overlay_layers_on_top_of_the_theme(tmp_home: Path) -> None:
+    """A module's ``overlay`` source is composited ABOVE bg+mask+metrics via
+    ``from_raw_rgb24`` -- the theme keeps playing beneath, nothing is evicted."""
+    from trcc.core.models import RawFrame
+
+    renderer, display = _overlay_display(tmp_home)
+    media = display._media
+    source = _OverlaySource(RawFrame(data=b"\x00" * (320 * 320 * 3),
+                                     width=320, height=320))
+    info = ProductInfo(vid=0x0402, pid=0x3922, vendor="ALi Corp",
+                       product="LCD", wire=Wire.SCSI, kind=Kind.LCD,
+                       device_type=1, fbl=100, native_resolution=(320, 320),
+                       orientations=(0,))
+
+    # No overlay yet: a push-less build must NOT go through the raw-pixel path.
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    assert not [c for c in renderer.calls if c[0] == "from_raw_rgb24"], \
+        "before any overlay, build_frame must not touch raw pixels"
+
+    media.open_overlay(info.key, source)
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    raw = [c for c in renderer.calls if c[0] == "from_raw_rgb24"]
+    assert raw, "with an overlay active, build_frame must composite it"
+
+    # A changed overlay picture must NOT be served from the byte cache: each
+    # build re-asks the source (no version) and re-encodes the tail.
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    assert source.latest_calls >= 2, \
+        "an active module overlay must bypass the full-pipeline byte cache"
+
+
+def test_module_overlay_gap_and_failure_leave_the_theme(tmp_home: Path) -> None:
+    """A passing ``CaptureNotReady`` skips the layer; a dead source (OSError)
+    is closed so it stops failing -- both leave the frame as it was."""
+    from trcc.core.models import RawFrame
+    from trcc.core.ports import CaptureNotReady
+
+    renderer, display = _overlay_display(tmp_home)
+    media = display._media
+    info = ProductInfo(vid=0x0402, pid=0x3922, vendor="ALi Corp",
+                       product="LCD", wire=Wire.SCSI, kind=Kind.LCD,
+                       device_type=1, fbl=100, native_resolution=(320, 320),
+                       orientations=(0,))
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    baseline = len([c for c in renderer.calls if c[0] == "from_raw_rgb24"])
+
+    class _Gap(_OverlaySource):
+        def latest(self) -> RawFrame:
+            self.latest_calls += 1
+            raise CaptureNotReady("still starting")
+
+    gap = _Gap(RawFrame(data=b"", width=320, height=320))
+    media.open_overlay(info.key, gap)
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    assert len([c for c in renderer.calls if c[0] == "from_raw_rgb24"]) == baseline, \
+        "a not-ready overlay must not paint anything"
+
+    class _Dead(_OverlaySource):
+        def latest(self) -> RawFrame:
+            self.latest_calls += 1
+            raise OSError("gone for good")
+
+    dead = _Dead(RawFrame(data=b"", width=320, height=320))
+    media.open_overlay(info.key, dead)
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    assert media.overlay(info.key) is None, \
+        "a dead overlay source must be closed so it stops failing"
+
+
+def test_ending_an_overlay_invalidates_the_wire_bytes(tmp_home: Path) -> None:
+    """Stopping the overlay must NOT serve the previous cached frame that still
+    has the overlay composited in -- ``invalidate_frame_cache`` drops it."""
+    from trcc.core.models import RawFrame
+
+    renderer, display = _overlay_display(tmp_home)
+    media = display._media
+    info = ProductInfo(vid=0x0402, pid=0x3922, vendor="ALi Corp",
+                       product="LCD", wire=Wire.SCSI, kind=Kind.LCD,
+                       device_type=1, fbl=100, native_resolution=(320, 320),
+                       orientations=(0,))
+    theme = _overlay_theme(tmp_home)
+
+    # A static theme (no playback, empty sensors) has a STABLE frame picture,
+    # so the byte cache would serve the overlay frame on the next tick.
+    display.build_frame(info=info, theme=theme, sensors={}, profile=get_profile(100))
+    source = _OverlaySource(RawFrame(data=b"\x00" * (320 * 320 * 3),
+                                     width=320, height=320))
+    media.open_overlay(info.key, source)
+    media._playbacks.clear()   # force no playback: a truly static background
+    display.build_frame(info=info, theme=theme, sensors={}, profile=get_profile(100))
+    assert [c for c in renderer.calls if c[0] == "from_raw_rgb24"]
+
+    display.invalidate_frame_cache(info.key)
+    display.build_frame(info=info, theme=theme, sensors={}, profile=get_profile(100))
+    # After the invalidation the frame is rebuilt WITH the overlay again (source
+    # still active) — the cached bytes must not be silently reused.
+    assert source.latest_calls >= 2
