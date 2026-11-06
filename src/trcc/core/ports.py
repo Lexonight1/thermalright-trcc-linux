@@ -2220,6 +2220,19 @@ class Renderer(ABC):
     @abstractmethod
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
 
+    def from_raw_rgba(self, frame: RawFrame) -> Any:
+        """A surface for an RGBA picture (``width*height*4`` bytes), alpha
+        included -- used by a module ``overlay`` layer that draws ON TOP of a
+        theme (the transparent parts let the theme show through).
+
+        Default raises: backends that only feed RGB sources need not implement
+        it; a module overlay on such a backend simply repaints opaque.  The Qt
+        renderer overrides this so its ``composite`` SourceOver path blends the
+        alpha.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not render RGBA sources")
+
     @abstractmethod
     def surface_nbytes(self, surface: Any) -> int:
         """How many bytes of pixel data *surface* occupies.
@@ -2690,6 +2703,35 @@ class BackgroundPort(ABC):
         """Whether panel *key*'s chosen background is this module's."""
 
 
+class OverlayPort(ABC):
+    """The ``overlay`` capability: drawing on TOP of a panel's theme.
+
+    Unlike :class:`BackgroundPort`, an overlay does NOT replace the panel's
+    display source: the theme keeps playing as the background (video, image),
+    and the module's ``FrameSource`` is composited ABOVE the theme's
+    background, mask and metrics in ``DisplayService.build_frame``.  Nothing
+    is stopped or unloaded, so the theme animates beneath the overlay.
+    """
+
+    @abstractmethod
+    def show(self, key: str, source: FrameSource, fps: float) -> None:
+        """Make *source* panel *key*'s overlay layer, *fps* pictures a second:
+        the theme keeps playing beneath, the choice is saved."""
+
+    @abstractmethod
+    def end(self, key: str, keep_choice: bool = False) -> None:
+        """Stop panel *key*'s overlay; the theme alone shows again.
+        *keep_choice* keeps it saved as the panel's choice, to resume."""
+
+    @abstractmethod
+    def source(self, key: str) -> FrameSource | None:
+        """The overlay drawing panel *key* now, if any."""
+
+    @abstractmethod
+    def draws(self, key: str) -> bool:
+        """Whether panel *key*'s chosen overlay is this module's."""
+
+
 class SettingsPort(ABC):
     """The ``settings`` capability: the module's own saved settings."""
 
@@ -2929,6 +2971,11 @@ class ModuleHost(ABC):
         self._not_offered("background")
 
     @property
+    def overlay(self) -> OverlayPort:
+        log.debug("ModuleHost.overlay")
+        self._not_offered("overlay")
+
+    @property
     def settings(self) -> SettingsPort:
         log.debug("ModuleHost.settings")
         self._not_offered("settings")
@@ -3018,6 +3065,24 @@ class ModuleServices(ABC):
     @abstractmethod
     def panel_source(self, key: str) -> str | None:
         """The module panel *key*'s chosen background belongs to, if any."""
+
+    @abstractmethod
+    def show_overlay(self, module: str, key: str, source: FrameSource,
+                     fps: float) -> None:
+        """*module*'s *source* becomes panel *key*'s OVERLAY layer: the theme
+        keeps playing beneath, nothing is stopped."""
+
+    @abstractmethod
+    def end_overlay(self, key: str, keep_choice: bool = False) -> None:
+        """Stop panel *key*'s overlay; the theme alone shows again."""
+
+    @abstractmethod
+    def overlay_source(self, key: str) -> FrameSource | None:
+        """The overlay drawing panel *key* now, if any."""
+
+    @abstractmethod
+    def panel_overlay(self, key: str) -> str | None:
+        """The module panel *key*'s chosen overlay belongs to, if any."""
 
     @abstractmethod
     def module_settings(self, module: str) -> dict[str, Any]: ...

@@ -657,6 +657,43 @@ class App(CommandBus, ModuleServices):
         log.debug("panel_source: %s -> %s", key, found)
         return found
 
+    def show_overlay(self, module: str, key: str, source: FrameSource,
+                     fps: float) -> None:
+        """*module*'s *source* becomes panel *key*'s OVERLAY layer: the theme
+        keeps playing beneath (nothing stopped, nothing unloaded), the choice
+        is saved, every UI hears it.  No driver of its own: the overlay is
+        composited by ``DisplayService.build_frame`` whenever the theme's own
+        ticker (video loop / render observer) paints the panel."""
+        from .core.commands.device import _publish_background
+        log.info("show_overlay: %s <- %s (%s, %g fps)", key, source.name,
+                 module, fps)
+        self.settings.set_module_overlay(key, module)
+        self.media.open_overlay(key, source)
+        self.display.invalidate_frame_cache(key)
+        _publish_background(self, key)
+
+    def end_overlay(self, key: str, keep_choice: bool = False) -> None:
+        """Stop panel *key*'s overlay; the theme alone shows again.
+        *keep_choice* keeps the module as the panel's choice, to resume."""
+        from .core.commands.device import _publish_background
+        log.info("end_overlay: %s keep_choice=%s", key, keep_choice)
+        self.media.close_overlay(key)
+        if not keep_choice:
+            self.settings.set_module_overlay(key, None)
+        self.display.invalidate_frame_cache(key)
+        _publish_background(self, key)
+
+    def overlay_source(self, key: str) -> FrameSource | None:
+        """The overlay drawing panel *key* now, if any."""
+        frame_log.debug("App.overlay_source")
+        return self.media.overlay(key)
+
+    def panel_overlay(self, key: str) -> str | None:
+        """The module panel *key*'s chosen overlay belongs to."""
+        found = self.settings.for_device(key).module_overlay
+        log.debug("panel_overlay: %s -> %s", key, found)
+        return found
+
     def module_settings(self, module: str) -> dict[str, Any]:
         log.debug("module_settings: %s", module)
         return self.settings.module_settings(module)
@@ -1853,6 +1890,9 @@ class App(CommandBus, ModuleServices):
         # (``module_source``, ``media_player_uri``, ``screencast_region``) stays
         # saved: only the running parts stop.
         self.media.close_live(key)
+        # The panel's module OVERLAY layer, too: it is not a display source
+        # (so it is not in ``_live``), but it must also close on detach.
+        self.media.close_overlay(key)
 
     def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:
         """Submit a frame to a device's send worker.

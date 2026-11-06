@@ -27,7 +27,12 @@ from PySide6.QtGui import (
 
 from ...core.errors import TrccError
 from ...core.logs import per_frame
-from ...core.models import THEME_FONT, RawFrame
+from ...core.models import (
+    BYTES_PER_PIXEL_RGB,
+    BYTES_PER_PIXEL_RGBA,
+    THEME_FONT,
+    RawFrame,
+)
 from ...core.ports import Renderer
 
 log = logging.getLogger(__name__)
@@ -469,8 +474,20 @@ class QtRenderer(Renderer):
         # against 1.36 ms without it.
         return QImage(
             frame.data, frame.width, frame.height,
-            frame.width * 3,
+            frame.width * BYTES_PER_PIXEL_RGB,
             QImage.Format.Format_RGB888,
+        ).convertToFormat(QImage.Format.Format_ARGB32)
+
+    def from_raw_rgba(self, frame: RawFrame) -> Any:
+        """An ARGB surface over *frame*'s RGBA bytes -- alpha included, so a
+        module ``overlay`` over a theme keeps the theme visible where the
+        module is transparent."""
+        frame_log.debug("from_raw_rgba: %dx%d", frame.width, frame.height)
+        # RGBA8888 keeps the alpha channel; ``composite`` blends it SourceOver.
+        return QImage(
+            frame.data, frame.width, frame.height,
+            frame.width * BYTES_PER_PIXEL_RGBA,
+            QImage.Format.Format_RGBA8888,
         ).convertToFormat(QImage.Format.Format_ARGB32)
 
     # ── Fonts ─────────────────────────────────────────────────────────

@@ -571,6 +571,14 @@ class RawFrame:
     height: int
 
 
+#: Bytes per pixel of a frame handed to a Renderer: an opaque RGB24 picture
+#: (``width*height*3``) or, for a module OVERLAY over a theme, an RGBA one
+#: (``width*height*4``) whose alpha lets the theme show through the transparent
+#: parts.  ``DisplayService._overlay_surface`` tells the two apart by length.
+BYTES_PER_PIXEL_RGB = 3
+BYTES_PER_PIXEL_RGBA = 4
+
+
 @dataclass(frozen=True, slots=True)
 class RenderContent:
     """Resolved artwork for one frame — opaque renderer surfaces.
@@ -827,6 +835,14 @@ class DeviceSettings:
     # reconnect through the module's background kind.  What it draws is the
     # module's own business, in ``module_settings[<key>]``.
     module_source: str | None = None
+    # A module drawing an OVERLAY layer on TOP of this panel's theme (its
+    # key) or ``None``.  Unlike ``module_source`` this is NOT a display
+    # source: the theme keeps playing as the background, and the module's
+    # frame is composited above the theme's background, mask and metrics in
+    # ``DisplayService.build_frame``.  Set/cleared through ``host.overlay``
+    # (``OverlayPort``); the module's own panel settings live in
+    # ``module_settings[<key>]``, as with ``module_source``.
+    module_overlay: str | None = None
     # Each module's own settings for this panel, by module key -- written
     # only through its host (``ModuleHost.save_panel_settings``).
     module_settings: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -1453,6 +1469,7 @@ MODULE_CAPABILITIES: dict[str, str] = {
     "events": "hears what happens in the app",
     "panels": "knows which LCD panels are attached, and their size",
     "background": "draws a panel's background (the theme's mask and metrics stay on top)",
+    "overlay": "draws on top of a panel's theme (the theme's background keeps playing underneath)",
     "settings": "keeps its own settings, for the app and for each panel",
     "themes": "lets themes save and load a background it draws",
     "sound": "hears what the computer is playing",

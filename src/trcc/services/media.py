@@ -719,6 +719,10 @@ class MediaService:
         #: whose it is.  One slot, so opening one ends the last: the sources
         #: are exclusive here, as they are in Settings.
         self._live: dict[str, tuple[PanelSource, FrameSource]] = {}
+        #: Each panel's OVERLAY layer, drawn on top of its theme (which keeps
+        #: playing beneath).  Separate from ``_live``: an overlay is additive,
+        #: not a display source, so opening one never ends the live picture.
+        self._overlays: dict[str, FrameSource] = {}
         #: The decodes still filling a playback, by device (#264).
         self._decodes: dict[str, BackgroundDecode] = {}
 
@@ -880,6 +884,29 @@ class MediaService:
                  entry[1].name)
         entry[1].close()
 
+    def open_overlay(self, device_key: str, source: FrameSource) -> None:
+        """*source* is *device_key*'s OVERLAY layer -- drawn ON TOP of its
+        theme, which keeps playing underneath.  Unlike :meth:`open_live` this
+        does NOT close a live picture: an overlay is additive, not exclusive."""
+        log.info("open_overlay: %s <- %s", device_key, source.name)
+        self.close_overlay(device_key)
+        self._overlays[device_key] = source
+
+    def overlay(self, device_key: str) -> FrameSource | None:
+        """*device_key*'s overlay source, or None for none."""
+        found = self._overlays.get(device_key)
+        frame_log.debug("overlay: %s -> %s", device_key, found and found.name)
+        return found
+
+    def close_overlay(self, device_key: str) -> None:
+        """Stop *device_key*'s overlay (idempotent)."""
+        source = self._overlays.pop(device_key, None)
+        if source is None:
+            frame_log.debug("close_overlay: %s has no overlay", device_key)
+            return
+        log.info("close_overlay: %s (%s)", device_key, source.name)
+        source.close()
+
     def unload(self, device_key: str) -> None:
         """Drop a playback, freeing its frame buffers -- and end a stream
         or a module's source."""
@@ -888,6 +915,7 @@ class MediaService:
         # slot (``open_live``), or by the panel leaving (``stop_sources``).
         if self.live_kind(device_key) is not PanelSource.SCREENCAST:
             self.close_live(device_key)
+        self.close_overlay(device_key)
         self._replace_decode(device_key, None)
         had = self._playbacks.pop(device_key, None)
         if had is not None:

@@ -673,6 +673,16 @@ class Settings:
                 _only_source(dev, "module_source")
             self._save()
 
+    def set_module_overlay(self, key: str, module: str | None) -> None:
+        """Set (or clear with ``None``) the module drawing an OVERLAY layer on
+        panel *key*'s theme.  Unlike ``set_module_source`` this is NOT a
+        display source, so it never clears the other sources nor the theme's
+        background -- the theme keeps playing beneath the overlay."""
+        log.info("set_module_overlay: key=%s module=%s", key, module)
+        with self._display_write(key) as dev:
+            dev.module_overlay = module
+            self._save()
+
     def module_themes_moved(self) -> bool:
         """Whether the one-time move of module themes has run."""
         done = self._app.module_themes_moved is True
