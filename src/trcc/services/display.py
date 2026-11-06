@@ -803,10 +803,18 @@ class DisplayService:
             return surface
         frame_log.debug("module overlay %s: compositing %s", info.key,
                         source.name)
-        pic = self._r.from_raw_rgb24(frame)
+        pic = self._overlay_surface(frame)
         if self._r.surface_size(pic) != self._r.surface_size(surface):
             pic = self._r.resize(pic, *self._r.surface_size(surface))
         return self._r.composite(surface, pic, position=(0, 0))
+
+    def _overlay_surface(self, frame: RawFrame) -> Any:
+        """A render surface for *frame* -- RGBA when the picture carries an
+        alpha channel (``w*h*4`` byte, a module overlay over a theme), else
+        opaque RGB24."""
+        if frame.width and frame.height and len(frame.data) == frame.width * frame.height * 4:
+            return self._r.from_raw_rgba(frame)
+        return self._r.from_raw_rgb24(frame)
 
     def build_game_frame(
         self,

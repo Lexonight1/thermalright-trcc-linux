@@ -2220,6 +2220,19 @@ class Renderer(ABC):
     @abstractmethod
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
 
+    def from_raw_rgba(self, frame: RawFrame) -> Any:
+        """A surface for an RGBA picture (``width*height*4`` bytes), alpha
+        included -- used by a module ``overlay`` layer that draws ON TOP of a
+        theme (the transparent parts let the theme show through).
+
+        Default raises: backends that only feed RGB sources need not implement
+        it; a module overlay on such a backend simply repaints opaque.  The Qt
+        renderer overrides this so its ``composite`` SourceOver path blends the
+        alpha.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not render RGBA sources")
+
     @abstractmethod
     def surface_nbytes(self, surface: Any) -> int:
         """How many bytes of pixel data *surface* occupies.

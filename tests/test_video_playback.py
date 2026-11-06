@@ -580,6 +580,10 @@ class _RecordingRenderer(Renderer):
         self._record("from_raw_rgb24", frame)
         return _Surface(frame.width, frame.height)
 
+    def from_raw_rgba(self, frame: Any) -> Any:
+        self._record("from_raw_rgba", frame)
+        return _Surface(frame.width, frame.height)
+
     def decode_image(self, data: bytes) -> Any:
         self._record("decode_image", data)
         return _Surface(100, 100)
@@ -2146,3 +2150,34 @@ def test_ending_an_overlay_invalidates_the_wire_bytes(tmp_home: Path) -> None:
     # After the invalidation the frame is rebuilt WITH the overlay again (source
     # still active) — the cached bytes must not be silently reused.
     assert source.latest_calls >= 2
+
+
+def test_module_overlay_with_alpha_uses_the_rgba_path(tmp_home: Path) -> None:
+    """A module overlay whose picture carries an alpha channel (``w*h*4`` bytes)
+    goes through ``from_raw_rgba``, so its transparent parts let the theme
+    behind it show through -- an opaque RGB overlay would hide the theme."""
+    from trcc.core.models import RawFrame
+
+    renderer, display = _overlay_display(tmp_home)
+    media = display._media
+    info = ProductInfo(vid=0x0402, pid=0x3922, vendor="ALi Corp",
+                       product="LCD", wire=Wire.SCSI, kind=Kind.LCD,
+                       device_type=1, fbl=100, native_resolution=(320, 320),
+                       orientations=(0,))
+    rgba = _OverlaySource(RawFrame(data=b"\x00" * (320 * 320 * 4),
+                                   width=320, height=320))
+    media.open_overlay(info.key, rgba)
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    assert [c for c in renderer.calls if c[0] == "from_raw_rgba"], \
+        "an RGBA module overlay must go through from_raw_rgba (alpha preserved)"
+
+    # The RGB24 path stays the default for a w*h*3 picture.
+    rgb = _OverlaySource(RawFrame(data=b"\x00" * (320 * 320 * 3),
+                                  width=320, height=320))
+    media.open_overlay(info.key, rgb)
+    renderer.calls.clear()
+    display.build_frame(info=info, theme=_overlay_theme(tmp_home), sensors={},
+                        profile=get_profile(100))
+    assert not [c for c in renderer.calls if c[0] == "from_raw_rgba"], \
+        "an opaque RGB24 module overlay must use from_raw_rgb24"

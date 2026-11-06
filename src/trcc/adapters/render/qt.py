@@ -473,6 +473,18 @@ class QtRenderer(Renderer):
             QImage.Format.Format_RGB888,
         ).convertToFormat(QImage.Format.Format_ARGB32)
 
+    def from_raw_rgba(self, frame: RawFrame) -> Any:
+        """An ARGB surface over *frame*'s RGBA bytes -- alpha included, so a
+        module ``overlay`` over a theme keeps the theme visible where the
+        module is transparent."""
+        frame_log.debug("from_raw_rgba: %dx%d", frame.width, frame.height)
+        # RGBA8888 keeps the alpha channel; ``composite`` blends it SourceOver.
+        return QImage(
+            frame.data, frame.width, frame.height,
+            frame.width * 4,
+            QImage.Format.Format_RGBA8888,
+        ).convertToFormat(QImage.Format.Format_ARGB32)
+
     # ── Fonts ─────────────────────────────────────────────────────────
 
     def list_fonts(self) -> list[str]:
