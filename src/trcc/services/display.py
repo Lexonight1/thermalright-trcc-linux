@@ -33,6 +33,7 @@ from ..core.geometry import (
 )
 from ..core.logs import per_frame
 from ..core.models import (
+    BYTES_PER_PIXEL_RGBA,
     MEDIA,
     RENDER_CACHE_MAX_BYTES,
     SPLIT_OVERLAY_MAP,
@@ -812,7 +813,12 @@ class DisplayService:
         """A render surface for *frame* -- RGBA when the picture carries an
         alpha channel (``w*h*4`` byte, a module overlay over a theme), else
         opaque RGB24."""
-        if frame.width and frame.height and len(frame.data) == frame.width * frame.height * 4:
+        is_rgba = (
+            frame.width
+            and frame.height
+            and len(frame.data) == frame.width * frame.height * BYTES_PER_PIXEL_RGBA
+        )
+        if is_rgba:
             return self._r.from_raw_rgba(frame)
         return self._r.from_raw_rgb24(frame)
 

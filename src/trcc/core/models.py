@@ -571,6 +571,14 @@ class RawFrame:
     height: int
 
 
+#: Bytes per pixel of a frame handed to a Renderer: an opaque RGB24 picture
+#: (``width*height*3``) or, for a module OVERLAY over a theme, an RGBA one
+#: (``width*height*4``) whose alpha lets the theme show through the transparent
+#: parts.  ``DisplayService._overlay_surface`` tells the two apart by length.
+BYTES_PER_PIXEL_RGB = 3
+BYTES_PER_PIXEL_RGBA = 4
+
+
 @dataclass(frozen=True, slots=True)
 class RenderContent:
     """Resolved artwork for one frame — opaque renderer surfaces.
