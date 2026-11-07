@@ -98,6 +98,13 @@ dependencies = [
     # 4.07 is blank without it (#228).  Off the Windows path (libusb serves the
     # HID panels there); Linux selects it per-fingerprint via DeviceQuirks.
     "hidapi>=0.14.0; sys_platform == 'linux'",
+    # JPEG is encoded through Pillow (not Qt's ``QImage.save``) so the frame can
+    # be pinned to 4:4:4 chroma (``subsampling=0``).  Qt keeps 4:4:4 only at its
+    # top quality and silently drops to 4:2:0 as soon as ``encode_jpeg``'s
+    # shrink loop lowers it — chroma-subsampling a saturated overlay edge (a red
+    # gauge edge) into a jagged colour fringe on the panel.  A small, ubiquitous
+    # dep that trcc's Windows/macOS wheels already carry for media code.
+    "Pillow>=9.0.0",
 ]
 
 [project.optional-dependencies]
