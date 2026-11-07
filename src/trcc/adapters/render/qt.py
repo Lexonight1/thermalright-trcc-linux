@@ -7,6 +7,7 @@ DI.  Encapsulates every Qt call; everything else stays framework-blind.
 from __future__ import annotations
 
 import array
+import io
 import logging
 import os
 import sys
@@ -378,18 +379,40 @@ class QtRenderer(Renderer):
         return (bytes(surface.constBits()), surface.width(), surface.height(),
                 surface.bytesPerLine())
 
+    def _surface_to_pil(self, surface: Any) -> Any:
+        """QImage → Pillow RGB image (stride-aware; alpha is dropped for JPEG)."""
+        from PIL import Image
+
+        img = surface.convertToFormat(QImage.Format.Format_RGB888)
+        width, height = img.width(), img.height()
+        stride = img.bytesPerLine()
+        raw = bytes(img.constBits())
+        return Image.frombuffer(
+            "RGB", (width, height), raw, "raw", "RGB", stride, 1
+        )
+
     def encode_jpeg(self, surface: Any, quality: int = 95,
                     max_size: int = 0) -> bytes:
-        """Encode QImage → JPEG bytes.  Optionally retry lower quality until ≤ max_size."""
+        """Encode QImage → JPEG bytes.  Optionally retry lower quality until ≤ max_size.
+
+        Encoded through Pillow with ``subsampling=0`` (4:4:4) rather than Qt's own
+        ``QImage.save("JPEG", q)``.  Qt keeps 4:4:4 only at its highest quality and
+        silently drops to **4:2:0 chroma subsampling** the moment ``encode_payload``'s
+        shrink loop lowers it (measured on Qt 6.12: q=95 → 1x1 luma/chroma; q≤85 →
+        luma 2x2, chroma 1x1).  That loop runs whenever a frame would ship over the
+        450 KB firmware ceiling of #251 — exactly the case where a saturated overlay
+        edge (a red gauge edge over a live theme) renders as a jagged chroma fringe on
+        the panel.  Pinning the sampling factors to 1x1 keeps colour edges clean at
+        every quality the loop reaches while still meeting ``max_size``.
+        """
         frame_log.debug("encode_jpeg: quality=%d max_size=%d", quality, max_size)
         def _save(q: int) -> bytes:
             frame_log.debug("_save: q=%s", q)
-            from PySide6.QtCore import QBuffer, QIODevice
-            qbuf = QBuffer()
-            qbuf.open(QIODevice.OpenModeFlag.WriteOnly)
-            surface.save(qbuf, "JPEG", q)
-            qbuf.close()
-            return bytes(qbuf.data().data())
+            buffer = io.BytesIO()
+            self._surface_to_pil(surface).save(
+                buffer, "JPEG", quality=q, subsampling=0,
+            )
+            return buffer.getvalue()
 
         data = _save(quality)
         if not max_size or len(data) <= max_size:

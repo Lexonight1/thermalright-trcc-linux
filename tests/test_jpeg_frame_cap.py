@@ -119,3 +119,49 @@ def test_an_oversized_frame_is_shrunk_not_shipped() -> None:
         f"{_CSHARP_MAX_JPEG_BYTES} — the frame would vanish with no error"
     )
     assert len(payload) > 0
+
+
+def _jpeg_sampling_factors(data: bytes) -> list[tuple[int, int]]:
+    """(H, V) JPEG sampling factors per component, from the SOF0/SOF2 marker."""
+    index = 0
+    length = len(data)
+    while index < length - 4:
+        if data[index] == 0xFF and data[index + 1] in (0xC0, 0xC1, 0xC2, 0xC3):
+            components = data[index + 9]
+            return [
+                (
+                    data[index + 10 + j * 3 + 1] >> 4,
+                    data[index + 10 + j * 3 + 1] & 0x0F,
+                )
+                for j in range(components)
+            ]
+        index += 1
+    return []
+
+
+def test_jpeg_is_444_not_420_chroma_subsampling() -> None:
+    """Qt keeps 4:4:4 only at its top quality and falls to 4:2:0 the moment the
+    shrink loop lowers it (measured on Qt 6.12: q<=85 → luma 2x2, chroma 1x1).
+
+    ``encode_payload`` runs that loop whenever a frame would ship over the 450 KB
+    firmware ceiling (#251) — exactly a saturated overlay edge (a red gauge edge
+    over a live theme), whose subsampled chroma shows as a jagged fringe while a
+    flat-colour neighbour does not.  We route JPEG through Pillow at
+    ``subsampling=0``, so every quality must stay 4:4:4 (1x1 per component).
+    """
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage
+
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    surface = QImage(64, 64, QImage.Format_RGB32)
+    surface.fill(Qt.GlobalColor.red)
+
+    for quality in (95, 75, 45, 30):
+        payload = renderer.encode_jpeg(surface, quality=quality, max_size=0)
+        sampling = _jpeg_sampling_factors(payload)
+        assert sampling and all(h == 1 and v == 1 for h, v in sampling), (
+            f"q={quality}: JPEG sampling={sampling}, expected 4:4:4 (1x1 each); "
+            f"subsampled chroma smears a saturated overlay edge on the panel"
+        )
