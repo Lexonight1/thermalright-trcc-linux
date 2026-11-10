@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import DeviceState, ListDevices
-from ...core.events import DeviceConnected, DeviceDisconnected
+from ...core.events import DeviceConnected, DeviceDisconnected, LanguageChanged
 from ...core.logs import per_frame
 from ..presentation.device_choice import DeviceChoice
 from ..presentation.device_symbols import device_symbols
@@ -43,6 +43,7 @@ from .chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, TabBar
 from .settings_look import hud_skin
 from .sources import DeviceControls
 from .themes import CloudBackgrounds, CloudMasks, LocalThemes
+from .words import language
 
 if TYPE_CHECKING:
     from ...core.events import SensorsUpdated
@@ -298,6 +299,9 @@ class SettingsPage(QScrollArea):
         # Never scrolled: the panel is drawn at its own size, the gui's.
         self.setMinimumSize(self.panel.size())
         bus.follow_settings(self._on_settings_event)
+        bus.app_settings_changed.connect(self._on_app_settings,
+                                         type=Qt.ConnectionType.QueuedConnection)
+        self.panel.set_language(language(app))
         bus.sensors_updated.connect(self._on_sensors, type=Qt.ConnectionType.QueuedConnection)
         for signal in (bus.theme_loaded, bus.orientation_changed):
             signal.connect(self.binding.size_to_canvas, type=Qt.ConnectionType.QueuedConnection)
@@ -320,6 +324,12 @@ class SettingsPage(QScrollArea):
         if ThemeSettings.concerns(event, self._selection.key):
             log.debug("SettingsPage._on_settings_event: %s", type(event).__name__)
             self.binding.refresh()
+
+    def _on_app_settings(self, event: object) -> None:
+        """A new language from any UI: the panel's words in it."""
+        if isinstance(event, LanguageChanged):
+            log.info("SettingsPage._on_app_settings: language %s", event.language)
+            self.panel.set_language(event.language)
 
     def _on_sensors(self, event: SensorsUpdated) -> None:
         """A sensor tick: the element tiles' live values, while on screen."""

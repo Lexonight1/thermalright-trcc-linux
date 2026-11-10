@@ -538,7 +538,7 @@ def test_the_gui_web_video_action_streams_it(
 
     assert _reader(app).url == _URL
     assert win.uc_theme_setting.video_panel.toggle_btn.isChecked()
-    assert "Web Video" in [key for _, key, _module in win._i18n_labels]
+    assert "Web Video" in [key for _label, key in win.uc_theme_setting._labels]
     win.close()
 
 

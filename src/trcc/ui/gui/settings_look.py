@@ -49,6 +49,7 @@ def gui_skin() -> SettingsSkin:
         switch_on=Colors.PAGE_GOLD,
         switch_on_text='#2b2b2b',
         switch_off_text='#aaaaaa',
+        hue_rainbow=False,          # it is in settings_params.png
         preset_colours=tuple(Colors.PRESET_COLORS),
         flat_button=Styles.FLAT_BUTTON,
         flat_button_hover=Styles.FLAT_BUTTON_HOVER,
@@ -68,6 +69,8 @@ def gui_skin() -> SettingsSkin:
                     " background: transparent;"),
         mode_label=("color: white; font-family: 'Microsoft YaHei'; font-size: 9pt;"
                     " background: transparent;"),
+        label=("color: white; font-family: 'Microsoft YaHei'; font-size: {pt}pt; "
+               "background: transparent;"),
         grid_toggle_fallback=("QPushButton { background: #4CAF50; color: white; font-size: 8px; }"
                               "QPushButton:checked { background: #4CAF50; }"
                               "QPushButton:!checked { background: #666; }"),

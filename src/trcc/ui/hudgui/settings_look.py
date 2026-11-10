@@ -81,6 +81,7 @@ def hud_skin() -> SettingsSkin:
         switch_on=ACCENT,
         switch_on_text="#0b1620",
         switch_off_text=TEXT,
+        hue_rainbow=True,           # no picture behind the strip
         preset_colours=((255, 255, 255), (192, 192, 192), (127, 212, 255), (0, 120, 215),
                         (0, 200, 120), (255, 214, 0), (255, 140, 0), (232, 17, 35),
                         (180, 0, 158), (255, 0, 255), (0, 0, 0)),
@@ -105,6 +106,7 @@ def hud_skin() -> SettingsSkin:
         entry=f"background-color: rgba(0, 0, 0, 90); color: {ACCENT}; border: none;",
         mode_title=f"color: {TEXT}; font-size: 12pt; font-weight: bold; background: transparent;",
         mode_label=f"color: {TEXT}; font-size: 9pt; background: transparent;",
+        label=f"color: {TEXT}; font-size: {{pt}}pt; background: transparent;",
         grid_toggle_fallback=flag.format(ACCENT, 8),
         stepper_fallback=flag.format(GLASS, 9),
         flag_on_fallback=flag.format(ACCENT, 8),

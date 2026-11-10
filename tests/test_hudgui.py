@@ -943,3 +943,20 @@ def test_a_pick_meanwhile_keeps_the_screen(two_panels: App, qtbot: Any) -> None:
     assert two_panels.dispatch(ConnectDevice(key=_OTHER)).ok
     qtbot.waitUntil(lambda: sorted(devices.menu.buttons) == [_KEY, _OTHER])
     assert win._selection.key == _KEY
+
+
+def test_the_settings_panel_says_its_own_words_in_the_apps_language(
+        window: Any, qtbot: Any) -> None:
+    """The panel's labels were laid over it by the gui window, so hudgui had
+    none (2026-11-10); the panel makes and translates its own now.  MUTATION
+    CHECK: drop ``self.panel.set_language(...)`` from ``SettingsPage``."""
+    from trcc.core.i18n import tr
+
+    panel = _tab(window, qtbot, "Settings").panel
+    said = {label.text() for label, _key in panel._labels}
+    assert {"Coordinate", "Font", "Colour", "Load Image", "Web Video"} <= said
+    assert panel.mask_panel._title_lbl.text() == "Layer Mask"
+    panel.set_language("de")
+    said = {label.text() for label, _key in panel._labels}
+    assert tr("Coordinate", "de") in said
+    assert panel.video_panel._title_lbl.text() == tr("Media Player", "de")

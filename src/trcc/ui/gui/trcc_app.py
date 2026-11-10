@@ -611,7 +611,7 @@ class TRCCApp(QMainWindow):
         for key, view in self._module_views.items():
             self._translate_view(key, view, lang)
         self.uc_modules.view.set_language(lang)
-        self.uc_theme_setting.overlay_grid.set_language(lang)
+        self.uc_theme_setting.set_language(lang)
 
     def _on_bus_slideshow_changed(self, event: SlideshowChanged) -> None:
         """Route a ``SlideshowChanged`` event to its LCD's handler."""
@@ -1433,8 +1433,6 @@ class TRCCApp(QMainWindow):
             ABOUT_UNIT_POS,
             ABOUT_UPDATE_POS,
             ABOUT_VERSION_POS,
-            BACKGROUND_LOAD_IMG_POS,
-            BACKGROUND_LOAD_VIDEO_POS,
             DISPLAY_ANGLE_POS,
             GALLERY_TAB_FONT,
             GALLERY_TAB_H,
@@ -1443,16 +1441,7 @@ class TRCCApp(QMainWindow):
             LOCAL_GAME_CPU_POS,
             LOCAL_GAME_CPU_TEXT,
             LOCAL_THEME_POS,
-            MASK_DESC_POS,
-            MASK_LOAD_POS,
-            MASK_UPLOAD_POS,
-            MEDIA_PLAYER_LOAD_POS,
-            MEDIA_PLAYER_URL_POS,
             ONLINE_THEME_POS,
-            OVERLAY_GRID_HINT_POS,
-            PARAM_COLOUR_POS,
-            PARAM_COORDINATE_POS,
-            PARAM_FONT_POS,
             SAVE_AS_POS,
             TITLE_BAR_POS,
             TITLE_BAR_TEXT,
@@ -1475,25 +1464,9 @@ class TRCCApp(QMainWindow):
             x, y, w, h, pt = pos
             _lbl(self.form_container, tr(key, lang), x, y, w, h, pt, key)
 
-        grid = self.uc_theme_setting.data_table
-        x, y, w, h, pt = OVERLAY_GRID_HINT_POS
-        _lbl(grid, tr('Double-click to delete card', lang), x, y, w, h, pt,
-             'Double-click to delete card')
-
-        rpanel = self.uc_theme_setting.right_stack
-        for key, pos in [
-            ('Coordinate', PARAM_COORDINATE_POS),
-            ('Font', PARAM_FONT_POS),
-            ('Colour', PARAM_COLOUR_POS),
-        ]:
-            x, y, w, h, pt = pos
-            _lbl(rpanel, tr(key, lang), x, y, w, h, pt, key)
-
+        # The Settings panel's words are its own, as in every GUI.
         s = self.uc_theme_setting
-        s.mask_panel.set_title(tr('Layer Mask', lang))
-        s.background_panel.set_title(tr('Background', lang))
-        s.screencast_panel.set_title(tr('Screencast', lang))
-        s.video_panel.set_title(tr('Media Player', lang))
+        s.set_language(lang)
         self.uc_thanks.set_title(tr('About', lang))
         self.uc_modules.set_title(tr('Modules', lang))
         # The Control Center's top bar: its name, then Modules and About.
@@ -1503,35 +1476,9 @@ class TRCCApp(QMainWindow):
             widget.setText(tr(key, lang))
             self._i18n_labels.append((widget, key, ""))
         self._i18n_panel_tables = [
-            (s.mask_panel, 'Layer Mask'),
-            (s.background_panel, 'Background'),
-            (s.screencast_panel, 'Screencast'),
-            (s.video_panel, 'Media Player'),
             (self.uc_thanks, 'About'),
             (self.uc_modules, 'Modules'),
         ]
-
-        mp = s.mask_panel
-        x, y, w, h, pt = MASK_LOAD_POS
-        _lbl(mp, tr('Masks', lang), x, y, w, h, pt, 'Masks', center=True)
-        x, y, w, h, pt = MASK_UPLOAD_POS
-        _lbl(mp, tr('Upload', lang), x, y, w, h, pt, 'Upload', center=True)
-        x, y, w, h, pt = MASK_DESC_POS
-        _lbl(mp, tr('PNG format, resolution must not exceed screen resolution', lang),
-             x, y, w, h, pt,
-             'PNG format, resolution must not exceed screen resolution', wrap=True)
-
-        bp = s.background_panel
-        for key, pos in [('Load Image', BACKGROUND_LOAD_IMG_POS),
-                         ('Load Video', BACKGROUND_LOAD_VIDEO_POS)]:
-            x, y, w, h, pt = pos
-            _lbl(bp, tr(key, lang), x, y, w, h, pt, key)
-
-        vp = s.video_panel
-        x, y, w, h, pt = MEDIA_PLAYER_LOAD_POS
-        _lbl(vp, tr('Load Video', lang), x, y, w, h, pt, 'Load Video')
-        x, y, w, h, pt = MEDIA_PLAYER_URL_POS
-        _lbl(vp, tr('Web Video', lang), x, y, w, h, pt, 'Web Video')
 
         x, y, w, h, pt = LOCAL_THEME_POS
         _lbl(self.uc_theme_local, tr('Local Theme', lang), x, y, w, h, pt, 'Local Theme')

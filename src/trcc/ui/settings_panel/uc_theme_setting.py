@@ -25,14 +25,28 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QStackedWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QLabel, QStackedWidget
 
 from ...core.commands import (
     AddOverlayElement,
     Command,
     DeleteOverlayElement,
     UpdateOverlayElement,
+)
+from ...core.i18n import (
+    BACKGROUND_LOAD_IMG_POS,
+    BACKGROUND_LOAD_VIDEO_POS,
+    MASK_DESC_POS,
+    MASK_LOAD_POS,
+    MASK_UPLOAD_POS,
+    MEDIA_PLAYER_LOAD_POS,
+    MEDIA_PLAYER_URL_POS,
+    OVERLAY_GRID_HINT_POS,
+    PARAM_COLOUR_POS,
+    PARAM_COORDINATE_POS,
+    PARAM_FONT_POS,
+    tr,
 )
 from ...core.logs import per_frame
 from ...core.models import OverlayElementConfig, OverlayMode
@@ -117,6 +131,10 @@ class UCThemeSetting(BasePanel):
     def __init__(self, parent=None, *, skin: SettingsSkin):
         super().__init__(parent, width=SETTING_W, height=SETTING_H)
         self._skin = skin
+        #: Each text label on the panel and its English, made on the first
+        #: :meth:`set_language` (the panel's words used to be laid over it by
+        #: the gui window, so no other GUI had them).
+        self._labels: list[tuple[QLabel, str]] = []
         self._setup_ui()
 
     def update_metrics(self, readings: Any, temp_unit: str) -> None:
@@ -398,6 +416,50 @@ class UCThemeSetting(BasePanel):
     def set_mask_visible(self, visible: bool):
         """Update mask panel eye toggle state."""
         self.mask_panel.set_mask_visible(visible)
+
+    def set_language(self, lang: str) -> None:
+        """Every word on the panel in *lang*: its labels, the four sources'
+        titles, and the grid's weekday tile."""
+        log.info("UCThemeSetting.set_language: %s", lang)
+        if not self._labels:
+            self._make_labels()
+        for label, key in self._labels:
+            label.setText(tr(key, lang))
+        for panel, key in ((self.mask_panel, 'Layer Mask'),
+                           (self.background_panel, 'Background'),
+                           (self.screencast_panel, 'Screencast'),
+                           (self.video_panel, 'Media Player')):
+            panel.set_title(tr(key, lang))
+        self.overlay_grid.set_language(lang)
+
+    def _make_labels(self) -> None:
+        """The panel's text labels, each where the C# puts it (``core.i18n``),
+        on the sub-panel it belongs to, in the skin's label style."""
+        log.debug("UCThemeSetting._make_labels")
+        mask, background, video = self.mask_panel, self.background_panel, self.video_panel
+        for parent, key, place, wrap, center in (
+                (self.data_table, 'Double-click to delete card', OVERLAY_GRID_HINT_POS,
+                 False, False),
+                (self.right_stack, 'Coordinate', PARAM_COORDINATE_POS, False, False),
+                (self.right_stack, 'Font', PARAM_FONT_POS, False, False),
+                (self.right_stack, 'Colour', PARAM_COLOUR_POS, False, False),
+                (mask, 'Masks', MASK_LOAD_POS, False, True),
+                (mask, 'Upload', MASK_UPLOAD_POS, False, True),
+                (mask, 'PNG format, resolution must not exceed screen resolution',
+                 MASK_DESC_POS, True, False),
+                (background, 'Load Image', BACKGROUND_LOAD_IMG_POS, False, False),
+                (background, 'Load Video', BACKGROUND_LOAD_VIDEO_POS, False, False),
+                (video, 'Load Video', MEDIA_PLAYER_LOAD_POS, False, False),
+                (video, 'Web Video', MEDIA_PLAYER_URL_POS, False, False)):
+            x, y, w, h, pt = place
+            label = QLabel(key, parent)
+            label.setGeometry(x, y - max(2, pt // 4), w, h)
+            label.setStyleSheet(self._skin.label.format(pt=pt))
+            label.setWordWrap(wrap)
+            if center:
+                label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            label.raise_()
+            self._labels.append((label, key))
 
     def show(self, view: SettingsView) -> None:
         """Draw *view* -- everything the App holds for the panel on screen.

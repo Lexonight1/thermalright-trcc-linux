@@ -60,6 +60,9 @@ class SettingsSkin:
     switch_on: str          # ... its chosen segment
     switch_on_text: str
     switch_off_text: str
+    #: Whether the hue strip paints its own rainbow -- the gui's is in the
+    #: picture behind it; a skin with no such picture needs it drawn.
+    hue_rainbow: bool
     #: The colour picker's fixed swatches, (r, g, b).
     preset_colours: tuple[tuple[int, int, int], ...]
 
@@ -77,6 +80,8 @@ class SettingsSkin:
     entry: str                  # a mask / cast coordinate box
     mode_title: str
     mode_label: str
+    #: A text label on the panel, ``{pt}`` its point size.
+    label: str
     # When an image is missing the control says what it is in text instead.
     grid_toggle_fallback: str
     stepper_fallback: str

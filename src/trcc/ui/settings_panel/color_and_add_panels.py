@@ -96,8 +96,10 @@ def color_square_rgb(base: Rgb, x: int, y: int, w: int, h: int) -> Rgb:
 
 
 class _HueStrip(QWidget):
-    """The hue strip (``UCColorB``).  The rainbow is in the panel's
-    background art; this draws only the thumb and turns a drag into a hue."""
+    """The hue strip (``UCColorB``).  In the gui the rainbow is in the
+    panel's background art and this draws only the thumb; a skin without that
+    art has the strip paint the rainbow itself (``SettingsSkin.hue_rainbow``),
+    from the same position -> colour mapping a pick uses."""
 
     hue_picked = Signal(int, int, int)
 
@@ -106,14 +108,21 @@ class _HueStrip(QWidget):
         self._thumb = skin.pixmap(skin.hue_thumb)
         self._thumb_w = self._thumb.width() if not self._thumb.isNull() else 8
         self._center_x = self._thumb_w // 2
+        self._rainbow = skin.hue_rainbow
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        log.debug("_HueStrip.__init__: thumb %dpx", self._thumb_w)
+        log.debug("_HueStrip.__init__: thumb %dpx rainbow=%s", self._thumb_w, self._rainbow)
 
     def paintEvent(self, event) -> None:
         frame_log.debug("_HueStrip.paintEvent: x=%d", self._center_x)
+        painter = QPainter(self)
+        if self._rainbow:
+            half, w, h = self._thumb_w // 2, self.width(), self.height()
+            for x in range(half, w - half):
+                painter.setPen(QColor(*hue_strip_rgb(x, w, self._thumb_w)))
+                painter.drawLine(x, 5, x, h - 6)
         if not self._thumb.isNull():
-            QPainter(self).drawPixmap(self._center_x - self._thumb_w // 2, 0,
-                                      self._thumb)
+            painter.drawPixmap(self._center_x - self._thumb_w // 2, 0, self._thumb)
+        painter.end()
 
     def mousePressEvent(self, event) -> None:
         log.debug("_HueStrip.mousePressEvent: x=%d", event.position().x())
