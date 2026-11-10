@@ -723,14 +723,36 @@ def test_tiles_flow_to_the_visible_width_not_the_tabs(window: Any, qtbot: Any) -
     1920-wide bar (reproduced on Xvfb: viewport 1158 wide, 1 column, 8 fit).
     The offscreen platform resizes in an order that hides it, so the test
     resizes the viewport alone.  MUTATION CHECK: drop the viewport's event
-    filter in ``TileGrid``."""
+    filter in ``FlowArea``."""
     _themes(window._app, "One", "Two", "Three", "Four", "Five", "Six")
-    grid = _local_themes(window, qtbot)
-    viewport = grid._scroll.viewport()
+    flow = _local_themes(window, qtbot)._flow
+    viewport = flow.viewport()
     viewport.resize(130, viewport.height())
-    assert grid._columns == 1
+    assert flow.columns == 1
     viewport.resize(1000, viewport.height())
-    assert grid._columns == grid._fit() == (1000 + 10) // 130
+    assert flow.columns == flow.fit() == (1000 + 10) // 130
+
+
+def test_sensor_cards_flow_into_rows_and_never_scroll_sideways(
+        window: Any, qtbot: Any) -> None:
+    """His ask (2026-11-10): the cards ran off the right in one row behind a
+    bottom scrollbar.  Now as many to a row as fit, rows going down, every
+    card one width, a row's cards one height.  MUTATION CHECK: put the
+    horizontal scrollbar policy back to as-needed in ``FlowArea``."""
+    from PySide6.QtCore import Qt
+
+    from trcc.ui.hudgui.sensors import CARD_WIDTH, SPACING
+
+    view = _sensors(window, qtbot)
+    flow = view.flow
+    assert flow.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    viewport = flow.viewport()
+    viewport.resize(3 * CARD_WIDTH + 2 * SPACING, viewport.height())
+    assert flow.columns == 3
+    cards = list(view.cards.values())
+    assert {card.width() for card in cards} == {CARD_WIDTH}
+    qtbot.waitUntil(lambda: cards[0].height() == cards[1].height() == cards[2].height()
+                    and cards[0].height() > 0, timeout=2000)
 
 
 def test_every_panel_fits_the_minimum(window: Any, qtbot: Any) -> None:

@@ -19,11 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
-    QGridLayout,
     QLabel,
-    QScrollArea,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -33,6 +31,7 @@ from ...core.commands import DeviceCanvas, LcdSnapshot
 from ...core.results import LcdSnapshotResult
 from ..qt_assets import thumbnail_icon
 from ..qt_background import dispatch_in_background
+from .flow import FlowArea
 from .words import words
 
 if TYPE_CHECKING:
@@ -76,7 +75,6 @@ class TileGrid(QWidget):
         log.info("%s: built", type(self).__name__)
         self._app = app
         self._selection = selection
-        self._columns = 1
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(8)
@@ -84,23 +82,9 @@ class TileGrid(QWidget):
         self.header = self._header()
         if self.header is not None:
             column.addWidget(self.header)
-        self._scroll = QScrollArea(self)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget "
-                                   "{ background: transparent; }")
-        self._body = QWidget()
-        self._grid = QGridLayout(self._body)
-        self._grid.setContentsMargins(0, 0, 0, 0)
-        self._grid.setSpacing(SPACING)
-        self._grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self._scroll.setWidget(self._body)
-        # The tiles flow to the VISIBLE width -- the viewport's, which can
-        # change without this tab resizing (a scrollbar appears, the panel
-        # is shown after the tiles were laid out hidden).
-        self._scroll.viewport().installEventFilter(self)
-        column.addWidget(self._scroll, stretch=1)
+        #: The tiles, flowed to the visible width (``flow.FlowArea``).
+        self._flow = FlowArea(TILE.width(), SPACING, self)
+        column.addWidget(self._flow, stretch=1)
         #: The tiles, by what they name.
         self.tiles: dict[str, QToolButton] = {}
         #: What the tab says when it has no tiles, or why a click failed.
@@ -146,6 +130,7 @@ class TileGrid(QWidget):
         for tile in self.tiles.values():
             tile.deleteLater()
         self.tiles = {}
+        self._flow.place([])        # it must not re-flow the deleted ones
         key = self._selection.key
         say_now = words(self._app)
         if not key:
@@ -159,7 +144,7 @@ class TileGrid(QWidget):
         size = (canvas.width, canvas.height)
         for tile in self._tiles(key, size):
             self.tiles[tile.id] = self._tile(tile)
-        self._lay_out()
+        self._flow.place(list(self.tiles.values()))
         log.info("%s.refresh: %s %dx%d -> %d tile(s)", type(self).__name__, key,
                  *size, len(self.tiles))
         self.note.setText("" if self.tiles
@@ -169,7 +154,7 @@ class TileGrid(QWidget):
     def _tile(self, tile: Tile) -> QToolButton:
         """One tile: its picture over its name."""
         log.debug("%s._tile: %s", type(self).__name__, tile.name)
-        button = QToolButton(self._body)
+        button = QToolButton(self._flow.body)
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         button.setFixedSize(TILE)
         button.setIcon(thumbnail_icon(Path(tile.picture), PICTURE))
@@ -182,33 +167,6 @@ class TileGrid(QWidget):
         button.setProperty(_ID, tile.id)
         button.clicked.connect(self._on_tile)
         return button
-
-    def _fit(self) -> int:
-        """How many tiles fit across the area now (at least one)."""
-        columns = max(1, (self._scroll.viewport().width() + SPACING)
-                      // (TILE.width() + SPACING))
-        log.debug("%s._fit: %d", type(self).__name__, columns)
-        return columns
-
-    def _lay_out(self) -> None:
-        """Place the tiles, in order, as many to a row as fit."""
-        self._columns = self._fit()
-        log.debug("%s._lay_out: %d tile(s), %d to a row", type(self).__name__,
-                  len(self.tiles), self._columns)
-        for index, button in enumerate(self.tiles.values()):
-            self._grid.addWidget(button, index // self._columns, index % self._columns)
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        """The visible width changed: the tiles flow again, if a different
-        number fit.  His run (2026-11-05): laid out while the side panel was
-        hidden -- one to a row -- the tab's own resize came before the
-        viewport's, and on a 1920-wide bar the themes stayed in one column."""
-        if (watched is self._scroll.viewport() and event.type() == QEvent.Type.Resize
-                and self._fit() != self._columns):
-            log.debug("%s.eventFilter: viewport %d wide -- re-flow", type(self).__name__,
-                      self._scroll.viewport().width())
-            self._lay_out()
-        return super().eventFilter(watched, event)
 
     # ── A click, and the light ─────────────────────────────────────────
 

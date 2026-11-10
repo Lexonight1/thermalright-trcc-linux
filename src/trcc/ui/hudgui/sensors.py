@@ -18,9 +18,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QGridLayout,
-    QHBoxLayout,
     QLabel,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +26,7 @@ from PySide6.QtWidgets import (
 from ...core.commands import ControlCenterSnapshot, ReadSensors
 from ...core.logs import per_frame
 from ..presentation.sensor_display import format_sensor_value, group_sensors
+from .flow import FlowArea
 from .words import say_late, words
 
 if TYPE_CHECKING:
@@ -39,15 +38,19 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
-#: A card's width.
-CARD_WIDTH = 300
+#: A card's width -- one for every card, so they line up in rows; wide enough
+#: for a CPU or GPU's full name beside its value.
+CARD_WIDTH = 370
+#: The gap between cards.
+SPACING = 10
 _CARD_STYLE = ("QWidget#card { background: rgba(255, 255, 255, 14); "
                "border: 1px solid rgba(255, 255, 255, 30); border-radius: 8px; }"
                "QLabel { color: #dfe5ea; background: transparent; border: none; }")
 
 
 class SensorsView(QWidget):
-    """The cards, side by side, scrolling when they do not fit."""
+    """The cards in rows of the visible width, scrolling down when they do not
+    fit -- never sideways (his ask, 2026-11-10)."""
 
     def __init__(self, app: CommandBus, bus: BusBridge,
                  parent: QWidget | None = None) -> None:
@@ -63,12 +66,9 @@ class SensorsView(QWidget):
         self.cards: dict[str, QWidget] = {}
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
-        self._scroll = QScrollArea(self)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._scroll.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget "
-                                   "{ background: transparent; }")
-        column.addWidget(self._scroll)
+        #: The cards, flowed to the visible width (``flow.FlowArea``).
+        self.flow = FlowArea(CARD_WIDTH, SPACING, self)
+        column.addWidget(self.flow)
         #: Said when there is nothing to show.
         self.note = QLabel("", self)
         self.note.setStyleSheet("color: #dfe5ea; font-size: 11pt;")
@@ -82,17 +82,11 @@ class SensorsView(QWidget):
         self._known = {reading.sensor_id for reading in readings}
         cards = group_sensors(readings)
         log.info("SensorsView.refresh: %d reading(s) on %d card(s)", len(readings), len(cards))
-        body = QWidget()
-        row = QHBoxLayout(body)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(10)
-        row.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.values, self._units = {}, {}
-        self.cards = {name: self._card(name, rows, body) for name, rows in cards}
         for card in self.cards.values():
-            row.addWidget(card, alignment=Qt.AlignmentFlag.AlignTop)
-        row.addStretch(1)
-        self._scroll.setWidget(body)        # the old body goes with it
+            card.deleteLater()
+        self.values, self._units = {}, {}
+        self.cards = {name: self._card(name, rows, self.flow.body) for name, rows in cards}
+        self.flow.place(list(self.cards.values()))
         self._show_values({r.sensor_id: r.value for r in readings},
                           self._app.dispatch(ControlCenterSnapshot()).temp_unit)
         self.note.setText("" if cards else words(self._app)("No sensors found."))
@@ -124,6 +118,9 @@ class SensorsView(QWidget):
             # was read under: format_sensor_value keeps a "°F" unit as °F.
             self._units[reading.id] = "°C" if reading.unit in ("°C", "°F") else reading.unit
         grid.setColumnStretch(0, 1)
+        # A card stands as tall as its row's tallest: the lines stay at the
+        # top, the room goes under them, not between them.
+        grid.setRowStretch(len(readings) + 1, 1)
         return card
 
     def _on_sensors(self, event: SensorsUpdated) -> None:
