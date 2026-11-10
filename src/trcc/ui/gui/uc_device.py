@@ -452,19 +452,18 @@ class UCDevice(BasePanel):
             self.selected_device = None
             return
 
-        # Restore previous selection or select first device.
-        # Use _restore_selection (no signal) when the path is unchanged —
-        # only emit device_selected for genuinely new devices so callers
-        # don't re-initialize an already-running device.
-        restored = False
-        if prev_path:
-            for d in devices:
-                if d.get('path') == prev_path:
-                    self._restore_selection(d)
-                    restored = True
-                    break
-        if not restored:
-            self._select_device(devices[0])
+        # Keep the previous highlight (no signal: the device is already
+        # running).  WHICH device goes on screen otherwise is the window's
+        # ``DeviceChoice``, never this list's: selecting the first one here,
+        # while the window was being built, recorded it as last used before
+        # the window read that -- so every start opened on the first device.
+        for d in devices:
+            if d.get('path') == prev_path:
+                self._restore_selection(d)
+                return
+        log.debug("update_devices: %r is gone -- the window picks the next",
+                  prev_path)
+        self.selected_device = None
 
     def _take_identities(self, devices: list[dict]) -> None:
         """The same devices, some now identified: each button whose device

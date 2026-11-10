@@ -90,10 +90,11 @@ from ...core.results import ControlCenterSnapshotResult, LanguageEntry
 from ..bus_bridge import BusBridge, DeviceSettingsEvent
 from ..device_selection import DeviceSelection
 from ..presentation import presentation_for
+from ..presentation.device_choice import DeviceChoice
 from ..qt_tray import TrayController
 from ..qt_words import retranslate, say_tip
+from ..ui_state import UiStateStore
 from ..viewfinder import ViewfinderFleet, open_picker, store_picked_region
-from ._ui_state import UiStateStore
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
 from .base_handler import BaseHandler
@@ -246,9 +247,9 @@ class TRCCApp(QMainWindow):
         self._handlers: dict[str, BaseHandler] = {}
         self._active_key = ''         # vid:pid of currently active device
         self._lcd_selection = DeviceSelection(self)   # the LCD picked; kept by full-window views
-        # The device the view was taken from when it went away -- shown again
-        # when it comes back, unless the user picked another one meanwhile.
-        self._view_lost_from = ''
+        # Which device is on screen: every GUI's rules (presentation/device_choice).
+        self._choice = DeviceChoice(self._ui_state.state.last_device_key,
+                                    self._ui_state.set_last_device_key)
 
         self._handshake_pending = False
         self._cut_mode = 'background'
@@ -384,14 +385,9 @@ class TRCCApp(QMainWindow):
         # The window may open on a panel the App has not connected yet: when
         # it connects, it is the one on screen, not one in the background.
         self._configure_lcd(event.key, on_screen=event.key == self._active_key)
-        if event.key == self._view_lost_from:
-            # It was the one on screen when it went (a VM, a hub reset): put
-            # it back, or every blink leaves the user looking at another panel.
-            log.info("_on_bus_device_connected: %s is back — showing it again",
-                     event.key)
-            self._view_lost_from = ''
-            # Through the sidebar, so its highlight follows the view.
-            self.uc_device.select_path(event.key)
+        # Back after leaving the screen, or the first into an empty window.
+        if target := self._choice.connected(event.key, self._attached()):
+            self._show_device(target)
 
     def _on_bus_themes_changed(
             self, event: ThemeSaved | ThemeImported | ThemeDeleted | ModuleChanged,
@@ -735,13 +731,7 @@ class TRCCApp(QMainWindow):
         for entry in self._app.dispatch(ListDevices()).devices:
             self._add_handler(self._app.dispatch(DeviceState(key=entry.key)))
         self._refresh_sidebar()
-        # Restore last-active device or fall back to first LCD.
-        target_key = self._ui_state.state.last_device_key
-        if target_key not in self._handlers:
-            target_key = next(
-                (k for k, h in self._handlers.items() if isinstance(h, LCDHandler)),
-                next(iter(self._handlers), ''),
-            )
+        target_key = self._choice.opened(self._attached())
 
         # Render EVERY connected LCD, not just the active one — on real hardware
         # every cooler's screen shows its content simultaneously, so the mock
@@ -766,7 +756,7 @@ class TRCCApp(QMainWindow):
         per-OS 'no devices' hint (``Platform.no_devices_hint()``).
         """
         if target_key:
-            self._activate_device(target_key)
+            self._show_device(target_key)
         else:
             log.info("_show_initial_view: no devices — home/sysinfo empty state")
             self._show_view('sysinfo')
@@ -876,16 +866,29 @@ class TRCCApp(QMainWindow):
             self._lcd_selection.set_key('')
         if self._active_key == key:
             self._active_key = ''
-            self._view_lost_from = key
-            remaining = list(self._handlers)
-            if remaining:
-                self._activate_device(remaining[0])
-            else:
-                # No device left — clear the fingerprint line so it doesn't
-                # show a removed device's bytes.
-                self.device_info_label.clear()
-
         self._refresh_sidebar()
+        target = self._choice.disconnected(key, self._attached())
+        if target:
+            self._show_device(target)
+        elif target == '':
+            # No device left — clear the fingerprint line so it doesn't
+            # show a removed device's bytes.
+            self.device_info_label.clear()
+
+    def _attached(self) -> dict[str, str]:
+        """Each device this window has, key -> kind -- what ``DeviceChoice`` reads."""
+        kinds = {k: "lcd" if isinstance(h, LCDHandler) else "led"
+                 for k, h in self._handlers.items()}
+        log.debug("_attached: %s", kinds)
+        return kinds
+
+    def _show_device(self, key: str) -> None:
+        """Put *key* on screen the way a click does, so the sidebar's highlight
+        follows -- this window's half of a ``DeviceChoice`` answer."""
+        log.info("_show_device: %s", key)
+        self.uc_device.select_path(key)
+        if self._active_key != key:     # not listed in the sidebar
+            self._activate_device(key)
 
     def _refresh_sidebar(self) -> None:
         """Update UCDevice from the current handler set.
@@ -935,10 +938,6 @@ class TRCCApp(QMainWindow):
                 key, list(self._handlers.keys()),
             )
             return
-
-        # Persist last-active device for next launch (UI state — not
-        # domain settings, so it lives in UiStateStore not app.settings).
-        self._ui_state.set_last_device_key(key)
 
         state = self._app.dispatch(DeviceState(key=key))
         if isinstance(handler, LCDHandler):
@@ -1812,9 +1811,8 @@ class TRCCApp(QMainWindow):
     def _on_device_picked(self, device_info: dict) -> None:
         """The user pressed a device button: a returning device must not
         take the screen back from their choice."""
-        log.debug("_on_device_picked: %s (clears view_lost_from=%r)",
-                  device_info.get('path'), self._view_lost_from)
-        self._view_lost_from = ''
+        log.debug("_on_device_picked: %s", device_info.get('path'))
+        self._choice.picked(device_info.get('path', ''))
 
     def _on_about_close_requested(self) -> None:
         """Close button on About/Control Center panel — return to form view."""

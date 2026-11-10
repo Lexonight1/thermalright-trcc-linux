@@ -60,19 +60,20 @@ def test_at_rest_it_is_only_the_bar_and_an_ordinary_window(window: Any) -> None:
     assert window.height() == CHROME_HEIGHT and not window.drop.isVisible()
 
 
-def test_devices_lists_the_symbols_and_a_pick_opens_its_side_panel(
+def test_devices_opens_on_a_device_and_shows_its_side_panel(
         window: Any, qtbot: Any) -> None:
-    """MUTATION CHECK: drop the ``set_key`` in ``DevicesView._on_picked`` and
-    the panel's preview shows no device."""
+    """Devices never opens on no device (his call 2026-11-10: "default to the
+    first or last used device").  MUTATION CHECK: drop ``_keep_a_device()``
+    from ``DevicesView.__init__`` and the panel stays hidden."""
     from trcc.ui.qt_preview import PreviewSurface
 
     window.bar.buttons["Devices"].click()
     devices = window.panel("Devices")
     button = devices.menu.buttons[_KEY]
     assert not button.icon().isNull() and button.text() == ""   # the symbol, as gui
-    assert not devices.panel.isVisible()                        # until one is picked
-    button.click()
-    qtbot.waitUntil(devices.panel.isVisible)
+    qtbot.waitUntil(devices.panel.isVisible)                    # no pick needed
+    assert window._selection.key == _KEY and button.isChecked()
+    button.click()                                              # a pick still works
     assert window._selection.key == _KEY and button.isChecked()
     assert list(devices.panel.tabs.tabs) == ["Local Theme", "Cloud Masks",
                                              "Cloud Backgrounds", "Settings"]
@@ -754,10 +755,107 @@ def test_the_picture_fills_the_bezels_screen_after_a_placeholder(
     devices = window.panel("Devices")
     preview = devices.panel.preview
     preview.set_placeholder("Pick a device on the left to see its output.")
+    # Devices opens on the device (2026-11-10), so the red theme's frame is
+    # what replaces the placeholder -- no click needed.
     assert window._app.dispatch(LoadTheme(key=_KEY, path=red)).ok
+
+    def corner() -> str:
+        pixmap = preview._label.pixmap()
+        if pixmap is None or pixmap.isNull():
+            return ""
+        return QColor(preview._label.grab().toImage().pixelColor(3, 3)).name()
+
+    qtbot.waitUntil(lambda: corner() == QColor(0, 80, 160).name(), timeout=3000)
+
+
+# ── the device it opens on (his call 2026-11-10) ─────────────────────────
+
+_OTHER = "87ad:70db"
+
+
+@pytest.fixture
+def two_panels(tmp_path: Path) -> Iterator[App]:
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100},
+                            {"type": "lcd", "vid": "87ad", "pid": "70db", "pm": 5,
+                             "sub": 1, "resolution": "320x240"}], tmp_path),
+              renderer=QtRenderer())
+    app.discover_and_connect()
+    assert sorted(app.devices) == [_KEY, _OTHER]
+    yield app
+    app.close()
+
+
+def _devices_on(app: App, qtbot: Any, last_used: str = "") -> Any:
+    """A hudgui window over *app*, the gui's ui_state.json saying *last_used*,
+    and its Devices panel open."""
+    import json
+
+    from trcc.core.commands import GetPlatformInfo
+    from trcc.ui.hudgui.window import HudWindow
+
+    if last_used:
+        state = Path(app.dispatch(GetPlatformInfo()).config_dir) / "ui_state.json"
+        state.write_text(json.dumps({"last_device_key": last_used}), encoding="utf-8")
+    win = HudWindow(app)
+    qtbot.addWidget(win)
+    win.show()
+    win.bar.buttons["Devices"].click()
+    return win
+
+
+def test_it_opens_on_the_device_last_used_in_any_window(two_panels: App,
+                                                        qtbot: Any) -> None:
+    """ui_state.json is the gui's too, so both open on the same device."""
+    win = _devices_on(two_panels, qtbot, last_used=_OTHER)
+    devices = win.panel("Devices")
+
+    assert win._selection.key == _OTHER
+    assert [k for k, b in devices.menu.buttons.items() if b.isChecked()] == [_OTHER]
+
+
+def test_the_device_shown_is_the_one_remembered(two_panels: App,
+                                                 qtbot: Any) -> None:
+    """As the gui's ``_activate_device``: every device shown, the default too."""
+    win = _devices_on(two_panels, qtbot)
+    devices = win.panel("Devices")
+    assert win._selection.key == _KEY
+    assert win._ui_state.state.last_device_key == _KEY
+
+    devices.menu.buttons[_OTHER].click()
+    assert win._selection.key == _OTHER
+    assert win._ui_state.state.last_device_key == _OTHER
+
+
+def test_a_device_lost_from_the_screen_takes_it_back(two_panels: App,
+                                                     qtbot: Any) -> None:
+    """As the gui (``_view_lost_from``): a blink (a VM, a hub reset) must not
+    leave the user looking at another panel.  The menu used to list only what
+    was attached when it was built.  MUTATION CHECK: drop the
+    device_connected/disconnected connections in ``DevicesView``."""
+    from trcc.core.commands import DisconnectDevice
+
+    win = _devices_on(two_panels, qtbot, last_used=_OTHER)
+    devices = win.panel("Devices")
+
+    assert two_panels.dispatch(DisconnectDevice(key=_OTHER)).ok
+    qtbot.waitUntil(lambda: list(devices.menu.buttons) == [_KEY])
+    assert win._selection.key == _KEY and devices.panel.isVisible()
+
+    assert two_panels.dispatch(ConnectDevice(key=_OTHER)).ok
+    qtbot.waitUntil(lambda: win._selection.key == _OTHER)
+    assert sorted(devices.menu.buttons) == [_KEY, _OTHER]
+
+
+def test_a_pick_meanwhile_keeps_the_screen(two_panels: App, qtbot: Any) -> None:
+    """As the gui's ``_on_device_picked``: the user's choice wins over a return."""
+    from trcc.core.commands import DisconnectDevice
+
+    win = _devices_on(two_panels, qtbot, last_used=_OTHER)
+    devices = win.panel("Devices")
+    assert two_panels.dispatch(DisconnectDevice(key=_OTHER)).ok
+    qtbot.waitUntil(lambda: list(devices.menu.buttons) == [_KEY])
+
     devices.menu.buttons[_KEY].click()
-    qtbot.waitUntil(lambda: preview._label.pixmap() is not None
-                    and not preview._label.pixmap().isNull(), timeout=3000)
-    drawn = preview._label.grab().toImage()
-    corner = QColor(drawn.pixelColor(3, 3))
-    assert corner.name() == QColor(0, 80, 160).name(), corner.name()
+    assert two_panels.dispatch(ConnectDevice(key=_OTHER)).ok
+    qtbot.waitUntil(lambda: sorted(devices.menu.buttons) == [_KEY, _OTHER])
+    assert win._selection.key == _KEY

@@ -57,7 +57,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ...core.ports import CommandBus
-    from ._ui_state import UiStateStore
+    from ..ui_state import UiStateStore
 
 log = logging.getLogger(__name__)
 

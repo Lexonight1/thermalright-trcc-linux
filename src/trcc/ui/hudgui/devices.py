@@ -30,7 +30,9 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import DeviceState, ListDevices
+from ...core.events import DeviceConnected, DeviceDisconnected
 from ...core.logs import per_frame
+from ..presentation.device_choice import DeviceChoice
 from ..presentation.device_symbols import device_symbols
 from ..qt_assets import Assets
 from ..qt_preview import FRAME_EDGE, PreviewSurface
@@ -43,6 +45,7 @@ if TYPE_CHECKING:
     from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
     from ..device_selection import DeviceSelection
+    from ..ui_state import UiStateStore
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -70,19 +73,22 @@ class DeviceMenu(QWidget):
         self._column.setSpacing(6)
         #: The device buttons, by key.
         self.buttons: dict[str, QPushButton] = {}
+        #: Each attached device's kind ("lcd" / "led"), by key.
+        self.kinds: dict[str, str] = {}
         self.refresh()
 
     def refresh(self) -> None:
         """The buttons again, from what the App has attached now."""
         for button in self.buttons.values():
             button.deleteLater()
-        self.buttons = {}
+        self.buttons, self.kinds = {}, {}
         while self._column.count():
             self._column.takeAt(0)
         for entry in self._app.dispatch(ListDevices()).devices:
             state = self._app.dispatch(DeviceState(key=entry.key))
             if not state.ok:
                 continue
+            self.kinds[entry.key] = entry.kind
             self._column.addWidget(self._button(entry.key, {
                 'name': f"{state.vendor} {state.product}".strip()
                         or f"Device {state.vid:04x}:{state.pid:04x}",
@@ -117,13 +123,18 @@ class DeviceMenu(QWidget):
         self.buttons[key] = button
         return button
 
+    def show_picked(self, key: str) -> None:
+        """Light *key*'s button alone -- or none, for no device."""
+        log.debug("DeviceMenu.show_picked: %r", key)
+        for name, button in self.buttons.items():
+            button.setChecked(name == key)
+
     def _on_device(self) -> None:
         """A device was clicked -- read which off the button, light it alone."""
         button = self.sender()
         key = "" if button is None else str(button.property(_KEY))
         log.info("DeviceMenu._on_device: %s", key)
-        for name, other in self.buttons.items():
-            other.setChecked(name == key)
+        self.show_picked(key)
         if key:
             self.picked.emit(key)
 
@@ -209,10 +220,13 @@ class DevicesView(QWidget):
     picked -- its side panel beside it."""
 
     def __init__(self, app: CommandBus, bus: BusBridge, selection: DeviceSelection,
-                 parent: QWidget | None = None) -> None:
+                 ui_state: UiStateStore, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         log.info("DevicesView: built (tabs %s + %s)", DEVICE_TABS, DEVICE_SETTINGS_TAB)
         self._selection = selection
+        #: Which device is on screen -- the gui's rules, shared by every skin.
+        self._choice = DeviceChoice(ui_state.state.last_device_key,
+                                    ui_state.set_last_device_key)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(18)
@@ -226,14 +240,36 @@ class DevicesView(QWidget):
         self.panel.hide()
         row.addWidget(self.panel, stretch=1)
         self.menu.picked.connect(self._on_picked)
+        # A device plugged in or lost after this view was built: the menu
+        # listed only what was attached when it was made.
+        for signal in (bus.device_connected, bus.device_disconnected):
+            signal.connect(self._on_fleet_changed,
+                           type=Qt.ConnectionType.QueuedConnection)
+        self._show(self._choice.opened(self.menu.kinds))
 
     def _on_picked(self, key: str) -> None:
-        """The side panel opens on *key*, its preview showing that device."""
+        """The user picked *key*."""
         log.info("DevicesView._on_picked: %s", key)
+        self._show(self._choice.picked(key))
+
+    def _on_fleet_changed(self, event: DeviceConnected | DeviceDisconnected) -> None:
+        """A device came or went, from any UI -- the menu again, and the device
+        ``DeviceChoice`` puts on screen, if it moves one."""
+        log.info("DevicesView._on_fleet_changed: %s %s",
+                 type(event).__name__, event.key)
+        self.menu.refresh()
+        answer = (self._choice.connected(event.key, self.menu.kinds)
+                  if isinstance(event, DeviceConnected)
+                  else self._choice.disconnected(event.key, self.menu.kinds))
+        self._show(self._selection.key if answer is None else answer)
+
+    def _show(self, key: str) -> None:
+        """The side panel on *key*, its preview showing that device -- or, with
+        no device at all, hidden."""
+        log.debug("DevicesView._show: %r", key)
+        self.menu.show_picked(key)
         self._selection.set_key(key)
-        self.panel.show()
-
-
+        self.panel.setVisible(bool(key))
 
 
 class SettingsPage(QScrollArea):

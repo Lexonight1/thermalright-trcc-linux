@@ -1,4 +1,7 @@
-"""UiState — GUI-only preferences that don't belong in ``app.settings``.
+"""UiState — window preferences that don't belong in ``app.settings``.
+
+Shared by the gui and hudgui, so both open on the device last picked in
+either (``last_device_key``).  It lived in ``ui/gui`` until hudgui needed it.
 
 Hexagonal note: ``app.settings`` is a domain-level concept (per-device
 mutable state observed across CLI / API / GUI / daemon).  Things like
@@ -20,7 +23,7 @@ import logging
 from dataclasses import asdict, dataclass, fields
 from typing import TYPE_CHECKING
 
-from ...core._safe import load_json_or_default
+from ..core._safe import load_json_or_default
 
 if TYPE_CHECKING:
     from pathlib import Path

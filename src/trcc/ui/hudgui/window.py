@@ -37,6 +37,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
+from ...core.commands import GetPlatformInfo
 from ...core.events import LanguageChanged
 from ...core.i18n import tr
 from ...core.logs import per_frame
@@ -44,6 +45,7 @@ from ..bus_bridge import BusBridge
 from ..device_selection import DeviceSelection
 from ..qt_modules import ModulesView
 from ..qt_words import retranslate
+from ..ui_state import UiStateStore
 from .about import About
 from .chrome import CHROME_HEIGHT, ChromeBar
 from .control_center import ControlCenter
@@ -84,6 +86,9 @@ class HudWindow(QWidget):
         self._app = app
         self._bus = BusBridge(app.events)
         self._selection = DeviceSelection(self)
+        #: The device last picked, shared with the gui (``ui_state.json``).
+        self._ui_state = UiStateStore(Path(app.dispatch(GetPlatformInfo()).config_dir))
+        self._ui_state.load()
         self._glass = QPixmap(str(GLASS))
         self._glass_scaled = QPixmap()
         #: The menu item whose panel is down, or None -- just the bar.
@@ -136,7 +141,8 @@ class HudWindow(QWidget):
         log.debug("HudWindow._make: %s", item)
         match item:
             case "Devices":
-                devices = DevicesView(self._app, self._bus, self._selection)
+                devices = DevicesView(self._app, self._bus, self._selection,
+                                      self._ui_state)
                 self._bus.frames_resumed.connect(devices.panel.preview.refresh)
                 self._bus.follow_previews(devices.panel.preview)
                 return devices
