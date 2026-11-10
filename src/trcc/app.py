@@ -26,7 +26,12 @@ from .adapters.repo.github_releases import GitHubReleases
 from .adapters.theme.cloud import CzhordeCatalog
 from .adapters.theme.filesystem import FileContentStore
 from .core.commands import Command
-from .core.errors import DeviceNotFoundError, ModuleUnavailable, TransportError
+from .core.errors import (
+    DeviceNotFoundError,
+    ModuleUnavailable,
+    NotADeviceKey,
+    TransportError,
+)
 from .core.events import (
     BackgroundChanged,
     BrightnessChanged,
@@ -2110,7 +2115,12 @@ class App(CommandBus, ModuleServices):
         else:
             if cmd.USES_DEVICE:
                 self._connect_for(cmd)
-            result = cmd.execute(self)
+            try:
+                result = cmd.execute(self)
+            except NotADeviceKey as e:
+                # Settings refused an entry for a key naming no device: the
+                # Command's own failed Result, as a capability refusal is.
+                result = cmd.refusal(str(e))
         if not getattr(result, "ok", True):
             # A per-tick Command that fails fails again next tick: warn once
             # per distinct message, or a broken screencast writes seven

@@ -25,7 +25,7 @@ from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
 from ..core._colors import rgb_rows
 from ..core._safe import load_json_or_default
-from ..core.errors import ConfigError
+from ..core.errors import ConfigError, NotADeviceKey
 from ..core.led_models import (
     RETIRED_OPENRGB_MODE,
     LedDeviceSettings,
@@ -57,6 +57,7 @@ from ..core.models import (
     ThemeBackground,
     background_choice_from_fields,
     canonical_device_key,
+    is_device_key,
 )
 from ..core.ports import Paths
 
@@ -368,6 +369,7 @@ class Settings:
         frame_log.debug("for_device: key=%s", key)
         with self._lock:
             if key not in self._devices:
+                _require_device_key(key)
                 self._devices[key] = self._seed_for(key)
             return self._devices[key]
 
@@ -421,6 +423,7 @@ class Settings:
                 log.info("seed_mount_orientation: %s already configured "
                          "(orientation=%d) — not re-seeding", key, current)
                 return current
+            _require_device_key(key)
             degrees = 90 if portrait_mounted else 0
             self._devices[key] = DeviceSettings(
                 orientation=degrees,
@@ -894,6 +897,7 @@ class Settings:
         frame_log.debug("for_led: key=%s", key)
         with self._lock:
             if key not in self._led_devices:
+                _require_device_key(key)
                 self._led_devices[key] = (_inherited(self._led_devices, key)
                                           or LedDeviceSettings())
             return self._led_devices[key]
@@ -1368,6 +1372,22 @@ def _json_default(obj: Any) -> Any:
     raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
 
 
+def _require_device_key(key: str) -> None:
+    """Refuse to make a settings entry under *key* unless it names a device.
+
+    About forty Commands reach their device's settings before anything else
+    looks at the key, so one sent with no device -- a window whose selection
+    is still empty, ``trcc display brightness "" 50`` -- filed a default entry
+    under ``''`` that every later save wrote out again.  Every entry is made
+    through here, so it is refused once, for all of them.
+    """
+    if is_device_key(key):
+        return
+    log.warning("_require_device_key: no settings for %r -- not a device key",
+                key)
+    raise NotADeviceKey(f"{key!r} is not a device -- expected 'vvvv:pppp'")
+
+
 def _by_canonical_key(entries: dict[str, Any]) -> dict[str, Any]:
     """Each device's saved entry under its one key spelling (#334).
 
@@ -1375,10 +1395,16 @@ def _by_canonical_key(entries: dict[str, Any]) -> dict[str, Any]:
     an entry of its own beside ``87ad:70db`` -- settings nothing reads, so a
     brightness set through it never reached the panel.  When both exist the
     canonical one is what the panel has been using, so it wins; a lone
-    non-canonical entry is kept under the canonical key.
+    non-canonical entry is kept under the canonical key.  An entry under a key
+    that names no device at all (``''``, see :func:`_require_device_key`) is
+    dropped.
     """
     merged: dict[str, Any] = {}
     for key, data in entries.items():
+        if not is_device_key(key):
+            log.warning("_by_canonical_key: dropped the settings saved under "
+                        "%r -- not a device key", key)
+            continue
         canonical = canonical_device_key(key)
         if canonical == key:
             merged[key] = data

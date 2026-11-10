@@ -418,6 +418,13 @@ def parse_device_key(key: str) -> tuple[int, int, str]:
 _TYPED_DEVICE_KEY = re.compile(r"[0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}(@.+)?")
 
 
+def is_device_key(key: str) -> bool:
+    """Whether *key* names a device: ``vvvv:pppp`` or ``vvvv:pppp@unit``, any case."""
+    found = _TYPED_DEVICE_KEY.fullmatch(key) is not None
+    frame_log.debug("is_device_key: %r -> %s", key, found)
+    return found
+
+
 def canonical_device_key(key: str) -> str:
     """*key* in the one spelling :func:`format_device_key` writes, if it is one.
 
@@ -436,7 +443,7 @@ def canonical_device_key(key: str) -> str:
     """
     if key == key.lower():
         return key
-    if _TYPED_DEVICE_KEY.fullmatch(key) is None:
+    if not is_device_key(key):
         frame_log.debug("canonical_device_key: %r is not a device key", key)
         return key
     canonical = format_device_key(*parse_device_key(key))

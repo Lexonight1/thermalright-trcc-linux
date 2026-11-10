@@ -165,3 +165,57 @@ def test_a_lone_uppercase_entry_is_kept_under_the_canonical_key(
 
     assert settings.device_keys() == (PANEL,)
     assert settings.for_device(PANEL).brightness == 25
+
+
+# ── a key that names no device makes no settings ─────────────────────────
+#
+# About forty Commands reached their device's settings before anything looked
+# at the key, so one sent with an empty key -- a window whose selection was
+# still empty -- filed a default entry under '' that every save wrote out.
+
+
+@pytest.mark.parametrize("make", [
+    lambda s: s.for_device(""),
+    lambda s: s.for_led(""),
+    lambda s: s.seed_mount_orientation("", portrait_mounted=False),
+    lambda s: s.for_device("not-a-device"),
+], ids=["for_device", "for_led", "seed_mount_orientation", "malformed"])
+def test_settings_make_no_entry_for_a_key_naming_no_device(tmp_path: Path,
+                                                            make) -> None:
+    from trcc.core.errors import NotADeviceKey
+
+    settings = Settings(FakePaths(tmp_path))
+    with pytest.raises(NotADeviceKey):
+        make(settings)
+
+    assert settings.device_keys() == ()
+    assert settings._led_devices == {}
+
+
+def test_an_entry_already_saved_under_no_device_is_dropped(tmp_path: Path) -> None:
+    (tmp_path / "trcc.json").write_text(json.dumps(
+        {"schema": 7, "app": {},
+         "devices": {"": {"brightness": 100}, PANEL: {"brightness": 40}},
+         "led_devices": {"": {}, "0416:8001": {}}}), encoding="utf-8")
+    settings = Settings(FakePaths(tmp_path))
+
+    assert settings.device_keys() == (PANEL,)
+    assert list(settings._led_devices) == ["0416:8001"]
+
+
+@pytest.mark.parametrize("command", ["SetBrightness", "EnableOverlay",
+                                     "SetLedBrightness", "ToggleLed"])
+def test_a_command_with_no_device_is_refused_not_raised(tmp_path: Path,
+                                                         command: str) -> None:
+    """Every UI gets the Command's own failed Result -- never the exception."""
+    from trcc.core import commands
+
+    built = {"SetBrightness": {"percent": 50}, "EnableOverlay": {"enabled": True},
+             "SetLedBrightness": {"percent": 50}, "ToggleLed": {"on": True}}
+    app = _connected_app(tmp_path)
+    result = app.dispatch(getattr(commands, command)(key="", **built[command]))
+
+    assert result.ok is False
+    assert "not a device" in result.message, result.message
+    assert "" not in app.settings.device_keys()
+    assert "" not in app.settings._led_devices

@@ -10,6 +10,12 @@ class DeviceNotFoundError(TrccError):
     """No device matched the requested identity."""
 
 
+class NotADeviceKey(TrccError):
+    """A Command named no device -- an empty or malformed key -- where its
+    settings needed one.  ``App.dispatch`` answers it as that Command's own
+    refusal, so every UI gets a failed Result, never this exception."""
+
+
 class DeviceNotConnectedError(TrccError):
     """Operation required a connected device; none was attached."""
 
