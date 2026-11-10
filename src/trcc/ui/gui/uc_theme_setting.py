@@ -72,6 +72,7 @@ from .settings_layout import (
     SETTING_W,
     VIDEO_PANEL,
 )
+from .settings_skin import SettingsSkin
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -113,8 +114,9 @@ class UCThemeSetting(BasePanel):
     #: "C" or "F" picked on a temperature element -- the App's one unit.
     temp_unit_changed = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, skin: SettingsSkin):
         super().__init__(parent, width=SETTING_W, height=SETTING_H)
+        self._skin = skin
         self._setup_ui()
 
     def update_metrics(self, readings: Any, temp_unit: str) -> None:
@@ -126,7 +128,7 @@ class UCThemeSetting(BasePanel):
     def _setup_ui(self):
         """Build UI with absolute positioning matching Windows."""
         # Overlay grid
-        self.overlay_grid = OverlayGridPanel(self)
+        self.overlay_grid = OverlayGridPanel(self, skin=self._skin)
         self.overlay_grid.move(*OVERLAY_GRID)
         self.overlay_grid.element_selected.connect(self._on_element_selected)
         self.overlay_grid.add_requested.connect(self._on_add_requested)
@@ -137,7 +139,7 @@ class UCThemeSetting(BasePanel):
         self.right_stack = QStackedWidget(self)
         self.right_stack.setGeometry(*RIGHT_STACK)
 
-        self.color_panel = ColorPickerPanel()
+        self.color_panel = ColorPickerPanel(skin=self._skin)
         self.color_panel.color_changed.connect(self._on_color_changed)
         self.color_panel.edit_finished.connect(self._on_color_edit_finished)
         self.color_panel.position_changed.connect(self._on_position_changed)
@@ -145,21 +147,21 @@ class UCThemeSetting(BasePanel):
         self.color_panel.eyedropper_requested.connect(self.eyedropper_requested.emit)
         self.right_stack.addWidget(self.color_panel)
 
-        self.add_panel = AddElementPanel()
+        self.add_panel = AddElementPanel(skin=self._skin)
         self.add_panel.element_added.connect(self._on_element_added)
         self.right_stack.addWidget(self.add_panel)
 
         self.right_stack.setCurrentWidget(self.color_panel)
 
         # Data table
-        self.data_table = DataTablePanel(self)
+        self.data_table = DataTablePanel(self, skin=self._skin)
         self.data_table.move(*DATA_TABLE)
         self.data_table.format_changed.connect(self._on_format_changed)
         self.data_table.text_changed.connect(self._on_text_changed)
         self.data_table.temp_unit_changed.connect(self.temp_unit_changed)
 
         # Display mode panels
-        self.mask_panel = MaskPanel(self)
+        self.mask_panel = MaskPanel(self, skin=self._skin)
         self.mask_panel.move(*MASK_PANEL)
         self.mask_panel.mode_changed.connect(self._on_mode_changed)
         self.mask_panel.action_requested.connect(self._on_action_requested)
@@ -167,16 +169,17 @@ class UCThemeSetting(BasePanel):
         self.mask_panel.mask_visibility_toggled.connect(self._on_mask_visibility)
 
         self.background_panel = DisplayModePanel("background", ["Image", "Video", "Box"],
-                                                 self)
+                                                 self, skin=self._skin)
         self.background_panel.move(*BG_PANEL)
         self.background_panel.mode_changed.connect(self._on_mode_changed)
         self.background_panel.action_requested.connect(self._on_action_requested)
 
-        self.screencast_panel = ScreenCastPanel(self)
+        self.screencast_panel = ScreenCastPanel(self, skin=self._skin)
         self.screencast_panel.move(*SCREENCAST_PANEL)
         self.screencast_panel.mode_changed.connect(self._on_mode_changed)
 
-        self.video_panel = DisplayModePanel("video", ["VideoLoad", "VideoUrl"], self)
+        self.video_panel = DisplayModePanel("video", ["VideoLoad", "VideoUrl"], self,
+                                            skin=self._skin)
         self.video_panel.move(*VIDEO_PANEL)
         self.video_panel.mode_changed.connect(self._on_mode_changed)
         self.video_panel.action_requested.connect(self._on_action_requested)

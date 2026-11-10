@@ -23,6 +23,7 @@ from trcc.core.commands import Command
 from trcc.core.led_models import LED_STYLES
 from trcc.core.models import HandshakeResult
 from trcc.core.ports import Device, ScsiTransport
+from trcc.ui.gui.settings_look import gui_skin
 
 from .conftest import FakeAutostart, FakeMic, FakePlatform
 
@@ -854,7 +855,7 @@ def test_overlay_grid_loads_metric_from_the_app_with_its_ids(
     assert gui_app.dispatch(AddOverlayElement(
         key=key, element_id="t1", type="text", text="HI")).ok
 
-    grid = OverlayGridPanel()
+    grid = OverlayGridPanel(skin=gui_skin())
     grid.load_configs(entries_to_configs(
         gui_app.dispatch(ResolveOverlay(key=key)).elements))
 
@@ -881,7 +882,7 @@ def test_color_change_sends_one_update_naming_the_element(
     from trcc.core.models import OverlayElementConfig, OverlayMode
     from trcc.ui.gui.uc_theme_setting import UCThemeSetting
 
-    panel = UCThemeSetting()
+    panel = UCThemeSetting(skin=gui_skin())
     captured: list[tuple[int, object]] = []
     panel.delegate.connect(lambda cmd, info, data: captured.append((cmd, info)))
 
@@ -2557,13 +2558,13 @@ def test_screencast_aspect_lock_matches_the_panel(panel: tuple[int, int],
     width, height = panel
     ratio = height / width
 
-    typed_w = ScreenCastPanel()
+    typed_w = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(typed_w)
     typed_w.set_resolution(width, height)
     typed_w.entry_w.setText("200")
     assert typed_w.entry_h.text() == str(round(200 * ratio))
 
-    typed_h = ScreenCastPanel()
+    typed_h = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(typed_h)
     typed_h.set_resolution(width, height)
     typed_h.entry_h.setText("200")
@@ -2584,7 +2585,7 @@ def test_screencast_plus_button_keeps_the_region_on_aspect(
 
     width, height = panel
     emitted: list[tuple[int, int, int, int]] = []
-    scp = ScreenCastPanel()
+    scp = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(scp)
     scp.set_resolution(width, height)
     scp.region_edited.connect(
@@ -2610,7 +2611,7 @@ def test_screencast_does_not_lock_before_a_device_is_known(qtbot) -> None:
     """
     from trcc.ui.gui.display_mode_panels import ScreenCastPanel
 
-    scp = ScreenCastPanel()
+    scp = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(scp)
     scp.entry_w.setText("200")
     assert scp.entry_h.text() == "0"      # untouched, not invented
@@ -2628,7 +2629,7 @@ def test_screencast_region_is_sent_when_finished_not_per_keystroke(qtbot) -> Non
     from trcc.ui.gui.display_mode_panels import ScreenCastPanel
 
     emitted: list[tuple[int, int, int, int]] = []
-    scp = ScreenCastPanel()
+    scp = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(scp)
     scp.set_values(x=0, y=0, w=320, h=240)
     scp.region_edited.connect(lambda *r: emitted.append(r))
@@ -2646,7 +2647,7 @@ def test_showing_a_region_is_not_an_edit(qtbot) -> None:
     from trcc.ui.gui.display_mode_panels import ScreenCastPanel
 
     emitted: list[tuple[int, ...]] = []
-    scp = ScreenCastPanel()
+    scp = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(scp)
     scp.region_edited.connect(lambda *r: emitted.append(r))
 
@@ -2661,7 +2662,7 @@ def test_the_border_button_toggles_hide_and_showing_it_sends_nothing(qtbot) -> N
     from trcc.ui.gui.display_mode_panels import ScreenCastPanel
 
     toggled: list[bool] = []
-    scp = ScreenCastPanel()
+    scp = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(scp)
     scp.border_toggled.connect(toggled.append)
 
@@ -4629,7 +4630,7 @@ def test_a_grid_cell_shows_a_board_sensor_by_its_id(qtbot) -> None:
     from trcc.ui.gui.overlay_grid import OverlayGridPanel
     from trcc.ui.presentation.sensor_display import source_label
 
-    grid = OverlayGridPanel()
+    grid = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(grid)
     grid.load_configs([OverlayElementConfig(
         mode=OverlayMode.HARDWARE, mode_sub=1, main_count=0, sub_count=0,
@@ -4648,7 +4649,7 @@ def test_a_refilled_grid_shows_each_cells_own_reading(qtbot) -> None:
     from trcc.core.models import OverlayElementConfig, OverlayMode
     from trcc.ui.gui.overlay_grid import OverlayGridPanel
 
-    grid = OverlayGridPanel()
+    grid = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(grid)
     grid.load_configs([
         OverlayElementConfig(mode=OverlayMode.HARDWARE, metric="cpu:temp"),

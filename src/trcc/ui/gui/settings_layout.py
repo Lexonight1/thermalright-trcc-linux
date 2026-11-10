@@ -38,8 +38,10 @@ OVERLAY_ROWS = 6
 OVERLAY_COLS = 7
 #: The grid's on/off switch.
 GRID_TOGGLE = (5, 5, 36, 18)
-#: A cell's live-value row, under its icon.
+#: A cell's three text rows: its name, its live value, its unit.
+CELL_NAME_ROW = (2, 1, 56, 18)
 CELL_VALUE_ROW = (2, 21, 56, 18)
+CELL_UNIT_ROW = (2, 41, 56, 18)
 
 # ── The colour picker (UCXiTongXianShiColor) ───────────────────────────
 

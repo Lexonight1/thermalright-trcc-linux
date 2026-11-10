@@ -15,6 +15,7 @@ from trcc.ui.gui.color_and_add_panels import (
     color_square_rgb,
     hue_strip_rgb,
 )
+from trcc.ui.gui.settings_look import gui_skin
 
 # UCColorB: 158 px wide, an 8 px thumb -> 150 px of travel, 25 per segment.
 W, THUMB = 158, 8
@@ -44,7 +45,7 @@ def test_the_square_fades_to_white_across_and_black_down() -> None:
 
 
 def test_the_hue_strip_rebases_the_square_and_a_square_pick_does_not(qtbot) -> None:
-    panel = ColorPickerPanel()
+    panel = ColorPickerPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     picked: list[tuple[int, int, int]] = []
     panel.color_changed.connect(lambda r, g, b: picked.append((r, g, b)))
@@ -63,7 +64,7 @@ def test_the_hue_strip_rebases_the_square_and_a_square_pick_does_not(qtbot) -> N
 
 
 def test_a_colour_set_from_outside_becomes_the_squares_hue(qtbot) -> None:
-    panel = ColorPickerPanel()
+    panel = ColorPickerPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     panel.set_color(10, 20, 30)
     assert panel.color_square._base == (10, 20, 30)

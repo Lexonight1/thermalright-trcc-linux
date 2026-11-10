@@ -23,12 +23,13 @@ from ...core.models import (
     format_metric,
 )
 from ..presentation.sensor_display import source_label
-from .assets import Assets
-from .constants import Colors
 from .settings_layout import (
+    CELL_NAME_ROW,
+    CELL_UNIT_ROW,
     CELL_VALUE_ROW,
     OVERLAY_CELL,
 )
+from .settings_skin import SettingsSkin
 
 log = logging.getLogger(__name__)
 #: Per metrics tick, once a second per card.
@@ -70,8 +71,9 @@ class OverlayElementWidget(QWidget):
     clicked = Signal(int)           # index
     double_clicked = Signal(int)    # index (delete)
 
-    def __init__(self, index, parent=None):
+    def __init__(self, index, parent=None, *, skin: SettingsSkin):
         super().__init__(parent)
+        self._skin = skin
         self.index = index
         self.config: OverlayElementConfig | None = None
         self._selected = False
@@ -85,11 +87,11 @@ class OverlayElementWidget(QWidget):
         # Preload mode images (shared via lru_cache)
         self._mode_pixmaps = {}
         for mode, img_name in MODE_IMAGES.items():
-            px = Assets.load_pixmap(img_name, OVERLAY_CELL, OVERLAY_CELL)
+            px = skin.pixmap(img_name, OVERLAY_CELL, OVERLAY_CELL)
             if not px.isNull():
                 self._mode_pixmaps[mode] = px
 
-        self._select_pixmap = Assets.load_pixmap(SELECT_IMAGE, OVERLAY_CELL, OVERLAY_CELL)
+        self._select_pixmap = skin.pixmap(SELECT_IMAGE, OVERLAY_CELL, OVERLAY_CELL)
 
     def set_config(self, config):
         """Set element config or None to clear."""
@@ -230,7 +232,7 @@ class OverlayElementWidget(QWidget):
             if px:
                 painter.drawPixmap(0, 0, px)
             else:
-                painter.fillRect(self.rect(), QColor('#2D2D2D'))
+                painter.fillRect(self.rect(), QColor(self._skin.cell_bg))
 
             color_str = self.config.color
 
@@ -242,18 +244,18 @@ class OverlayElementWidget(QWidget):
 
                 # label1: category name in category color (Windows: label1.ForeColor)
                 painter.setPen(QColor(cat_color))
-                painter.drawText(2, 1, 56, 18, Qt.AlignmentFlag.AlignCenter, cat_name)
+                painter.drawText(*CELL_NAME_ROW, Qt.AlignmentFlag.AlignCenter, cat_name)
                 # label2: live value or sub-metric name (Windows: label2.ForeColor = myColor)
                 painter.setPen(QColor(color_str))
                 if self._live_value:
-                    painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
+                    painter.drawText(*CELL_VALUE_ROW, Qt.AlignmentFlag.AlignCenter,
                                      self._live_value)
                 else:
                     sub_name = ('--' if self.config.metric else
                                 SUB_METRICS.get(mc, {}).get(self.config.sub_count, '--'))
-                    painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, sub_name)
+                    painter.drawText(*CELL_VALUE_ROW, Qt.AlignmentFlag.AlignCenter, sub_name)
                 # label3: unit suffix (Windows: label3.ForeColor = myColor)
-                painter.drawText(2, 41, 56, 18, Qt.AlignmentFlag.AlignCenter,
+                painter.drawText(*CELL_UNIT_ROW, Qt.AlignmentFlag.AlignCenter,
                                  self._live_unit or '--')
             elif mode == OverlayMode.TIME:
                 # Windows: label1+label3 hidden, only label2 visible --
@@ -280,11 +282,11 @@ class OverlayElementWidget(QWidget):
             if self._selected and not self._select_pixmap.isNull():
                 painter.drawPixmap(0, 0, self._select_pixmap)
             elif self._selected:
-                painter.setPen(QColor('white'))
+                painter.setPen(QColor(self._skin.cell_select))
                 painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
         else:
             # Empty slot — draw subtle "+"
-            painter.setPen(QColor(Colors.EMPTY_TEXT))
+            painter.setPen(QColor(self._skin.empty_text))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, '+')
 
         painter.end()

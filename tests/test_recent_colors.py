@@ -18,6 +18,7 @@ from trcc.app import App
 from trcc.core.commands import RecentColors, RememberColor
 from trcc.core.models import RECENT_COLOR_DEFAULT, RECENT_COLOR_SLOTS
 from trcc.services.settings import Settings
+from trcc.ui.gui.settings_look import gui_skin
 
 from .conftest import FakePaths
 
@@ -84,7 +85,7 @@ def test_an_edit_is_reported_once_when_the_user_moves_on(qtbot) -> None:
 
     from trcc.ui.gui.color_and_add_panels import ColorPickerPanel
 
-    panel = ColorPickerPanel()
+    panel = ColorPickerPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     ended: list = []
     panel.edit_finished.connect(lambda r, g, b: ended.append((r, g, b)))
@@ -99,7 +100,7 @@ def test_an_edit_is_reported_once_when_the_user_moves_on(qtbot) -> None:
 def test_a_swatch_is_not_an_edit(qtbot) -> None:
     from trcc.ui.gui.color_and_add_panels import ColorPickerPanel
 
-    panel = ColorPickerPanel()
+    panel = ColorPickerPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     ended: list = []
     panel.edit_finished.connect(lambda r, g, b: ended.append((r, g, b)))
@@ -156,7 +157,7 @@ def test_moving_to_another_element_asks_the_app_to_remember(qtbot) -> None:
     from trcc.core.models import OverlayElementConfig
     from trcc.ui.gui.uc_theme_setting import UCThemeSetting
 
-    setting = UCThemeSetting()
+    setting = UCThemeSetting(skin=gui_skin())
     qtbot.addWidget(setting)
     asked: list = []
     setting.delegate.connect(lambda cmd, info, data: asked.append((cmd, info)))

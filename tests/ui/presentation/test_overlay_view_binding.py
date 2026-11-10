@@ -12,6 +12,7 @@ from typing import Any
 
 from trcc.core.models import OverlayElementConfig, OverlayMode
 from trcc.ui.gui.overlay_grid import OverlayGridPanel
+from trcc.ui.gui.settings_look import gui_skin
 
 
 def _cfg(text: str) -> OverlayElementConfig:
@@ -19,7 +20,7 @@ def _cfg(text: str) -> OverlayElementConfig:
 
 
 def test_add_element_emits_the_new_cell_with_its_id(qtbot) -> None:
-    panel = OverlayGridPanel()
+    panel = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     with qtbot.waitSignal(panel.element_added, timeout=1000) as sig:
         panel.add_element(_cfg("a"))
@@ -31,7 +32,7 @@ def test_add_element_emits_the_new_cell_with_its_id(qtbot) -> None:
 def test_delete_element_emits_the_removed_cell(qtbot) -> None:
     """The removed cell, not its index: the id is what DeleteOverlayElement
     takes, and the index no longer names anything once the cell is gone."""
-    panel = OverlayGridPanel()
+    panel = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     panel.add_element(_cfg("a"))
     panel.add_element(_cfg("b"))
@@ -43,7 +44,7 @@ def test_delete_element_emits_the_removed_cell(qtbot) -> None:
 
 
 def test_toggle_off_emits_and_keeps_the_elements(qtbot) -> None:
-    panel = OverlayGridPanel()
+    panel = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     panel.add_element(_cfg("a"))
     with qtbot.waitSignal(panel.toggle_changed, timeout=1000) as sig:
@@ -58,7 +59,7 @@ def test_a_refill_that_changes_nothing_logs_nothing(qtbot, caplog) -> None:
     log its selection state every time — 42 lines per drag move."""
     import logging
 
-    panel = OverlayGridPanel()
+    panel = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     name = "trcc.ui.gui.overlay_element"
     with caplog.at_level(logging.DEBUG, logger=name):
@@ -76,7 +77,7 @@ def _fit(qtbot, text: str) -> tuple[float, tuple[str, ...]]:
     """The value row's point size and lines for *text*, as a tile draws it."""
     from trcc.ui.gui.overlay_element import OverlayElementWidget
 
-    tile = OverlayElementWidget(0)
+    tile = OverlayElementWidget(0, skin=gui_skin())
     qtbot.addWidget(tile)
     font, lines = tile._fit_value(text)
     return font.pointSizeF(), lines
@@ -155,7 +156,7 @@ def test_the_weekday_tile_speaks_the_windows_language(qtbot, monkeypatch) -> Non
         return real(metric, value, **kw)
 
     monkeypatch.setattr(tile_module, "format_metric", spy)
-    grid = OverlayGridPanel()
+    grid = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(grid)
     grid.add_element(OverlayElementConfig(mode=OverlayMode.WEEKDAY))
     grid.set_language("de")

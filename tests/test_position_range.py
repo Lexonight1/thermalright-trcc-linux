@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from trcc.ui.gui.color_and_add_panels import ColorPickerPanel
+from trcc.ui.gui.settings_look import gui_skin
 
 
 def test_position_range_follows_canvas(qtbot):
-    panel = ColorPickerPanel()
+    panel = ColorPickerPanel(skin=gui_skin())
     qtbot.addWidget(panel)
     panel.set_position_range(462, 1920)
     panel.set_position(34, 1690)

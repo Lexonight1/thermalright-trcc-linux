@@ -17,9 +17,6 @@ from ...core.models import OverlayElementConfig, OverlayMode
 from ..presentation.overlay_model import OverlayModel
 from ..presentation.overlay_serialization import tile_reading
 from ..qt_words import say_tip
-from .assets import Assets
-from .base import set_background_pixmap
-from .constants import Colors, Styles
 from .overlay_element import OverlayElementWidget
 from .settings_layout import (
     GRID_TOGGLE,
@@ -33,6 +30,7 @@ from .settings_layout import (
     OVERLAY_X0,
     OVERLAY_Y0,
 )
+from .settings_skin import SettingsSkin
 
 log = logging.getLogger(__name__)
 #: The metrics tick reaches every cell, once a second.
@@ -54,13 +52,13 @@ class OverlayGridPanel(QFrame):
 
     MAX_ELEMENTS = 42
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, skin: SettingsSkin):
         super().__init__(parent)
+        self._skin = skin
         self.setFixedSize(OVERLAY_GRID_W, OVERLAY_GRID_H)
 
-        set_background_pixmap(self, 'settings_overlay_grid_bg.png',
-            OVERLAY_GRID_W, OVERLAY_GRID_H,
-            fallback_style=f"background-color: {Colors.BASE_BG}; border-radius: 5px;")
+        skin.background(self, skin.grid_bg, OVERLAY_GRID_W, OVERLAY_GRID_H,
+                        fallback_style=f"background-color: {skin.base_bg}; border-radius: 5px;")
 
         # Interaction state lives in the toolkit-free Presentation Model;
         # this panel is a thin View that delegates + renders + emits signals.
@@ -81,22 +79,18 @@ class OverlayGridPanel(QFrame):
         self._toggle_btn.setCheckable(True)
         self._toggle_btn.setChecked(True)
 
-        on_px = Assets.load_pixmap(Assets.TOGGLE_ON, 36, 18)
-        off_px = Assets.load_pixmap(Assets.TOGGLE_OFF, 36, 18)
+        on_px = self._skin.pixmap(self._skin.toggle_on, 36, 18)
+        off_px = self._skin.pixmap(self._skin.toggle_off, 36, 18)
         if not on_px.isNull() and not off_px.isNull():
             icon = QIcon()
             icon.addPixmap(on_px, QIcon.Mode.Normal, QIcon.State.On)
             icon.addPixmap(off_px, QIcon.Mode.Normal, QIcon.State.Off)
             self._toggle_btn.setIcon(icon)
             self._toggle_btn.setIconSize(self._toggle_btn.size())
-            self._toggle_btn.setStyleSheet(Styles.FLAT_BUTTON)
+            self._toggle_btn.setStyleSheet(self._skin.flat_button)
         else:
             self._toggle_btn.setText("ON")
-            self._toggle_btn.setStyleSheet(
-                "QPushButton { background: #4CAF50; color: white; font-size: 8px; }"
-                "QPushButton:checked { background: #4CAF50; }"
-                "QPushButton:!checked { background: #666; }"
-            )
+            self._toggle_btn.setStyleSheet(self._skin.grid_toggle_fallback)
 
         say_tip(self._toggle_btn, "Toggle overlay display")
         self._toggle_btn.clicked.connect(self._on_toggle)
@@ -119,7 +113,7 @@ class OverlayGridPanel(QFrame):
                 x = OVERLAY_X0 + col * OVERLAY_DX
                 y = OVERLAY_Y0 + row * OVERLAY_DY
 
-                cell = OverlayElementWidget(index, self)
+                cell = OverlayElementWidget(index, self, skin=self._skin)
                 cell.setGeometry(x, y, OVERLAY_CELL, OVERLAY_CELL)
                 cell.clicked.connect(self._on_cell_clicked)
                 cell.double_clicked.connect(self._on_cell_double_clicked)

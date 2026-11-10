@@ -33,6 +33,7 @@ from trcc.core.commands import (
     LoadTheme,
     ResolveOverlay,
 )
+from trcc.ui.gui.settings_look import gui_skin
 
 from .mock_platform import MockPlatform
 
@@ -259,7 +260,7 @@ class _RealGridHandler:
         from trcc.ui.gui.lcd_handler import LCDHandler
         from trcc.ui.gui.uc_theme_setting import UCThemeSetting
 
-        self.panel = UCThemeSetting()
+        self.panel = UCThemeSetting(skin=gui_skin())
         self.handler = LCDHandler(
             _KEY,
             {"theme_setting": self.panel, "preview": _Widget()},

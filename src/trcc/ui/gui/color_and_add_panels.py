@@ -26,9 +26,6 @@ from ...core.models import (
     OverlayMode,
 )
 from ..qt_words import say_tip
-from .assets import Assets
-from .base import set_background_pixmap
-from .constants import Colors, Styles
 from .settings_layout import (
     ADD_BTN_DY,
     ADD_BTN_H,
@@ -55,6 +52,7 @@ from .settings_layout import (
     COLOR_X_SPIN,
     COLOR_Y_SPIN,
 )
+from .settings_skin import SettingsSkin
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -103,9 +101,9 @@ class _HueStrip(QWidget):
 
     hue_picked = Signal(int, int, int)
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(self, parent: QWidget, skin: SettingsSkin) -> None:
         super().__init__(parent)
-        self._thumb = Assets.load_pixmap('color_panel_slider_thumb.png')
+        self._thumb = skin.pixmap(skin.hue_thumb)
         self._thumb_w = self._thumb.width() if not self._thumb.isNull() else 8
         self._center_x = self._thumb_w // 2
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -142,10 +140,10 @@ class _ColorSquare(QWidget):
 
     color_picked = Signal(int, int, int)
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(self, parent: QWidget, skin: SettingsSkin) -> None:
         super().__init__(parent)
         self._base: Rgb = (255, 0, 0)
-        self._ring = Assets.load_pixmap('color_panel_selector_ring.png')
+        self._ring = skin.pixmap(skin.square_ring)
         self._pos = QPoint(_SQUARE_INSET, _SQUARE_INSET)
         self.setCursor(Qt.CursorShape.CrossCursor)
         log.debug("_ColorSquare.__init__")
@@ -208,13 +206,13 @@ class ColorPickerPanel(QFrame):
     font_changed = Signal(str, int, int)  # name, size, style (0=Regular, 1=Bold)
     eyedropper_requested = Signal()  # launch eyedropper color picker
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, skin: SettingsSkin):
         super().__init__(parent)
+        self._skin = skin
         self.setFixedSize(COLOR_PANEL_W, COLOR_PANEL_H)
 
-        set_background_pixmap(self, 'settings_overlay_color_bg.png',
-            COLOR_PANEL_W, COLOR_PANEL_H,
-            fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
+        skin.background(self, skin.colour_bg, COLOR_PANEL_W, COLOR_PANEL_H,
+                        fallback_style=f"background-color: {skin.panel_bg}; border-radius: 5px;")
 
         self._current_color = QColor(255, 255, 255)
         #: The C#'s myColorChange: set by the strip, the square, typed RGB and
@@ -227,7 +225,7 @@ class ColorPickerPanel(QFrame):
         self.x_spin = QSpinBox(self)
         self.x_spin.setGeometry(*COLOR_X_SPIN)
         self.x_spin.setRange(0, 480)
-        self.x_spin.setStyleSheet(Styles.INPUT_FIELD)
+        self.x_spin.setStyleSheet(self._skin.input_field)
         self.x_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         say_tip(self.x_spin, "X position")
         self.x_spin.valueChanged.connect(self._on_position_changed)
@@ -236,7 +234,7 @@ class ColorPickerPanel(QFrame):
         self.y_spin = QSpinBox(self)
         self.y_spin.setGeometry(*COLOR_Y_SPIN)
         self.y_spin.setRange(0, 480)
-        self.y_spin.setStyleSheet(Styles.INPUT_FIELD)
+        self.y_spin.setStyleSheet(self._skin.input_field)
         self.y_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         say_tip(self.y_spin, "Y position")
         self.y_spin.valueChanged.connect(self._on_position_changed)
@@ -244,10 +242,7 @@ class ColorPickerPanel(QFrame):
         # Font picker button (name only)
         self.font_btn = QPushButton(self)
         self.font_btn.setGeometry(*COLOR_FONT_BTN)
-        self.font_btn.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; border: none; "
-            f"color: {Colors.TEXT}; font-size: 10px; text-align: left; padding-left: 27px; }}"
-        )
+        self.font_btn.setStyleSheet(self._skin.font_button)
         self.font_btn.setText(THEME_FONT)
         self.font_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         say_tip(self.font_btn, "Choose font")
@@ -261,36 +256,36 @@ class ColorPickerPanel(QFrame):
         self.font_size_spin.setGeometry(*COLOR_FONT_SIZE_SPIN)
         self.font_size_spin.setRange(6, 200)
         self.font_size_spin.setValue(36)
-        self.font_size_spin.setStyleSheet(Styles.INPUT_FIELD)
+        self.font_size_spin.setStyleSheet(self._skin.input_field)
         say_tip(self.font_size_spin, "Font size")
         self.font_size_spin.valueChanged.connect(self._on_font_size_changed)
 
         # The C#'s inline picker: a hue strip that drives a colour square.
         # This was a click target that opened a modal QColorDialog instead --
         # the first commit's stand-in, never revisited.
-        self.color_square = _ColorSquare(self)
+        self.color_square = _ColorSquare(self, self._skin)
         self.color_square.setGeometry(*COLOR_AREA)
         self.color_square.color_picked.connect(self._on_square_picked)
-        self.hue_strip = _HueStrip(self)
+        self.hue_strip = _HueStrip(self, self._skin)
         self.hue_strip.setGeometry(*COLOR_HUE)
         self.hue_strip.hue_picked.connect(self._on_hue_picked)
 
         # RGB input boxes
         self.r_input = QLineEdit("255", self)
         self.r_input.setGeometry(*COLOR_R)
-        self.r_input.setStyleSheet(Styles.RGB_INPUT)
+        self.r_input.setStyleSheet(self._skin.rgb_input)
         self.r_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         say_tip(self.r_input, "Red (0-255)")
 
         self.g_input = QLineEdit("255", self)
         self.g_input.setGeometry(*COLOR_G)
-        self.g_input.setStyleSheet(Styles.RGB_INPUT)
+        self.g_input.setStyleSheet(self._skin.rgb_input)
         self.g_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         say_tip(self.g_input, "Green (0-255)")
 
         self.b_input = QLineEdit("255", self)
         self.b_input.setGeometry(*COLOR_B)
-        self.b_input.setStyleSheet(Styles.RGB_INPUT)
+        self.b_input.setStyleSheet(self._skin.rgb_input)
         self.b_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         say_tip(self.b_input, "Blue (0-255)")
 
@@ -298,17 +293,14 @@ class ColorPickerPanel(QFrame):
             inp.editingFinished.connect(self._on_rgb_changed)
 
         # Preset color swatches
-        for i, (r, g, b) in enumerate(Colors.PRESET_COLORS):
+        for i, (r, g, b) in enumerate(self._skin.preset_colours):
             btn = QPushButton(self)
             btn.setGeometry(
                 COLOR_SWATCH_X0 + i * COLOR_SWATCH_DX,
                 COLOR_SWATCH_PRESET_Y,
                 COLOR_SWATCH_SIZE, COLOR_SWATCH_SIZE
             )
-            btn.setStyleSheet(
-                f"QPushButton {{ background-color: rgb({r},{g},{b}); border: none; }}"
-                f"QPushButton:hover {{ border: 1px solid white; }}"
-            )
+            btn.setStyleSheet(self._skin.swatch.format(r=r, g=g, b=b))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setProperty(_SWATCH_PROPERTY, (r, g, b))
             btn.clicked.connect(self._on_swatch_clicked)
@@ -332,12 +324,12 @@ class ColorPickerPanel(QFrame):
         # Eyedropper button (matches Windows buttonGetColor at (12, 276, 48, 48))
         self.eyedropper_btn = QPushButton(self)
         self.eyedropper_btn.setGeometry(*COLOR_EYEDROPPER)
-        eyedrop_pixmap = Assets.load_pixmap('color_panel_eyedropper.png', 48, 48)
+        eyedrop_pixmap = self._skin.pixmap(self._skin.eyedropper, 48, 48)
         if not eyedrop_pixmap.isNull():
             self.eyedropper_btn.setIcon(QIcon(eyedrop_pixmap))
             self.eyedropper_btn.setIconSize(self.eyedropper_btn.size())
         self.eyedropper_btn.setFlat(True)
-        self.eyedropper_btn.setStyleSheet(Styles.ICON_BUTTON_HOVER)
+        self.eyedropper_btn.setStyleSheet(self._skin.icon_button_hover)
         self.eyedropper_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         say_tip(self.eyedropper_btn, "Pick color from screen")
         self.eyedropper_btn.clicked.connect(self.eyedropper_requested.emit)
@@ -391,10 +383,7 @@ class ColorPickerPanel(QFrame):
         """Show the device's recent row (newest first) on the 11 swatches."""
         log.debug("ColorPickerPanel.set_recent_colors: %s", list(colors)[:3])
         for btn, (r, g, b) in zip(self._history_btns, colors, strict=False):
-            btn.setStyleSheet(
-                f"QPushButton {{ background-color: rgb({r},{g},{b}); "
-                f"border: none; }}"
-                f"QPushButton:hover {{ border: 1px solid white; }}")
+            btn.setStyleSheet(self._skin.swatch.format(r=r, g=g, b=b))
             btn.setProperty(_SWATCH_PROPERTY, (r, g, b))
 
     def end_edit(self):
@@ -521,13 +510,13 @@ class AddElementPanel(QFrame):
         ("Custom Text", OverlayMode.CUSTOM),
     ]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, skin: SettingsSkin):
         super().__init__(parent)
+        self._skin = skin
         self.setFixedSize(ADD_PANEL_W, ADD_PANEL_H)
 
-        set_background_pixmap(self, 'settings_overlay_add_bg.png',
-            ADD_PANEL_W, ADD_PANEL_H,
-            fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
+        skin.background(self, skin.add_bg, ADD_PANEL_W, ADD_PANEL_H,
+                        fallback_style=f"background-color: {skin.panel_bg}; border-radius: 5px;")
 
         self._setup_ui()
 
@@ -536,7 +525,7 @@ class AddElementPanel(QFrame):
         for name, mode in self.ELEMENT_TYPES:
             btn = QPushButton(name, self)
             btn.setGeometry(ADD_BTN_X, y, ADD_BTN_W, ADD_BTN_H)
-            btn.setStyleSheet(Styles.ADD_ELEMENT_BTN)
+            btn.setStyleSheet(self._skin.add_button)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setProperty(_MODE_PROPERTY, mode)
             btn.clicked.connect(self._on_type_button)

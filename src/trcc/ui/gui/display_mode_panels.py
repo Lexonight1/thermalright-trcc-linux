@@ -38,9 +38,6 @@ from ...core.geometry import lock_region_to_panel
 from ...core.logs import per_frame
 from ...core.models import ACTION_ICON_IMAGES, InsetCorner, InsetSize, OverlayMode
 from ..qt_words import say_tip
-from .assets import Assets
-from .base import set_background_pixmap
-from .constants import Colors, Styles
 from .settings_layout import (
     ACTION_BTN_1,
     ACTION_BTN_2,
@@ -78,6 +75,7 @@ from .settings_layout import (
     TEXT_INPUT,
     TOGGLE_MASK,
 )
+from .settings_skin import SettingsSkin
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -98,9 +96,11 @@ class ChoiceSwitch(QWidget):
     #: The choice picked, by its place from the left.
     picked = Signal(int)
 
-    def __init__(self, labels: Sequence[str], parent: QWidget | None = None) -> None:
+    def __init__(self, labels: Sequence[str], parent: QWidget | None = None, *,
+                 skin: SettingsSkin) -> None:
         super().__init__(parent)
         log.debug("ChoiceSwitch: %s", " | ".join(labels))
+        self._skin = skin
         self._labels = tuple(labels)
         self._chosen = 0
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -133,16 +133,17 @@ class ChoiceSwitch(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         pill = QPainterPath()
         pill.addRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
-        p.fillPath(pill, QColor(Colors.PAGE_FRAME))
+        p.fillPath(pill, QColor(self._skin.switch_bg))
         p.setClipPath(pill)
-        p.fillRect(QRectF(w * self._chosen / n, 0, w / n, h), QColor(Colors.PAGE_GOLD))
+        p.fillRect(QRectF(w * self._chosen / n, 0, w / n, h), QColor(self._skin.switch_on))
         p.setClipping(False)
         font = QFont(self.font())
         font.setPixelSize(11)
         font.setBold(True)
         p.setFont(font)
         for i, label in enumerate(self._labels):
-            p.setPen(QColor("#2b2b2b") if i == self._chosen else QColor("#aaaaaa"))
+            p.setPen(QColor(self._skin.switch_on_text if i == self._chosen
+                            else self._skin.switch_off_text))
             p.drawText(QRect(w * i // n, 0, w // n, h), Qt.AlignmentFlag.AlignCenter, label)
         p.end()
 
@@ -166,19 +167,19 @@ class DataTablePanel(QFrame):
     #: "C" or "F": the temperature unit, picked on a temperature element.
     temp_unit_changed = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, skin: SettingsSkin):
         super().__init__(parent)
+        self._skin = skin
         self.setFixedSize(DATA_TABLE_W, DATA_TABLE_H)
 
-        set_background_pixmap(self, 'settings_overlay_table_bg.png',
-            DATA_TABLE_W, DATA_TABLE_H,
-            fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
+        skin.background(self, skin.table_bg, DATA_TABLE_W, DATA_TABLE_H,
+                        fallback_style=f"background-color: {skin.panel_bg}; border-radius: 5px;")
 
         # — | <unit> (mode 0, any reading but a temperature) -- the C#'s
         # button0, its unit switch: myModeSub 1 draws the number + unit, 0 the
         # bare number (the unit baked into the theme art).  Windows: (80, 15)
         # 70x24, drawn as P单位开关 / P单位开关a; the same switch as °C | °F now.
-        self.unit_switch = ChoiceSwitch(("—", "%"), self)
+        self.unit_switch = ChoiceSwitch(("—", "%"), self, skin=skin)
         self.unit_switch.setGeometry(*FORMAT_SWITCH)
         say_tip(self.unit_switch, "Show the unit after the value")
         self.unit_switch.picked.connect(self._on_unit_picked)
@@ -187,7 +188,7 @@ class DataTablePanel(QFrame):
         # A temperature's °C | °F -- the one temperature unit (SetTempUnit),
         # the About panel's radios and this switch always the same answer.
         # Legacy had it; the cutover left it inert, then it was gone.
-        self.temp_switch = ChoiceSwitch(("°C", "°F"), self)
+        self.temp_switch = ChoiceSwitch(("°C", "°F"), self, skin=skin)
         self.temp_switch.setGeometry(*FORMAT_SWITCH)
         say_tip(self.temp_switch, "Temperature unit")
         self.temp_switch.picked.connect(self._on_temp_picked)
@@ -195,7 +196,7 @@ class DataTablePanel(QFrame):
         self._temp_unit = "C"
 
         # 12H | 24H (mode 1: time) -- myModeSub 1 = 12H, 2 = 24H.
-        self.time_switch = ChoiceSwitch(("12H", "24H"), self)
+        self.time_switch = ChoiceSwitch(("12H", "24H"), self, skin=skin)
         self.time_switch.setGeometry(*FORMAT_SWITCH)
         say_tip(self.time_switch, "Time format (12h/24h)")
         self.time_switch.picked.connect(self._on_time_picked)
@@ -203,7 +204,7 @@ class DataTablePanel(QFrame):
 
         # The four date formats (mode 3: date) -- myModeSub 1..4, the C#'s
         # button3 cycling P YMD / DMY / MD / DM, all four shown at once now.
-        self.date_switch = ChoiceSwitch(("Y/M/D", "D/M/Y", "M/D", "D/M"), self)
+        self.date_switch = ChoiceSwitch(("Y/M/D", "D/M/Y", "M/D", "D/M"), self, skin=skin)
         self.date_switch.setGeometry(*DATE_SWITCH)
         say_tip(self.date_switch, "Date format")
         self.date_switch.picked.connect(self._on_date_picked)
@@ -213,7 +214,7 @@ class DataTablePanel(QFrame):
         # Windows: (15, 15) 200x22
         self.text_input = QLineEdit(self)
         self.text_input.setGeometry(*TEXT_INPUT)
-        self.text_input.setStyleSheet(Styles.INPUT_FIELD)
+        self.text_input.setStyleSheet(self._skin.input_field)
         self.text_input.setPlaceholderText("Text/Value")
         say_tip(self.text_input, "Custom text")
         self.text_input.setMaxLength(100)
@@ -309,16 +310,19 @@ class DisplayModePanel(QFrame):
     mode_changed = Signal(str, bool)
     action_requested = Signal(str)
 
-    def __init__(self, mode_id, actions: list[str] | None = None, parent=None):
+    def __init__(self, mode_id, actions: list[str] | None = None, parent=None, *,
+                 skin: SettingsSkin):
         super().__init__(parent)
+        self._skin = skin
         self.mode_id = mode_id
         self.actions: list[str] = actions or []
 
         self.setFixedSize(DISPLAY_MODE_W, DISPLAY_MODE_H)
         self.setAutoFillBackground(True)
         palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(Colors.PANEL_FALLBACK))
+        palette.setColor(QPalette.ColorRole.Window, QColor(skin.panel_bg))
         self.setPalette(palette)
+        skin.background(self, skin.mode_bg)
 
         self._setup_ui()
 
@@ -345,17 +349,12 @@ class DisplayModePanel(QFrame):
         "mask": "Toggle mask overlay",
     }
 
-    _TITLE_STYLE = (
-        "color: white; font-family: 'Microsoft YaHei'; font-size: 12pt;"
-        " background: transparent;"
-    )
-
     def _setup_ui(self):
         # Toggle button — small slider for all panels
         self.toggle_btn = QPushButton(self)
         self.toggle_btn.setGeometry(*TOGGLE_MASK)
-        on_px = Assets.load_pixmap(Assets.TOGGLE_ON, 36, 18)
-        off_px = Assets.load_pixmap(Assets.TOGGLE_OFF, 36, 18)
+        on_px = self._skin.pixmap(self._skin.toggle_on, 36, 18)
+        off_px = self._skin.pixmap(self._skin.toggle_off, 36, 18)
 
         self.toggle_btn.setCheckable(True)
         if not on_px.isNull() and not off_px.isNull():
@@ -364,7 +363,7 @@ class DisplayModePanel(QFrame):
             icon.addPixmap(off_px, QIcon.Mode.Normal, QIcon.State.Off)
             self.toggle_btn.setIcon(icon)
             self.toggle_btn.setIconSize(self.toggle_btn.size())
-        self.toggle_btn.setStyleSheet(Styles.FLAT_BUTTON)
+        self.toggle_btn.setStyleSheet(self._skin.flat_button)
         self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         say_tip(self.toggle_btn, self._TOGGLE_TOOLTIP.get(self.mode_id, "Toggle"))
         self.toggle_btn.clicked.connect(self._on_toggle)
@@ -372,7 +371,7 @@ class DisplayModePanel(QFrame):
         # Title label next to toggle
         self._title_lbl = QLabel(self.mode_id.title(), self)
         self._title_lbl.setGeometry(*MODE_TITLE)
-        self._title_lbl.setStyleSheet(self._TITLE_STYLE)
+        self._title_lbl.setStyleSheet(self._skin.mode_title)
 
         # Action buttons with icon images
         _ICON_MAP = ACTION_ICON_IMAGES
@@ -385,8 +384,8 @@ class DisplayModePanel(QFrame):
             btn = QPushButton(self)
             btn.setGeometry(*action_positions[i])
             if (icon_name := _ICON_MAP.get(action_name)):
-                btn.setStyleSheet(Styles.FLAT_BUTTON_HOVER)
-                px = Assets.load_pixmap(icon_name, 40, 40)
+                btn.setStyleSheet(self._skin.flat_button_hover)
+                px = self._skin.pixmap(icon_name, 40, 40)
                 if not px.isNull():
                     btn.setIcon(QIcon(px))
                     btn.setIconSize(btn.size())
@@ -394,7 +393,7 @@ class DisplayModePanel(QFrame):
                 # An action of ours with no Windows icon says what it is.
                 log.debug("_setup_ui: %s has no icon -- a text button", action_name)
                 btn.setText(action_name)
-                btn.setStyleSheet(Styles.ACTION_TEXT_BUTTON)
+                btn.setStyleSheet(self._skin.action_text_button)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             say_tip(btn, self._TOOLTIP_MAP.get(action_name, action_name))
             btn.setEnabled(False)  # Disabled until toggle is ON (C# buttonOnOff_Set)
@@ -412,22 +411,13 @@ class DisplayModePanel(QFrame):
         if action:
             self.action_requested.emit(action)
 
-    # Shared by MaskPanel and ScreenCastPanel, which carried byte-identical
-    # copies until 2026-09-20 — ``dup_bodies`` clustered all three, and the
-    # style constant resolved to the same string in both, so this is a pull-up
-    # rather than the `0` case where each subclass supplies its own value.
-    _ENTRY_STYLE = (
-        "background-color: black; color: #B4964F; border: none;"
-        " font-family: 'Microsoft YaHei'; font-size: 9pt;"
-    )
-
     def _make_entry(self, x, y, w, h):
         """Create a numeric coordinate entry field (0-9999)."""
         entry = QLineEdit(self)
         entry.setGeometry(x, y, w, h)
         entry.setText("0")
         entry.setAlignment(Qt.AlignmentFlag.AlignRight)
-        entry.setStyleSheet(self._ENTRY_STYLE)
+        entry.setStyleSheet(self._skin.entry)
         entry.setValidator(QIntValidator(0, 9999, entry))
         return entry
 
@@ -437,17 +427,15 @@ class DisplayModePanel(QFrame):
         btn.setGeometry(x, y, w, h)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        img_name = Assets.PLUS if delta > 0 else Assets.MINUS
-        pix = Assets.load_pixmap(img_name, w, h)
+        img_name = self._skin.plus if delta > 0 else self._skin.minus
+        pix = self._skin.pixmap(img_name, w, h)
         if not pix.isNull():
             btn.setIcon(QIcon(pix))
             btn.setIconSize(btn.size())
-            btn.setStyleSheet(Styles.FLAT_BUTTON)
+            btn.setStyleSheet(self._skin.flat_button)
         else:
             btn.setText("+" if delta > 0 else "-")
-            btn.setStyleSheet(
-                "QPushButton { background: #333; color: #888; border: none; font-size: 9px; }"
-            )
+            btn.setStyleSheet(self._skin.stepper_fallback)
         btn.setProperty(_ENTRY_PROPERTY, entry)
         btn.setProperty(_DELTA_PROPERTY, delta)
         btn.clicked.connect(self._on_step_clicked)
@@ -510,7 +498,7 @@ class DisplayModePanel(QFrame):
                 Qt.AspectRatioMode.IgnoreAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
-            set_background_pixmap(self, scaled)
+            self._skin.background(self, scaled)
 
 
 class MaskPanel(DisplayModePanel):
@@ -540,8 +528,8 @@ class MaskPanel(DisplayModePanel):
     # Eye toggle position
     _BTN_EYE = MASK_BTN_EYE
 
-    def __init__(self, parent=None):
-        super().__init__("mask", ["Load", "Upload"], parent)
+    def __init__(self, parent=None, *, skin: SettingsSkin):
+        super().__init__("mask", ["Load", "Upload"], parent, skin=skin)
         # Reposition action buttons to align with left-side text labels
         if len(self._action_buttons) >= 1:
             self._action_buttons[0].setGeometry(*MASK_ACTION_BTN_1)  # Load/Masks
@@ -550,11 +538,6 @@ class MaskPanel(DisplayModePanel):
         self._updating = False
         self._mask_visible = True
         self._setup_mask_ui()
-
-    _LABEL_STYLE = (
-        "color: white; font-family: 'Microsoft YaHei'; font-size: 9pt;"
-        " background: transparent;"
-    )
 
     def _setup_mask_ui(self):
         """Add X/Y coordinate inputs and eye toggle on top of base panel."""
@@ -585,7 +568,7 @@ class MaskPanel(DisplayModePanel):
         """Create a small coordinate label."""
         lbl = QLabel(text, self)
         lbl.setGeometry(x, y, 10, 16)
-        lbl.setStyleSheet(self._LABEL_STYLE)
+        lbl.setStyleSheet(self._skin.mode_label)
         return lbl
 
     def _on_position_changed(self):
@@ -612,19 +595,16 @@ class MaskPanel(DisplayModePanel):
         self.mask_visibility_toggled.emit(self._mask_visible)
 
     def _update_eye_icon(self):
-        img = 'display_mode_border_active.png' if self._mask_visible else 'display_mode_border.png'
-        pix = Assets.load_pixmap(img, 24, 16)
+        img = self._skin.border_active if self._mask_visible else self._skin.border
+        pix = self._skin.pixmap(img, 24, 16)
         if not pix.isNull():
             self.eye_btn.setIcon(QIcon(pix))
             self.eye_btn.setIconSize(self.eye_btn.size())
-            self.eye_btn.setStyleSheet(Styles.FLAT_BUTTON)
+            self.eye_btn.setStyleSheet(self._skin.flat_button)
         else:
             self.eye_btn.setText("V" if self._mask_visible else "H")
-            self.eye_btn.setStyleSheet(
-                "QPushButton { background: #00CED1; color: white; border: none; font-size: 8px; }"
-                if self._mask_visible else
-                "QPushButton { background: #555; color: white; border: none; font-size: 8px; }"
-            )
+            self.eye_btn.setStyleSheet(self._skin.flag_on_fallback if self._mask_visible
+                                       else self._skin.flag_off_fallback)
 
     def set_position(self, x: int, y: int):
         """Set X/Y values without triggering events.
@@ -688,8 +668,8 @@ class ScreenCastPanel(DisplayModePanel):
     _BTN_AUDIO = CAST_BTN_AUDIO
 
 
-    def __init__(self, parent=None):
-        super().__init__("screencast", [], parent)
+    def __init__(self, parent=None, *, skin: SettingsSkin):
+        super().__init__("screencast", [], parent, skin=skin)
         self._updating = False
         self._hide_border = True
         self._aspect_lock = True
@@ -814,19 +794,16 @@ class ScreenCastPanel(DisplayModePanel):
 
     def _update_border_icon(self):
         # The C#'s ``P显示边框A`` is the image for ``myYcbk`` True -- hidden.
-        img = 'display_mode_border_active.png' if self._hide_border else 'display_mode_border.png'
-        pix = Assets.load_pixmap(img, 24, 16)
+        img = self._skin.border_active if self._hide_border else self._skin.border
+        pix = self._skin.pixmap(img, 24, 16)
         if not pix.isNull():
             self.border_btn.setIcon(QIcon(pix))
             self.border_btn.setIconSize(self.border_btn.size())
-            self.border_btn.setStyleSheet(Styles.FLAT_BUTTON)
+            self.border_btn.setStyleSheet(self._skin.flat_button)
         else:
             self.border_btn.setText("B" if self._hide_border else "b")
-            self.border_btn.setStyleSheet(
-                "QPushButton { background: #00CED1; color: white; border: none; font-size: 8px; }"
-                if self._hide_border else
-                "QPushButton { background: #555; color: white; border: none; font-size: 8px; }"
-            )
+            self.border_btn.setStyleSheet(self._skin.flag_on_fallback if self._hide_border
+                                          else self._skin.flag_off_fallback)
 
     def set_values(self, x=None, y=None, w=None, h=None):
         """Set coordinate values without triggering events."""
@@ -877,11 +854,8 @@ class ScreenCastPanel(DisplayModePanel):
 
     def _update_audio_icon(self):
         self.audio_btn.setText("🎤" if self._audio_on else "🔇")
-        self.audio_btn.setStyleSheet(
-            "QPushButton { background: #00CED1; color: white; border: none; font-size: 10px; }"
-            if self._audio_on else
-            "QPushButton { background: #555; color: white; border: none; font-size: 10px; }"
-        )
+        self.audio_btn.setStyleSheet(self._skin.sound_on if self._audio_on
+                                     else self._skin.sound_off)
 
 
 class InsetDialog(QDialog):

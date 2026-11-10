@@ -92,6 +92,7 @@ from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
 from .module_page import ModulePage
 from .module_view import ModuleView
+from .settings_look import gui_skin
 from .uc_about import UCAbout, ensure_autostart
 from .uc_activity_sidebar import UCActivitySidebar
 from .uc_brightness import UCBrightness
@@ -1080,7 +1081,7 @@ class TRCCApp(QMainWindow):
         self._set_panel_bg(self.uc_theme_web, Assets.THEME_WEB_BG)
         self.panel_stack.addWidget(self.uc_theme_web)
 
-        self.uc_theme_setting = UCThemeSetting()
+        self.uc_theme_setting = UCThemeSetting(skin=gui_skin())
         self.panel_stack.addWidget(self.uc_theme_setting)
 
         self.uc_theme_mask = UCThemeMask(app=self._app)
@@ -1098,7 +1099,6 @@ class TRCCApp(QMainWindow):
         # Bottom controls + title buttons
         self._create_bottom_controls()
         self._create_title_buttons()
-        self._apply_settings_backgrounds()
 
         # About panel — gpu_list via the ListGpus Command (the sensor
         # aggregator's GPUs as (key, name) tuples).  Legacy fed this from
@@ -1416,18 +1416,6 @@ class TRCCApp(QMainWindow):
             Assets.BTN_POWER, Assets.BTN_POWER_HOVER, fallback_text="X")
         say_tip(close_btn, "Close")
         close_btn.clicked.connect(self.close)
-
-    def _apply_settings_backgrounds(self) -> None:
-        s = self.uc_theme_setting
-        for panel, bg_name in [
-            (s.mask_panel, 'settings_background.png'),
-            (s.background_panel, 'settings_background.png'),
-            (s.screencast_panel, 'settings_background.png'),
-            (s.video_panel, 'settings_background.png'),
-            (s.overlay_grid, 'settings_overlay.png'),
-            (s.color_panel, 'settings_params.png'),
-        ]:
-            self._set_panel_bg(panel, bg_name)
 
     # ── i18n overlays ───────────────────────────────────────────────
 
