@@ -164,12 +164,76 @@ def reach_by_command(
                     seen = node.name
                 if seen in reach:
                     reach[seen].add(ui)
+    if uis is None:
+        for ui, names in _shared_reach(set(reach)).items():
+            for name in names:
+                reach[name].add(ui)
     if not any(reach.values()):
         raise SystemExit(
             f"reach collector found no Command referenced by any of "
             f"{sorted(uis or _UIS)} — the UI roots are wrong or empty."
         )
     return reach
+
+
+def _shared_reach(contract: set[str]) -> dict[str, set[str]]:
+    """What each skin reaches THROUGH the shared ``ui/`` modules it imports.
+
+    A GUI is only a skin (his rule, 2026-11-10): what a control sends lives
+    once in shared code -- ``ui/presentation/theme_settings.ThemeSettings``,
+    ``clip_preview.ClipPreview`` -- and the skins call it.  Reading the skin
+    trees alone credited those Commands to NO UI, so moving a dispatch into
+    shared code read as the skin losing the capability, and ``ClipPreview``'s
+    three Commands had to be recorded as exceptions by hand.  A skin file that
+    imports a shared module reaches every contract name that module -- or a
+    shared module IT imports -- references.
+    """
+    anchor = _package_anchor(_UI_ROOT)
+    ui_pkg = _module_name(_UI_ROOT, anchor)
+    skins = frozenset(_UIS)
+    named: dict[str, set[str]] = {}         # shared module -> names it references
+    imports: dict[str, set[str]] = {}       # any ui module -> shared modules it imports
+    area_of: dict[str, str] = {}
+    for path in layers.files("ui"):
+        this = _module_name(path, anchor)
+        area = _area(layers.logical(this), ui_pkg, skins)
+        if area is None:
+            continue
+        area_of[this] = area
+        found: set[str] = set()
+        deps: set[str] = set()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                target = _resolve_import(node, this, path.name == "__init__.py")
+                if target and _area(layers.logical(target), ui_pkg, skins) == "shared":
+                    deps.add(target)
+            seen = (node.id if isinstance(node, ast.Name)
+                    else node.name if isinstance(node, ast.alias) else None)
+            if seen in contract:
+                found.add(seen)
+        imports[this] = deps
+        if area == "shared":
+            named[this] = found
+
+    closed: dict[str, set[str]] = {}
+
+    def through(module: str) -> set[str]:
+        """*module*'s names and those of every shared module under it."""
+        if module in closed:
+            return closed[module]
+        closed[module] = set()                  # an import cycle ends here
+        total = set(named.get(module, ()))
+        for dep in imports.get(module, ()):
+            total |= through(dep)
+        closed[module] = total
+        return total
+
+    reached: dict[str, set[str]] = {ui: set() for ui in skins}
+    for module, area in area_of.items():
+        if area in skins:
+            for dep in imports[module]:
+                reached[area] |= through(dep)
+    return reached
 
 
 def dispatched_by(ui: str, reach: dict[str, set[str]]) -> set[str]:

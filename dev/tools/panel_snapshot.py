@@ -70,6 +70,55 @@ def _build_uc_led_control() -> Any:
     return panel
 
 
+#: Built windows and Apps stay alive until the snapshot is taken.
+_KEEP: list[Any] = []
+
+
+def _build_uc_theme_setting(edited: bool) -> Any:
+    """The gui's device Settings panel, fed the way the window feeds it.
+
+    Its state reaches it through the window (Queries the window and its LCD
+    handler read), and moving that path is exactly what a conversion to the
+    shared ``ThemeSettings`` presentation does -- so the panel is grabbed out
+    of a real ``TRCCApp`` over a mock panel, never built bare.  *edited*: two
+    overlay elements and the mask hidden, so the grid, the element editor and
+    the mask box show values rather than defaults.
+    """
+    import tempfile
+    sys.path.insert(0, str(REPO))
+    from tests.conftest import show_a_theme
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import (
+        AddOverlayElement,
+        ConnectDevice,
+        EnableOverlay,
+        SetMaskVisible,
+    )
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    key = "0402:3922"
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}],
+                           Path(tempfile.mkdtemp())), renderer=QtRenderer())
+    assert app.dispatch(ConnectDevice(key=key)).ok
+    show_a_theme(app, key)
+    if edited:
+        for command in (AddOverlayElement(key=key, type="text", x=40, y=60, text="Hello",
+                                          color="#ff8800", size=28, element_id="a"),
+                        # Not a clock: its tile shows the time of day, so a
+                        # before and an after a minute apart would differ.
+                        AddOverlayElement(key=key, type="text", x=120, y=200,
+                                          text="World", element_id="b"),
+                        EnableOverlay(key=key, enabled=True),
+                        SetMaskVisible(key=key, visible=False)):
+            assert app.dispatch(command).ok, command
+    window = TRCCApp(app=app)
+    window.replay_initial_devices()
+    _KEEP.extend((app, window))
+    return window.uc_theme_setting
+
+
 # Add a row per panel as it is converted.  Keep builders deterministic — no
 # real device scan, no host-dependent strings.
 #
@@ -84,6 +133,8 @@ PANELS: dict[str, Callable[[], Any]] = {
     "uc_image_cut": _build_uc_image_cut,
     "uc_preview": _build_uc_preview,
     "uc_led_control": _build_uc_led_control,
+    "uc_theme_setting": lambda: _build_uc_theme_setting(edited=False),
+    "uc_theme_setting_edited": lambda: _build_uc_theme_setting(edited=True),
 }
 
 

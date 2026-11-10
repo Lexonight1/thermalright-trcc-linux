@@ -36,16 +36,10 @@ from PySide6.QtWidgets import (
 
 from ...core.commands import (
     LcdSnapshot,
-    SetBackground,
     SetBrightness,
-    SetMaskVisible,
-    SetMediaPlayer,
     SetOrientation,
-    ShowBackground,
-    StartScreencast,
-    StopScreencast,
-    UploadCustomMask,
 )
+from ..presentation.theme_settings import ThemeSettings
 from ..qt_words import say
 from .words import words
 
@@ -77,6 +71,8 @@ class _DeviceTab(QWidget):
         log.debug("%s: built", type(self).__name__)
         self._app = app
         self._selection = selection
+        #: What a Settings control sends -- the gui's, shared by every GUI.
+        self._settings = ThemeSettings(app)
         selection.changed.connect(self.show_state)
         bus.settings_changed.connect(self._on_device_event,
                                      type=Qt.ConnectionType.QueuedConnection)
@@ -194,12 +190,12 @@ class SourcesPanel(_DeviceTab):
 
     def _on_mask(self, on: bool) -> None:
         log.info("SourcesPanel._on_mask: %s", on)
-        self._send(SetMaskVisible(key=self._selection.key, visible=on))
+        self._settings.set_mask_visible(self._selection.key, on)
         self.show_state()
 
     def _on_background(self, on: bool) -> None:
         log.info("SourcesPanel._on_background: %s", on)
-        self._send(ShowBackground(key=self._selection.key, shown=on))
+        self._settings.show_background(self._selection.key, on)
         self.show_state()
 
     def _on_screencast(self, on: bool) -> None:
@@ -209,11 +205,10 @@ class SourcesPanel(_DeviceTab):
         log.info("SourcesPanel._on_screencast: %s", on)
         if on:
             box = self._app.dispatch(LcdSnapshot(key=key)).screencast_rect
-            x, y, w, h = box if box is not None else (0, 0, 0, 0)
-            self._send(StartScreencast(key=key, x=x, y=y, w=w, h=h,
-                                       audio=self.audio_switch.isChecked()))
+            self._settings.start_cast(key, box if box is not None else (0, 0, 0, 0),
+                                      self.audio_switch.isChecked())
         else:
-            self._send(StopScreencast(key=key))
+            self._settings.stop_cast(key)
         self.show_state()
 
     def _on_video(self, on: bool) -> None:
@@ -221,7 +216,7 @@ class SourcesPanel(_DeviceTab):
         file or an address -- the buttons."""
         log.info("SourcesPanel._on_video: %s", on)
         if not on:
-            self._send(SetMediaPlayer(key=self._selection.key, uri=""))
+            self._settings.stop_media(self._selection.key)
         self.show_state()
 
     # ── The buttons ────────────────────────────────────────────────────
@@ -244,28 +239,28 @@ class SourcesPanel(_DeviceTab):
     def _on_mask_upload(self) -> None:
         log.info("SourcesPanel._on_mask_upload")
         if path := self.choose_file("Upload", _IMAGES):
-            self._send(UploadCustomMask(key=self._selection.key, source=Path(path)))
+            self._settings.apply_mask(self._selection.key, Path(path), custom=True)
 
     def _on_picture(self) -> None:
         log.info("SourcesPanel._on_picture")
         if path := self.choose_file("Load Image", _IMAGES):
-            self._send(SetBackground(key=self._selection.key, path=Path(path)))
+            self._settings.set_background(self._selection.key, Path(path))
 
     def _on_background_video(self) -> None:
         log.info("SourcesPanel._on_background_video")
         if path := self.choose_file("Load Video", _VIDEOS):
-            self._send(SetBackground(key=self._selection.key, path=Path(path)))
+            self._settings.set_background(self._selection.key, Path(path))
 
     def _on_player_file(self) -> None:
         log.info("SourcesPanel._on_player_file")
         if path := self.choose_file("Media Player", _VIDEOS):
-            self._send(SetMediaPlayer(key=self._selection.key, uri=path))
+            self._settings.play_media(self._selection.key, path)
             self.show_state()
 
     def _on_player_url(self) -> None:
         log.info("SourcesPanel._on_player_url")
         if url := self.ask_url():
-            self._send(SetMediaPlayer(key=self._selection.key, uri=url))
+            self._settings.play_media(self._selection.key, url)
             self.show_state()
 
 

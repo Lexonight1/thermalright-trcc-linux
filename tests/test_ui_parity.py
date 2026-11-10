@@ -174,14 +174,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "window or a REST client has no terminal to run it in.  Every UI shows "
         "the same advice when a video cannot play")),
 
-    # ── Dispatched from shared ui/presentation, so no skin is credited ────
-    **{name: (frozenset(), (
-        "scoped: the trimmer's live preview (2026-11-05, ffmpeg port inc 5). "
-        "Dispatched by ui/presentation/clip_preview.ClipPreview, which BOTH "
-        "trimmers hold -- gui uc_video_cut and qtgui video_crop -- and the "
-        "collector reads skin trees only.  The cli and api export a clip "
-        "(ExportVideoClip) and have no window to show a preview in"))
-       for name in ("PreviewClip", "TickClipPreview", "StopClipPreview")},
 
     # ── Asked only by the UI that needs the answer ────────────────────────
     # Recorded 2026-08-30 as "gap: qtgui answers this its own way", from an

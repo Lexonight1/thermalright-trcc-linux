@@ -41,17 +41,20 @@ from ...core.commands import (
     AddOverlayElement,
     DeleteOverlayElement,
     DeviceCanvas,
-    EnableOverlay,
     ReadSensors,
     ResolveOverlay,
     UpdateOverlayElement,
 )
 from ...core.results import OverlayElementEntry
+from ..presentation.theme_settings import ElementDrag
 from ..qt_words import say, say_item
 from .sources import _DeviceTab
 from .words import words
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ...core.commands._base import Command
     from ...core.ports import CommandBus
     from ...core.results import LcdSnapshotResult
     from ..bus_bridge import BusBridge
@@ -286,9 +289,16 @@ class OverlayEditor(_DeviceTab):
         element_id = self._picked_id()
         log.info("OverlayEditor._edit: %s %s", element_id, field)
         if element_id:
-            self._send(UpdateOverlayElement(key=self._selection.key,
-                                            element_id=element_id, **field))
+            self._edit_element(partial(UpdateOverlayElement, element_id=element_id, **field))
             self.show_state()
+
+    def _edit_element(self, edit: Callable[..., Command[Any]]) -> Any:
+        """One element added, changed or deleted -- the edit every GUI makes
+        (``ThemeSettings.edit_element``), so an edit to a switched-off overlay
+        switches it on here as it does in the gui.  The edit's answer."""
+        log.debug("OverlayEditor._edit_element: overlay on %s", self.on_switch.isChecked())
+        return self._settings.edit_element(self._selection.key, edit,
+                                           self.on_switch.isChecked()).result
 
     def _field(self) -> str:
         """The field the sending control edits."""
@@ -350,7 +360,7 @@ class OverlayEditor(_DeviceTab):
 
     def _on_enabled(self, on: bool) -> None:
         log.info("OverlayEditor._on_enabled: %s", on)
-        self._send(EnableOverlay(key=self._selection.key, enabled=on))
+        self._settings.set_overlay(self._selection.key, on)
         self.show_state()
 
     def _on_add(self) -> None:
@@ -363,7 +373,7 @@ class OverlayEditor(_DeviceTab):
             fields["text"] = "Text"
         elif kind == "clock":
             fields["source"] = source
-        result = self._send(AddOverlayElement(key=self._selection.key, **fields))
+        result = self._edit_element(partial(AddOverlayElement, **fields))
         self.show_state()
         new = getattr(result, "element", None)
         if new is not None:
@@ -373,7 +383,7 @@ class OverlayEditor(_DeviceTab):
         element_id = self._picked_id()
         log.info("OverlayEditor._on_delete: %s", element_id)
         if element_id:
-            self._send(DeleteOverlayElement(key=self._selection.key, element_id=element_id))
+            self._edit_element(partial(DeleteOverlayElement, element_id=element_id))
             self.show_state()
 
 
@@ -387,8 +397,8 @@ class PreviewDrag:
     def __init__(self, editor: OverlayEditor) -> None:
         log.debug("PreviewDrag: for %s", type(editor).__name__)
         self._editor = editor
-        #: What a press picked up: (id, press x, y, element x, y).
-        self._grabbed: tuple[str, int, int, int, int] | None = None
+        #: What a press picked up: its id, and where it goes as the pointer moves.
+        self._grabbed: tuple[str, ElementDrag] | None = None
 
     def grab_at(self, x: int, y: int) -> None:
         """A press on the preview at panel pixel (*x*, *y*)."""
@@ -401,23 +411,24 @@ class PreviewDrag:
             self._grabbed = None
             return
         editor._select(entry.id)
-        self._grabbed = (entry.id, x, y, entry.x, entry.y)
+        self._grabbed = (entry.id, ElementDrag(origin=(x, y), start=(entry.x, entry.y),
+                                               canvas=(editor.x_box.maximum(),
+                                                       editor.y_box.maximum())))
 
     def drag_to(self, x: int, y: int) -> None:
         """The pointer moved: the element moves as far, kept on the panel."""
         if self._grabbed is None:
             return
         editor = self._editor
-        element_id, from_x, from_y, at_x, at_y = self._grabbed
-        new_x = max(0, min(at_x + x - from_x, editor.x_box.maximum()))
-        new_y = max(0, min(at_y + y - from_y, editor.y_box.maximum()))
+        element_id, drag = self._grabbed
+        new_x, new_y = drag.to(x, y)
         log.debug("PreviewDrag.drag_to: %s -> (%d, %d)", element_id, new_x, new_y)
         for box, value in ((editor.x_box, new_x), (editor.y_box, new_y)):
             box.blockSignals(True)
             box.setValue(value)
             box.blockSignals(False)
-        editor._send(UpdateOverlayElement(key=editor._selection.key,
-                                          element_id=element_id, x=new_x, y=new_y))
+        editor._edit_element(partial(UpdateOverlayElement, element_id=element_id,
+                                     x=new_x, y=new_y))
 
     def let_go(self) -> None:
         """Let go: the editor shows the App's layout again."""

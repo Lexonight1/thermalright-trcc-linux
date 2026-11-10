@@ -25,7 +25,6 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QPixmap
 
 from trcc.core.commands import (
-    ApplyMask,
     BuildPreview,
     CurrentFrame,
     DeviceState,
@@ -43,10 +42,8 @@ from trcc.core.commands import (
     SaveTheme,
     SetBrightness,
     SetFitMode,
-    SetMaskPosition,
     SetOrientation,
     ToggleVideo,
-    UploadCustomMask,
     VideoStatus,
 )
 
@@ -61,6 +58,7 @@ from ...core.events import (
 from ...core.logs import per_frame
 from ..presentation.lcd_presentation_model import LcdPresentationModel
 from ..presentation.overlay_serialization import entries_to_configs
+from ..presentation.theme_settings import ThemeSettings
 from .base_handler import BaseHandler
 
 if TYPE_CHECKING:
@@ -114,6 +112,8 @@ class LCDHandler(BaseHandler):
                 "LCDHandler requires an App handle — composition root must pass one"
             )
         self._app: CommandBus = app
+        #: What the Settings panel sends -- shared by every GUI.
+        self._settings = ThemeSettings(app)
         # ``lcd_idx`` carries the device key in the next/ port (legacy
         # passed an int index into Trcc._lcd_devices).
         self._device_key: str = str(lcd_idx) if lcd_idx else key
@@ -594,28 +594,18 @@ class LCDHandler(BaseHandler):
         if not mask_info.path:
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
             return
-        mask_dir = Path(mask_info.path)
-        is_custom = getattr(mask_info, 'is_custom', False)
-        if is_custom:
-            r = self._app.dispatch(UploadCustomMask(
-                key=self._device_key, source=mask_dir,
-            ))
-        else:
-            r = self._app.dispatch(ApplyMask(
-                key=self._device_key, path=mask_dir,
-            ))
+        r = self._settings.apply_mask(self._device_key, Path(mask_info.path),
+                                      custom=getattr(mask_info, 'is_custom', False))
         if r.ok:
             self._w['preview'].set_status(r.message)
-            self._adopt_loaded_overlay()
+            self._show_overlay_layout()
         else:
             self._w['preview'].set_status(f"Mask failed: {r.message}")
 
     def update_mask_position(self, x: int, y: int) -> None:
         """Update mask overlay position and re-render."""
         log.debug("update_mask_position: x=%s y=%s", x, y)
-        self._app.dispatch(SetMaskPosition(
-            key=self._device_key, x=x, y=y,
-        ))
+        self._settings.set_mask_position(self._device_key, x, y)
 
     def save_theme(self, name: str, *, overwrite: bool = False) -> ThemeResult:
         self.log.info("save_theme: name=%s overwrite=%s", name, overwrite)
@@ -679,14 +669,10 @@ class LCDHandler(BaseHandler):
         reconnect goes through ``_show_overlay_layout`` alone, which honours
         the persisted switch instead (#276).
         """
-        enabled = bool(self._app.dispatch(
-            ResolveOverlay(key=self._device_key)).elements)
+        enabled = self._settings.follow_loaded_layout(self._device_key)
         self.log.info("_adopt_loaded_overlay: %s → overlay %s",
                       self._device_key,
                       "enabled" if enabled else "disabled (no layout)")
-        self._app.dispatch(EnableOverlay(
-            key=self._device_key, enabled=enabled,
-        ))
         self._show_overlay_layout()
 
     # ── Video lifecycle (bus_bridge observers) ─────────────────────
@@ -821,16 +807,9 @@ class LCDHandler(BaseHandler):
         the opposite, so an edit that leaves nothing must not — that would
         answer a "remove everything" by turning the overlay on.
         """
-        command = edit(key=self._device_key)
-        self.log.info("on_overlay_edit: %s", command)
-        if not self._app.dispatch(command).ok:
-            return      # App.dispatch has logged the refusal at WARNING
-        if not self._pm.state.overlay_enabled and self._app.dispatch(
-                ResolveOverlay(key=self._device_key)).elements:
-            self._app.dispatch(EnableOverlay(
-                key=self._device_key, enabled=True,
-            ))
-            self._pm.state.overlay_enabled = True
+        self.log.info("on_overlay_edit: %s", self._device_key)
+        self._pm.state.overlay_enabled = self._settings.edit_element(
+            self._device_key, edit, self._pm.state.overlay_enabled).overlay_on
 
     def handle_frame(self, image: Any) -> None:
         """Receive the rendered frame from ``FrameSent`` — show it directly.

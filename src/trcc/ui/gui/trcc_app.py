@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from functools import partial
+from functools import cached_property, partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -36,13 +36,11 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.commands import (
-    ClearInset,
     ConnectDevice,
     ControlCenterSnapshot,
     DeleteTheme,
     DeviceState,
     DownloadCloudTheme,
-    EnableOverlay,
     ExportVideoClip,
     GetPaths,
     GetPlatformInfo,
@@ -54,21 +52,10 @@ from ...core.commands import (
     ListModules,
     ProbeVideoDuration,
     ReadSensors,
-    RecentColors,
-    RememberColor,
-    SetBackground,
     SetGpuDevice,
     SetHddEnabled,
-    SetInset,
     SetLanguage,
-    SetMaskVisible,
-    SetMediaPlayer,
     SetRefreshInterval,
-    SetScreencastRegion,
-    SetTempUnit,
-    ShowBackground,
-    StartScreencast,
-    StopScreencast,
 )
 from ...core.events import (
     AutostartChanged,
@@ -91,6 +78,7 @@ from ..bus_bridge import BusBridge, DeviceSettingsEvent
 from ..device_selection import DeviceSelection
 from ..presentation import presentation_for
 from ..presentation.device_choice import DeviceChoice
+from ..presentation.theme_settings import ElementDrag, ThemeSettings, nudge
 from ..qt_tray import TrayController
 from ..qt_words import retranslate, say_tip
 from ..ui_state import UiStateStore
@@ -967,23 +955,27 @@ class TRCCApp(QMainWindow):
             self._show_cast()
             self._show_recent_colors(key)
 
+    @cached_property
+    def _settings(self) -> ThemeSettings:
+        """What the Settings panel sends -- the one ``ThemeSettings`` every
+        GUI shares; this window draws the controls and calls it."""
+        log.debug("_settings: built")
+        return ThemeSettings(self._app)
+
     def _remember_color(self, rgb: tuple[int, int, int]) -> None:
         """An edit ended on *rgb*: the App remembers it for the active LCD."""
         log.info("_remember_color: %s", rgb)
         if not (h := self._active_lcd()):
             return
-        r, g, b = rgb
-        result = self._app.dispatch(RememberColor(key=h.device_key,
-                                                  color=(r, g, b)))
-        if result.ok:
-            self.uc_theme_setting.color_panel.set_recent_colors(result.colors)
+        if (colours := self._settings.remember_colour(h.device_key, rgb)) is not None:
+            self.uc_theme_setting.color_panel.set_recent_colors(colours)
 
     def _show_recent_colors(self, key: str) -> None:
         """Put the App's recent-colour row for *key* on the colour editor."""
-        result = self._app.dispatch(RecentColors(key=key))
-        log.debug("_show_recent_colors: %s ok=%s", key, result.ok)
-        if result.ok:
-            self.uc_theme_setting.color_panel.set_recent_colors(result.colors)
+        colours = self._settings.recent_colours(key)
+        log.debug("_show_recent_colors: %s -> %s", key, colours is not None)
+        if colours is not None:
+            self.uc_theme_setting.color_panel.set_recent_colors(colours)
 
     # ── Timers ──────────────────────────────────────────────────────
 
@@ -1762,10 +1754,8 @@ class TRCCApp(QMainWindow):
         self.uc_preview.element_drag_move.connect(self._on_drag_move)
         self.uc_preview.element_drag_end.connect(self._on_drag_end_noop)
         self.uc_preview.element_nudge.connect(self._on_nudge)
-        self._drag_origin_x = 0
-        self._drag_origin_y = 0
-        self._drag_elem_x = 0
-        self._drag_elem_y = 0
+        #: The element held under the pointer, while one is.
+        self._drag: ElementDrag | None = None
 
         self.uc_theme_setting.background_changed.connect(self._on_background_toggle)
         self.uc_theme_setting.screencast_changed.connect(self._on_screencast_toggle)
@@ -2032,13 +2022,7 @@ class TRCCApp(QMainWindow):
                 self._on_load_video_clicked()
             case UCThemeSetting.CMD_MASK_TOGGLE | UCThemeSetting.CMD_MASK_VISIBILITY:
                 if h:
-                    # ``SetMaskVisible`` persists the toggle, invalidates
-                    # the scene cache, and publishes ``MaskVisibilityChanged``
-                    # — ``DeviceRenderObserver`` picks that up and schedules
-                    # a render.  No direct ``_render_and_send`` needed.
-                    self._app.dispatch(SetMaskVisible(
-                        key=h.device_key, visible=bool(info),
-                    ))
+                    self._settings.set_mask_visible(h.device_key, bool(info))
             case UCThemeSetting.CMD_MASK_UPLOAD:
                 self._on_mask_upload_clicked()
             case UCThemeSetting.CMD_MASK_POSITION:
@@ -2079,18 +2063,6 @@ class TRCCApp(QMainWindow):
 
     # ── Background / Screencast / Video Toggles ─────────────────────
 
-    def _cast_region(self, key: str) -> tuple[int, int, int, int, bool] | None:
-        """*key*'s running cast ``(x, y, w, h, audio)`` from the App, or None.
-
-        Asked, never remembered: the window used to keep ONE casting flag and
-        region for every device, filled from any device's events, so a cast
-        another UI started on B made this window re-issue it on A.
-        """
-        snap = self._app.dispatch(LcdSnapshot(key=key))
-        region = snap.screencast_region if snap.ok else None
-        log.debug("_cast_region: %s -> %s", key, region)
-        return region
-
     def _show_cast(self) -> None:
         """Show the selected device's screencast state, sending nothing.
 
@@ -2123,8 +2095,8 @@ class TRCCApp(QMainWindow):
         log.info("_on_screencast_region_edited: %s (%d,%d %dx%d)",
                  self._active_key, x, y, w, h)
         if self._active_key:
-            self._send_region(SetScreencastRegion(
-                key=self._active_key, x=x, y=y, w=w, h=h))
+            self._show_region_result(
+                self._settings.set_region(self._active_key, (x, y, w, h)))
 
     def _on_screencast_border_toggled(self, hide: bool) -> None:
         """The border button -- the App's flag, sent with the App's region.
@@ -2140,17 +2112,13 @@ class TRCCApp(QMainWindow):
                     partial(store_picked_region, self._app, self._active_key))
             self._show_cast()
             return
-        snap = (self._app.dispatch(LcdSnapshot(key=self._active_key))
-                if self._active_key else None)
-        if snap is not None and snap.ok and snap.screencast_rect is not None:
-            x, y, w, h = snap.screencast_rect
-            self._send_region(SetScreencastRegion(
-                key=self._active_key, x=x, y=y, w=w, h=h, hide_border=hide))
+        if self._active_key and (
+                result := self._settings.set_hide_border(self._active_key, hide)):
+            self._show_region_result(result)
 
-    def _send_region(self, cmd: SetScreencastRegion) -> None:
-        """Dispatch a region edit; a refusal shows, and the panel re-reads."""
-        result = self._app.dispatch(cmd)
-        log.debug("_send_region: %s -> %s", cmd, result.message)
+    def _show_region_result(self, result: Any) -> None:
+        """A region edit's answer: a refusal shows, and the panel re-reads."""
+        log.debug("_show_region_result: %s", result.message)
         if not result.ok:
             self.uc_preview.set_status(f"Screencast: {result.message}")
             self._show_cast()
@@ -2168,9 +2136,7 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if not h:
             return
-        # One Command, every UI's: ends a cast, closes the media player, puts
-        # a switched-off background back -- or switches it off.
-        self._app.dispatch(ShowBackground(key=h.device_key, shown=enabled))
+        self._settings.show_background(h.device_key, enabled)
 
     def _on_screencast_toggle(self, enabled: bool) -> None:
         log.info("_on_screencast_toggle: enabled=%s", enabled)
@@ -2185,10 +2151,8 @@ class TRCCApp(QMainWindow):
             # here would duplicate the call.
             h.deactivate()
             panel = self.uc_theme_setting.screencast_panel
-            x, y, sw, sh = panel.values()
-            result = self._app.dispatch(StartScreencast(
-                key=h.device_key, x=x, y=y, w=sw, h=sh, audio=panel.audio_on,
-            ))
+            result = self._settings.start_cast(h.device_key, panel.values(),
+                                               panel.audio_on)
             if not result.ok:
                 log.warning(
                     "_on_screencast_toggle: StartScreencast failed: %s",
@@ -2197,7 +2161,7 @@ class TRCCApp(QMainWindow):
                 self.uc_preview.set_status(f"Screencast: {result.message}")
                 return
         else:
-            self._app.dispatch(StopScreencast(key=h.device_key))
+            self._settings.stop_cast(h.device_key)
         self.uc_preview.set_status(f"Screencast: {'On' if enabled else 'Off'}")
 
     def _on_screencast_audio_toggled(self, enabled: bool) -> None:
@@ -2218,15 +2182,11 @@ class TRCCApp(QMainWindow):
         """
         log.info("_on_screencast_audio_toggled: enabled=%s", enabled)
         h = self._active_lcd()
-        region = self._cast_region(h.device_key) if h else None
-        if h is None or region is None:
+        result = self._settings.set_cast_audio(h.device_key, enabled) if h else None
+        if result is None:
             log.debug("_on_screencast_audio_toggled: no live session on the "
                       "selected device — applies at the next start")
             return
-        x, y, w, sh, _audio = region
-        result = self._app.dispatch(StartScreencast(
-            key=h.device_key, x=x, y=y, w=w, h=sh, audio=enabled,
-        ))
         if not result.ok:
             log.warning("_on_screencast_audio_toggled: re-issue failed: %s",
                         result.message)
@@ -2237,10 +2197,7 @@ class TRCCApp(QMainWindow):
         if not h:
             return
         if not enabled:
-            # The video player OFF is the media player's Command, as every
-            # UI's: the App stops it and the theme's own video plays again.
-            # This window used to stop the video and reload the theme itself.
-            self._app.dispatch(SetMediaPlayer(key=h.device_key, uri=""))
+            self._settings.stop_media(h.device_key)
 
     # ── File Dialogs ────────────────────────────────────────────────
 
@@ -2280,7 +2237,7 @@ class TRCCApp(QMainWindow):
         # records it AS a media player (save, restore, every UI's switch) and
         # ends a running cast itself.  This window used to play it as a
         # background and switch the overlay off, which the C# never does.
-        result = self._app.dispatch(SetMediaPlayer(key=h.device_key, uri=path))
+        result = self._settings.play_media(h.device_key, path)
         self.uc_preview.set_status(
             f"Playing: {Path(path).name}" if result.ok
             else f"Error: {result.message}")
@@ -2296,7 +2253,7 @@ class TRCCApp(QMainWindow):
         log.info("_on_media_player_url_clicked: accepted=%s url=%r", accepted, url)
         if not (accepted and url and h):
             return
-        result = self._app.dispatch(SetMediaPlayer(key=h.device_key, uri=url))
+        result = self._settings.play_media(h.device_key, url)
         self.uc_preview.set_status(
             f"Streaming: {url}" if result.ok else f"Error: {result.message}")
 
@@ -2319,9 +2276,7 @@ class TRCCApp(QMainWindow):
             log.info("_on_inset_clicked: cancelled")
             return
         module, corner, size = dialog.choice()
-        result = self._app.dispatch(
-            SetInset(key=h.device_key, module=module, corner=corner, size=size)
-            if module else ClearInset(key=h.device_key))
+        result = self._settings.set_inset(h.device_key, module, corner, size)
         log.info("_on_inset_clicked: %s -> ok=%s %s", module or "off", result.ok,
                  result.message)
         self.uc_preview.set_status(result.message if result.ok
@@ -2467,9 +2422,7 @@ class TRCCApp(QMainWindow):
             if bg_path is None:
                 self.uc_preview.set_status("Error: could not save background")
             else:
-                outcome = self._app.dispatch(SetBackground(
-                    key=h.device_key, path=bg_path,
-                ))
+                outcome = self._settings.set_background(h.device_key, bg_path)
                 if outcome.ok:
                     self.uc_preview.set_status("Image loaded")
                 else:
@@ -2667,9 +2620,7 @@ class TRCCApp(QMainWindow):
             # Dispatching ``PlayVideo`` directly here (the old code) left
             # no override for ``SaveTheme`` to bake in, so a saved theme
             # lost the video and reloaded with a black background.
-            result = self._app.dispatch(SetBackground(
-                key=h.device_key, path=target,
-            ))
+            result = self._settings.set_background(h.device_key, target)
             if result.ok:
                 self.uc_preview.set_playing(True)
                 self.uc_preview.show_video_controls(True)
@@ -2703,12 +2654,7 @@ class TRCCApp(QMainWindow):
         log.debug("_on_overlay_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if h:
-            # ``EnableOverlay`` Command persists the toggle, invalidates
-            # the scene cache, and publishes ``OverlayChanged`` — same
-            # path every UI uses.  No more direct device-method calls.
-            self._app.dispatch(EnableOverlay(
-                key=h.device_key, enabled=enabled,
-            ))
+            self._settings.set_overlay(h.device_key, enabled)
 
     # ── Drag / Nudge ────────────────────────────────────────────────
 
@@ -2724,20 +2670,16 @@ class TRCCApp(QMainWindow):
             cfg = grid.get_selected_config()
             if cfg is None:
                 return
-        self._drag_origin_x = lcd_x
-        self._drag_origin_y = lcd_y
-        self._drag_elem_x = cfg.x
-        self._drag_elem_y = cfg.y
+        if (h := self._active_lcd()) is not None:
+            self._drag = ElementDrag(origin=(lcd_x, lcd_y), start=(cfg.x, cfg.y),
+                                     canvas=h.lcd_size)
 
     def _on_drag_move(self, lcd_x: int, lcd_y: int) -> None:
         log.info("_on_drag_move: lcd_x=%s lcd_y=%s", lcd_x, lcd_y)
         cfg = self.uc_theme_setting.overlay_grid.get_selected_config()
-        h = self._active_lcd()
-        if cfg is None or not h:
+        if cfg is None or self._drag is None:
             return
-        w, hw = h.lcd_size
-        new_x = max(0, min(self._drag_elem_x + (lcd_x - self._drag_origin_x), w))
-        new_y = max(0, min(self._drag_elem_y + (lcd_y - self._drag_origin_y), hw))
+        new_x, new_y = self._drag.to(lcd_x, lcd_y)
         self.uc_theme_setting.color_panel.set_position(new_x, new_y)
         self.uc_theme_setting._on_position_changed(new_x, new_y)
 
@@ -2747,9 +2689,7 @@ class TRCCApp(QMainWindow):
         h = self._active_lcd()
         if cfg is None or not h:
             return
-        w, hw = h.lcd_size
-        new_x = max(0, min(cfg.x + dx, w))
-        new_y = max(0, min(cfg.y + dy, hw))
+        new_x, new_y = nudge((cfg.x, cfg.y), dx, dy, h.lcd_size)
         self.uc_theme_setting.color_panel.set_position(new_x, new_y)
         self.uc_theme_setting._on_position_changed(new_x, new_y)
 
@@ -2788,7 +2728,7 @@ class TRCCApp(QMainWindow):
         # SetTempUnit publishes ``TempUnitChanged``: ``DeviceRenderObserver``
         # re-renders every LCD, and ``_on_bus_app_settings_changed`` shows the
         # unit here the same way it does for a change from another UI.
-        self._app.dispatch(SetTempUnit(unit=unit))
+        self._settings.set_temp_unit(unit)
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
     def _on_hdd_toggle_changed(self, on: bool) -> None:
