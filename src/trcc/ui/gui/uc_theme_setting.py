@@ -36,7 +36,8 @@ from ...core.commands import (
 )
 from ...core.logs import per_frame
 from ...core.models import OverlayElementConfig, OverlayMode
-from ..presentation.overlay_serialization import config_fields
+from ..presentation.overlay_serialization import config_fields, entries_to_configs
+from ..presentation.theme_settings import SettingsView
 from .base import BasePanel
 from .color_and_add_panels import AddElementPanel, ColorPickerPanel
 from .constants import Layout, Sizes
@@ -384,6 +385,29 @@ class UCThemeSetting(BasePanel):
     def set_mask_visible(self, visible: bool):
         """Update mask panel eye toggle state."""
         self.mask_panel.set_mask_visible(visible)
+
+    def show(self, view: SettingsView) -> None:
+        """Draw *view* -- everything the App holds for the panel on screen.
+        Sends nothing.  The one way this panel is filled: every GUI's Settings
+        panel draws the same :class:`SettingsView`."""
+        log.info("UCThemeSetting.show: %s overlay=%s %d element(s)", view.key,
+                 view.overlay_on, len(view.elements))
+        self.set_overlay_enabled(view.overlay_on)
+        self.load_configs(entries_to_configs(view.elements))
+        self.set_mask_visible(view.mask_visible)
+        self.set_mask_position(*view.mask_position)
+        self.show_sources(view.source, view.background_drawn)
+        cast = self.screencast_panel
+        if view.cast_canvas is not None:
+            cast.set_resolution(*view.cast_canvas)
+        if view.cast_rect is not None:
+            x, y, w, h = view.cast_rect
+            cast.set_values(x=x, y=y, w=w, h=h)
+        cast.set_hide_border(view.cast_hide_border)
+        if view.cast_audio is not None:     # off a cast it is this window's choice
+            cast.set_audio(view.cast_audio)
+        self.color_panel.set_recent_colors(view.recent_colours)
+        self.show_temp_unit(view.temp_unit)
 
     def show_sources(self, source: str, background_drawn: bool) -> None:
         """Show which display source is on the panel, sending nothing.

@@ -248,6 +248,25 @@ def test_the_settings_switches_change_the_app_and_show_what_it_holds(
     assert (snap().background_mode, page.background_switch.isChecked()) == ("theme", True)
 
 
+def test_the_settings_switches_follow_a_cast_another_ui_starts(
+        window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """hudgui followed two events and never saw a cast start or stop
+    elsewhere; it now follows the Settings panel's list, the gui's
+    (``BusBridge.follow_settings``).  MUTATION CHECK (measured 2026-11-10):
+    give ``_SettingsTab._follow`` back the old pair (``settings_changed`` +
+    ``theme_loaded``) -- the switch never turns on."""
+    from tests.conftest import FakeMic
+    from trcc.core.commands import StartScreencast, StopScreencast
+
+    monkeypatch.setattr(window._app, "audio", FakeMic())
+    page = _tab(window, qtbot, "Settings").sources
+    assert not page.screencast_switch.isChecked()
+    assert window._app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=200, h=100)).ok
+    qtbot.waitUntil(page.screencast_switch.isChecked, timeout=2000)
+    assert window._app.dispatch(StopScreencast(key=_KEY)).ok
+    qtbot.waitUntil(lambda: not page.screencast_switch.isChecked(), timeout=2000)
+
+
 def test_brightness_and_rotation_sit_under_the_preview(window: Any, qtbot: Any) -> None:
     from trcc.core.commands import LcdSnapshot
 

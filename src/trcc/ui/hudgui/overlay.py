@@ -40,15 +40,13 @@ from PySide6.QtWidgets import (
 from ...core.commands import (
     AddOverlayElement,
     DeleteOverlayElement,
-    DeviceCanvas,
     ReadSensors,
-    ResolveOverlay,
     UpdateOverlayElement,
 )
 from ...core.results import OverlayElementEntry
-from ..presentation.theme_settings import ElementDrag
+from ..presentation.theme_settings import ElementDrag, SettingsView
 from ..qt_words import say, say_item
-from .sources import _DeviceTab
+from .sources import _SettingsTab
 from .words import words
 
 if TYPE_CHECKING:
@@ -56,7 +54,6 @@ if TYPE_CHECKING:
 
     from ...core.commands._base import Command
     from ...core.ports import CommandBus
-    from ...core.results import LcdSnapshotResult
     from ..bus_bridge import BusBridge
     from ..device_selection import DeviceSelection
     from ..qt_words import Tr
@@ -90,7 +87,7 @@ def describe(entry: OverlayElementEntry, say_now: Tr = str) -> str:
     return line
 
 
-class OverlayEditor(_DeviceTab):
+class OverlayEditor(_SettingsTab):
     """The panel's overlay elements: the list, the selected one's form."""
 
     def __init__(self, app: CommandBus, bus: BusBridge, selection: DeviceSelection,
@@ -129,7 +126,23 @@ class OverlayEditor(_DeviceTab):
         column.addLayout(row)
         #: Moving an element by hand on the preview.
         self.drag = PreviewDrag(self)
+        # X / Y are bounded by where elements sit -- the composed canvas -- which
+        # changes with the device, its theme or its orientation, never per edit.
+        selection.changed.connect(self._size_to_canvas)
+        for signal in (bus.theme_loaded, bus.orientation_changed):
+            signal.connect(self._size_to_canvas, type=Qt.ConnectionType.QueuedConnection)
+        self._size_to_canvas()
         self.show_state()
+
+    def _size_to_canvas(self, *_event: object) -> None:
+        """X / Y bounded by the composed canvas the preview draws, as in the gui
+        (it was the native ``DeviceCanvas``: wrong on a portrait-composed theme)."""
+        key = self._selection.key
+        canvas = self._settings.canvas(key) if key else None
+        log.debug("OverlayEditor._size_to_canvas: %s -> %s", key, canvas)
+        if canvas is not None:
+            self.x_box.setRange(0, canvas[0])
+            self.y_box.setRange(0, canvas[1])
 
     def _form(self) -> QFormLayout:
         """The selected element's properties -- each edit sends its field."""
@@ -201,23 +214,17 @@ class OverlayEditor(_DeviceTab):
 
     # ── Showing the App's layout ───────────────────────────────────────
 
-    def _show(self, snapshot: LcdSnapshotResult) -> None:
-        """The list and the form from ``ResolveOverlay``; the selection kept."""
-        key = self._selection.key
-        layout = self._app.dispatch(ResolveOverlay(key=key))
-        canvas = self._app.dispatch(DeviceCanvas(key=key))
+    def _show_view(self, view: SettingsView) -> None:
+        """The list and the form from the App's layout; the selection kept."""
         picked = self._picked_id()
-        log.info("OverlayEditor._show: %s %d element(s) (%s), on=%s", key,
-                 len(layout.elements), layout.source, layout.enabled)
-        self._quiet(self.on_switch, layout.enabled)
-        if canvas.ok:
-            self.x_box.setRange(0, canvas.width)
-            self.y_box.setRange(0, canvas.height)
-        self._elements = {e.id: e for e in layout.elements}
+        log.info("OverlayEditor._show_view: %s %d element(s), on=%s",
+                 view.key, len(view.elements), view.overlay_on)
+        self._quiet(self.on_switch, view.overlay_on)
+        self._elements = {e.id: e for e in view.elements}
         say_now = words(self._app)
         self.list.blockSignals(True)
         self.list.clear()
-        for entry in layout.elements:
+        for entry in view.elements:
             item = QListWidgetItem(describe(entry, say_now))
             item.setData(Qt.ItemDataRole.UserRole, entry.id)
             self.list.addItem(item)

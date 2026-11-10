@@ -9,7 +9,7 @@ switched the overlay off got it switched back on at the next launch — issue
 
 The dead giveaway was ``_load_theme_overlay_config(theme_dir, persist=False)``:
 the restore path asked for "don't persist", and the body logged the flag and
-then persisted anyway.  The restore is ``_show_overlay_layout`` now, and the
+then persisted anyway.  The restore is ``show_theme_settings`` now, and the
 user-load path ``_adopt_loaded_overlay``; both read the layout the App holds
 (``ResolveOverlay``), so each test loads its theme into the App first.
 
@@ -48,11 +48,13 @@ class _Widget:
         self.overlay_enabled: list[bool] = []
         self.loaded: list[list[Any]] = []
 
-    def set_overlay_enabled(self, enabled: bool) -> None:
-        self.overlay_enabled.append(enabled)
-
-    def load_configs(self, configs: list[Any]) -> None:
-        self.loaded.append(configs)
+    def show(self, view: Any) -> None:
+        """The Settings panel's one call: the whole view -- recorded as the
+        switch it shows and the cells the editor loads from it, exactly as
+        ``UCThemeSetting.show`` does."""
+        from trcc.ui.presentation.overlay_serialization import entries_to_configs
+        self.overlay_enabled.append(view.overlay_on)
+        self.loaded.append(entries_to_configs(view.elements))
 
     def __getattr__(self, name: str) -> Any:
         def _noop(*a: Any, **k: Any) -> None:
@@ -117,7 +119,7 @@ def test_restore_keeps_the_overlay_off_the_user_switched_off(
     _loaded(app, _theme_with_overlay(tmp_path))
     app.settings.set_overlay_enabled(_KEY, False)
 
-    h._show_overlay_layout()
+    h.show_theme_settings()
 
     assert app.settings.for_device(_KEY).overlay_enabled is False, (
         "an automatic restore overwrote the user's persisted overlay toggle"
@@ -137,7 +139,7 @@ def test_restore_still_shows_the_theme_layout_in_the_editor(
     _loaded(app, _theme_with_overlay(tmp_path))
     app.settings.set_overlay_enabled(_KEY, False)
 
-    h._show_overlay_layout()
+    h.show_theme_settings()
 
     assert theme_setting.loaded, "restore left the overlay editor empty"
     cells = theme_setting.loaded[-1]
@@ -155,7 +157,7 @@ def test_restore_keeps_the_overlay_on_when_the_user_left_it_on(
     _loaded(app, _theme_with_overlay(tmp_path))
     app.settings.set_overlay_enabled(_KEY, True)
 
-    h._show_overlay_layout()
+    h.show_theme_settings()
 
     assert app.settings.for_device(_KEY).overlay_enabled is True
     assert theme_setting.overlay_enabled == [True]
@@ -190,7 +192,7 @@ def test_restore_dispatches_no_command_at_all(
         return real(command)
 
     monkeypatch.setattr(app, "dispatch", _record)
-    h._show_overlay_layout()
+    h.show_theme_settings()
 
     assert writes == [], (
         f"restore must not write device state, but dispatched {writes}"

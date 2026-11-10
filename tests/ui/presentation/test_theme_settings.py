@@ -36,7 +36,12 @@ from trcc.core.commands import (
     UploadCustomMask,
 )
 from trcc.core.ports import CommandBus
-from trcc.ui.presentation.theme_settings import ElementDrag, ThemeSettings, nudge
+from trcc.ui.presentation.theme_settings import (
+    ElementDrag,
+    SettingsView,
+    ThemeSettings,
+    nudge,
+)
 
 KEY = "0402:3922"
 
@@ -196,3 +201,63 @@ def test_a_dragged_element_follows_the_pointer_and_stays_on_the_canvas() -> None
 def test_a_nudge_stays_on_the_canvas() -> None:
     assert nudge((10, 10), -1, 1, (320, 240)) == (9, 11)
     assert nudge((0, 240), -1, 1, (320, 240)) == (0, 240)
+
+
+# ── What the panel shows ───────────────────────────────────────────────
+
+def _snapshot(**fields: Any) -> SimpleNamespace:
+    base = dict(ok=True, message="", mask_visible=False, mask_position=(7, 8),
+                display_source="screencast", background_mode="theme",
+                screencast_rect=(1, 2, 30, 40), screencast_canvas=(320, 240),
+                screencast_hide_border=False, screencast_region=(1, 2, 30, 40, True))
+    return SimpleNamespace(**{**base, **fields})
+
+
+def _reading(snapshot: SimpleNamespace) -> Any:
+    entry = SimpleNamespace(id="a")
+    settings, bus = _settings(
+        LcdSnapshot=snapshot,
+        ResolveOverlay=SimpleNamespace(ok=True, enabled=False, elements=[entry]),
+        RecentColors=SimpleNamespace(ok=True, colors=((9, 9, 9),)),
+        ControlCenterSnapshot=SimpleNamespace(ok=True, temp_unit="F"))
+    return settings.read(KEY), bus
+
+
+def test_read_is_every_field_from_the_query_that_holds_it() -> None:
+    view, bus = _reading(_snapshot())
+    assert view == SettingsView(
+        key=KEY, overlay_on=False, elements=(view.elements[0],),
+        mask_visible=False, mask_position=(7, 8), source="screencast",
+        background_drawn=True, cast_rect=(1, 2, 30, 40), cast_canvas=(320, 240),
+        cast_hide_border=False, cast_audio=True, recent_colours=((9, 9, 9),),
+        temp_unit="F")
+    assert view.elements[0].id == "a"
+    assert [type(c).__name__ for c in bus.sent] == [
+        "LcdSnapshot", "ResolveOverlay", "RecentColors",
+        "ControlCenterSnapshot"]
+
+
+def test_read_fills_what_the_app_leaves_unset() -> None:
+    view, _ = _reading(_snapshot(mask_position=None, background_mode="transparent",
+                                 screencast_region=None))
+    assert (view.mask_position, view.background_drawn, view.cast_audio) == (
+        (0, 0), False, None)
+
+
+@pytest.mark.parametrize(("ok", "canvas"), [(True, (480, 320)), (False, None)])
+def test_the_canvas_is_the_composed_preview_size(ok: bool, canvas: Any) -> None:
+    settings, bus = _settings(PreviewSize=SimpleNamespace(ok=ok, width=480, height=320))
+    assert settings.canvas(KEY) == canvas
+    assert [type(c).__name__ for c in bus.sent] == ["PreviewSize"]
+
+
+def test_no_state_for_the_key_reads_nothing() -> None:
+    view, bus = _reading(_snapshot(ok=False, message="not attached"))
+    assert view is None
+    assert [type(c).__name__ for c in bus.sent] == ["LcdSnapshot"]
+
+
+def test_an_event_concerns_its_own_device_and_an_app_wide_one_every_panel() -> None:
+    assert ThemeSettings.concerns(SimpleNamespace(key=KEY), KEY)
+    assert not ThemeSettings.concerns(SimpleNamespace(key="87ad:70db"), KEY)
+    assert ThemeSettings.concerns(SimpleNamespace(), KEY)          # the unit

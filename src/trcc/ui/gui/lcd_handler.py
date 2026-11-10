@@ -37,7 +37,6 @@ from trcc.core.commands import (
     LoadCloudTheme,
     LoadTheme,
     PreviewSize,
-    ResolveOverlay,
     ResolveThemeDirectories,
     SaveTheme,
     SetBrightness,
@@ -57,7 +56,6 @@ from ...core.events import (
 )
 from ...core.logs import per_frame
 from ..presentation.lcd_presentation_model import LcdPresentationModel
-from ..presentation.overlay_serialization import entries_to_configs
 from ..presentation.theme_settings import ThemeSettings
 from .base_handler import BaseHandler
 
@@ -405,12 +403,7 @@ class LCDHandler(BaseHandler):
         self._restore_brightness(ds)
         self._restore_rotation(ds)
         self._restore_split_mode(ds)
-        self._show_overlay_layout()
-        settings = self._w['theme_setting']
-        settings.set_mask_visible(ds.mask_visible)
-        settings.show_sources(ds.display_source, ds.background_mode != "transparent")
-        # None is the default place, which the render draws at (0, 0).
-        settings.set_mask_position(*(ds.mask_position or (0, 0)))
+        self.show_theme_settings()
         self._w['theme_local'].show_game_mode(ds.game_enabled, ds.game_threshold)
 
     def _restore_brightness(self, ds: LcdSnapshotResult) -> None:
@@ -490,7 +483,7 @@ class LCDHandler(BaseHandler):
         self._pm.state.current_theme_path = Path(current)
         # The toggle shows the DEVICE's persisted state, not "does this theme
         # carry elements" — a sidebar switch must report what is on screen.
-        self._show_overlay_layout()
+        self.show_theme_settings()
         self.rebuild_preview()
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
@@ -598,7 +591,7 @@ class LCDHandler(BaseHandler):
                                       custom=getattr(mask_info, 'is_custom', False))
         if r.ok:
             self._w['preview'].set_status(r.message)
-            self._show_overlay_layout()
+            self.show_theme_settings()
         else:
             self._w['preview'].set_status(f"Mask failed: {r.message}")
 
@@ -637,28 +630,25 @@ class LCDHandler(BaseHandler):
 
     # ── DC File Loading ────────────────────────────────────────────
 
-    def _show_overlay_layout(self) -> None:
-        """Put the overlay the App holds for this panel on the editor — READ only.
+    def show_theme_settings(self) -> None:
+        """Put what the App holds for this panel on the Settings panel -- READ
+        only: the one ``SettingsView`` every GUI draws (overlay and its
+        elements, mask, display source, cast, recent colours, unit).
 
-        The grid and its switch, from ``ResolveOverlay``: the device's working
-        layer, which every UI edits, each element with its id.  The grid used
-        to be filled from the theme's FILES, so it never showed another UI's
-        edit and sent its stale copy back over it on the next change; it also
-        preferred ``trcc.json`` where the App reads ``config1.dc``.
-
-        Dispatches no Command, so a reconnect cannot decide the switch (#276):
-        ``DeviceSettings.overlay_enabled`` is the single authority.
+        Dispatches no Command, so a reconnect cannot decide the overlay switch
+        (#276): ``DeviceSettings.overlay_enabled`` is the single authority.
+        The grid used to be filled from the theme's FILES, so it never showed
+        another UI's edit and sent its stale copy back over it on the next
+        change.
         """
-        layout = self._app.dispatch(ResolveOverlay(key=self._device_key))
-        self.log.info(
-            "_show_overlay_layout: %s → %d element(s) from the %s layer, "
-            "enabled=%s", self._device_key, len(layout.elements),
-            layout.source, layout.enabled,
-        )
-        settings = self._w['theme_setting']
-        settings.set_overlay_enabled(layout.enabled)
-        settings.load_configs(entries_to_configs(layout.elements))
-        self._pm.state.overlay_enabled = layout.enabled
+        view = self._settings.read(self._device_key)
+        if view is None:
+            self.log.debug("show_theme_settings: %s -- nothing to show", self._device_key)
+            return
+        self.log.info("show_theme_settings: %s overlay=%s, %d element(s)",
+                      self._device_key, view.overlay_on, len(view.elements))
+        self._w['theme_setting'].show(view)
+        self._pm.state.overlay_enabled = view.overlay_on
 
     def _adopt_loaded_overlay(self) -> None:
         """After a USER load (theme click, mask apply) the switch follows it.
@@ -673,7 +663,7 @@ class LCDHandler(BaseHandler):
         self.log.info("_adopt_loaded_overlay: %s → overlay %s",
                       self._device_key,
                       "enabled" if enabled else "disabled (no layout)")
-        self._show_overlay_layout()
+        self.show_theme_settings()
 
     # ── Video lifecycle (bus_bridge observers) ─────────────────────
 
@@ -997,7 +987,7 @@ class LCDHandler(BaseHandler):
         )
         self._pm.state.current_theme_path = current
         if current is not None:
-            self._show_overlay_layout()
+            self.show_theme_settings()
 
     # ── Background / Screencast Toggles ────────────────────────────
 

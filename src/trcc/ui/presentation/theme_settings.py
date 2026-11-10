@@ -1,11 +1,13 @@
-"""ThemeSettings — what the device Settings panel SENDS, for every GUI.
+"""ThemeSettings — what the device Settings panel SENDS and SHOWS, for every GUI.
 
 Measured on the gui's panel (2026-11-10): each of its 34 controls is a picture
 of an App fact (a Query field) and, when touched, one Command -- sometimes after
 a UI-only step, a file dialog or the eyedropper, that only produces the value.
 A GUI is only a skin (his rule, 2026-11-10), so the Command half lives here,
 once, with the few rules that ride on it; the gui and hudgui each draw their
-own controls and call these.  No toolkit: plain ``pytest`` tests it.
+own controls and call these.  What it shows is :meth:`ThemeSettings.read` --
+one :class:`SettingsView`, so a panel only draws a view and never decides for
+itself which Query field goes where.  No toolkit: plain ``pytest`` tests it.
 
 The rules that used to live in one window and not the other:
 
@@ -30,8 +32,10 @@ from typing import Any, NamedTuple, TypeVar
 from ...core.commands import (
     ApplyMask,
     ClearInset,
+    ControlCenterSnapshot,
     EnableOverlay,
     LcdSnapshot,
+    PreviewSize,
     RecentColors,
     RememberColor,
     ResolveOverlay,
@@ -50,7 +54,7 @@ from ...core.commands import (
 from ...core.commands._base import Command
 from ...core.logs import per_frame
 from ...core.ports import CommandBus
-from ...core.results import Result
+from ...core.results import OverlayElementEntry, Result
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -58,6 +62,32 @@ frame_log = per_frame(__name__)
 R = TypeVar("R", bound=Result)
 #: One colour, as the App keeps it.
 Rgb = tuple[int, int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class SettingsView:
+    """Everything the Settings panel shows for one device, as the App holds
+    it -- every GUI draws this and nothing else."""
+    key: str
+    #: The overlay switch, and the elements on it, each with its id.
+    overlay_on: bool
+    elements: tuple[OverlayElementEntry, ...]
+    mask_visible: bool
+    #: Where the mask sits -- (0, 0), where the render draws it, when unset.
+    mask_position: tuple[int, int]
+    #: The one display source on: "background", "screencast" or "media".
+    source: str
+    #: False when no background is drawn (``background_mode == "transparent"``).
+    background_drawn: bool
+    #: The cast's region, the canvas it locks its aspect to, its border flag.
+    cast_rect: tuple[int, int, int, int] | None
+    cast_canvas: tuple[int, int] | None
+    cast_hide_border: bool
+    #: A running cast's sound choice; None when no cast runs.
+    cast_audio: bool | None
+    recent_colours: tuple[Rgb, ...]
+    #: The App's one temperature unit, "C" or "F".
+    temp_unit: str
 
 
 class Edited(NamedTuple):
@@ -82,6 +112,57 @@ class ThemeSettings:
         """Dispatch *command*; a refusal is logged by ``App.dispatch``."""
         log.debug("ThemeSettings._send: %r", command)
         return self._bus.dispatch(command)
+
+    # ── What the panel shows ───────────────────────────────────────────
+
+    @staticmethod
+    def concerns(event: object, key: str) -> bool:
+        """Whether *event* changes what *key*'s panel shows: a device's event
+        its own device, an app-wide one (the temperature unit) every panel."""
+        mine = getattr(event, "key", key) == key
+        log.debug("ThemeSettings.concerns: %s for %s -> %s", type(event).__name__, key, mine)
+        return mine
+
+    def read(self, key: str) -> SettingsView | None:
+        """Everything the panel shows for *key*, from the App -- None when the
+        App holds no state for it (not an attached LCD)."""
+        snapshot = self._send(LcdSnapshot(key=key))
+        if not snapshot.ok:
+            log.debug("ThemeSettings.read: %s -- %s", key, snapshot.message)
+            return None
+        layout = self._send(ResolveOverlay(key=key))
+        live = snapshot.screencast_region
+        view = SettingsView(
+            key=key,
+            overlay_on=layout.enabled,
+            elements=tuple(layout.elements),
+            mask_visible=snapshot.mask_visible,
+            mask_position=snapshot.mask_position or (0, 0),
+            source=snapshot.display_source,
+            background_drawn=snapshot.background_mode != "transparent",
+            cast_rect=snapshot.screencast_rect,
+            cast_canvas=snapshot.screencast_canvas,
+            cast_hide_border=snapshot.screencast_hide_border,
+            cast_audio=live[4] if live is not None else None,
+            recent_colours=self.recent_colours(key) or (),
+            temp_unit=self._send(ControlCenterSnapshot()).temp_unit,
+        )
+        log.info("ThemeSettings.read: %s overlay=%s (%d element(s)) source=%s mask=%s "
+                 "at %s cast=%s unit=%s", key, view.overlay_on, len(view.elements),
+                 view.source, view.mask_visible, view.mask_position, view.cast_rect,
+                 view.temp_unit)
+        return view
+
+    def canvas(self, key: str) -> tuple[int, int] | None:
+        """Where elements are placed -- the composed canvas the preview draws,
+        bounding X / Y; None while the App cannot size it.  Not part of
+        :meth:`read`: it changes with the device, the theme or the orientation,
+        never with an edit, and reading it on every event cost a query per
+        drag move (``test_a_gui_edit_renders_once_and_re_resolves_nothing``)."""
+        size = self._send(PreviewSize(key=key))
+        log.debug("ThemeSettings.canvas: %s -> %s", key,
+                  (size.width, size.height) if size.ok else None)
+        return (size.width, size.height) if size.ok else None
 
     # ── The overlay ────────────────────────────────────────────────────
 

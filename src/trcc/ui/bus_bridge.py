@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from collections.abc import Callable
 from functools import partial
 from typing import TypeAlias, get_args
 
-from PySide6.QtCore import QEvent, QObject, Signal, SignalInstance
+from PySide6.QtCore import QEvent, QObject, Qt, Signal, SignalInstance
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QWidget
 
@@ -163,6 +164,16 @@ class BusBridge(QObject):
         self._added: tuple[QWidget, ...] = ()
         log.info("BusBridge.__init__: wiring EventBus → Qt signals")
         self._wire()
+
+    def follow_settings(self, slot: Callable[[object], None]) -> None:
+        """*slot* hears every event that changes what a device Settings panel
+        shows -- the one list every GUI's panel follows (``ThemeSettings.read``
+        is what it reads again).  hudgui used to follow two of these and never
+        saw a cast another UI started or stopped."""
+        log.debug("BusBridge.follow_settings: %s", getattr(slot, "__qualname__", slot))
+        for signal in (self.settings_changed, self.theme_loaded, self.screencast_started,
+                       self.screencast_stopped, self.video_stopped, self.app_settings_changed):
+            signal.connect(slot, type=Qt.ConnectionType.QueuedConnection)
 
     def follow_previews(self, *previews: QWidget) -> None:
         """Take frames only while one of *previews* is on screen.

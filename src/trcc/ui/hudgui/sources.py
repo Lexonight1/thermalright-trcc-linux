@@ -39,7 +39,7 @@ from ...core.commands import (
     SetBrightness,
     SetOrientation,
 )
-from ..presentation.theme_settings import ThemeSettings
+from ..presentation.theme_settings import SettingsView, ThemeSettings
 from ..qt_words import say
 from .words import words
 
@@ -74,6 +74,11 @@ class _DeviceTab(QWidget):
         #: What a Settings control sends -- the gui's, shared by every GUI.
         self._settings = ThemeSettings(app)
         selection.changed.connect(self.show_state)
+        self._follow(bus)
+
+    def _follow(self, bus: BusBridge) -> None:
+        """Show the device again when one of its settings or its theme changes."""
+        log.debug("%s._follow: settings + theme", type(self).__name__)
         bus.settings_changed.connect(self._on_device_event,
                                      type=Qt.ConnectionType.QueuedConnection)
         bus.theme_loaded.connect(self._on_device_event,
@@ -116,7 +121,36 @@ class _DeviceTab(QWidget):
         box.blockSignals(False)
 
 
-class SourcesPanel(_DeviceTab):
+class _SettingsTab(_DeviceTab):
+    """A tab of the device Settings panel: it draws the one ``SettingsView``
+    every GUI's panel draws, and follows every event that changes it -- the
+    gui's list, not its own pick of two."""
+
+    def _follow(self, bus: BusBridge) -> None:
+        log.debug("%s._follow: the Settings panel's events", type(self).__name__)
+        bus.follow_settings(self._on_settings_event)
+
+    def _on_settings_event(self, event: object) -> None:
+        """Something the panel shows changed -- here, if it concerns this device."""
+        if ThemeSettings.concerns(event, self._selection.key):
+            log.debug("%s._on_settings_event: %s", type(self).__name__,
+                      type(event).__name__)
+            self.show_state()
+
+    def show_state(self, *_args: object) -> None:
+        """Put the App's values on the controls.  Sends nothing."""
+        key = self._selection.key
+        view = self._settings.read(key) if key else None
+        log.debug("%s.show_state: %s -> %s", type(self).__name__, key, view is not None)
+        if view is not None:
+            self._show_view(view)
+
+    def _show_view(self, view: SettingsView) -> None:
+        """The controls from *view* -- each tab its own."""
+        log.debug("%s._show_view: nothing to show", type(self).__name__)
+
+
+class SourcesPanel(_SettingsTab):
     """The four display sources, as the gui's Settings tab has them."""
 
     def __init__(self, app: CommandBus, bus: BusBridge, selection: DeviceSelection,
@@ -172,19 +206,16 @@ class SourcesPanel(_DeviceTab):
         column.addLayout(row)
         return group
 
-    def _show(self, snapshot: LcdSnapshotResult) -> None:
+    def _show_view(self, view: SettingsView) -> None:
         """The switches as the App holds them."""
-        source = snapshot.display_source
-        log.info("SourcesPanel._show: source=%s mode=%s mask=%s cast=%s", source,
-                 snapshot.background_mode, snapshot.mask_visible,
-                 snapshot.screencast_region is not None)
-        self._quiet(self.mask_switch, snapshot.mask_visible)
-        self._quiet(self.background_switch, source == "background"
-                    and snapshot.background_mode != "transparent")
-        self._quiet(self.screencast_switch, source == "screencast")
-        self._quiet(self.audio_switch, bool(snapshot.screencast_region
-                                     and snapshot.screencast_region[4]))
-        self._quiet(self.video_switch, source == "media")
+        log.info("SourcesPanel._show_view: source=%s drawn=%s mask=%s cast audio=%s",
+                 view.source, view.background_drawn, view.mask_visible, view.cast_audio)
+        self._quiet(self.mask_switch, view.mask_visible)
+        self._quiet(self.background_switch,
+                    view.source == "background" and view.background_drawn)
+        self._quiet(self.screencast_switch, view.source == "screencast")
+        self._quiet(self.audio_switch, bool(view.cast_audio))
+        self._quiet(self.video_switch, view.source == "media")
 
     # ── The switches ───────────────────────────────────────────────────
 

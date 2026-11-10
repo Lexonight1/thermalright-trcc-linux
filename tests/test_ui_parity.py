@@ -179,12 +179,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
     # Recorded 2026-08-30 as "gap: qtgui answers this its own way", from an
     # assumption. TRACED the same day, and the assumption was wrong BOTH times
     # -- qtgui does not answer these differently, it does not ask them.
-    "PreviewSize": (frozenset({"gui"}), (
-        "scoped: qtgui does not ask -- preview_panel._refresh dispatches "
-        "BuildPreview and scales the surface to a fixed _PREVIEW_MAX, never "
-        "sizing per device. The gui needs this for its device-accurate bezel "
-        "(#136); the cockpit deliberately shows one fixed size"
-    )),
     "ResolveThemeDirectories": (frozenset({"gui"}), (
         "scoped: qtgui never resolves directories -- local_theme_browser "
         "dispatches ListThemes(resolution=...), asking for THEMES, and "
