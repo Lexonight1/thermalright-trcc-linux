@@ -15,10 +15,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QShowEvent
+from PySide6.QtGui import QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -41,11 +43,38 @@ frame_log = per_frame(__name__)
 #: A card's width -- one for every card, so they line up in rows; wide enough
 #: for a CPU or GPU's full name beside its value.
 CARD_WIDTH = 370
+#: A card's height -- one for every card, about eleven lines; a card with
+#: more scrolls inside itself (his ask, 2026-11-10).
+CARD_HEIGHT = 280
 #: The gap between cards.
 SPACING = 10
 _CARD_STYLE = ("QWidget#card { background: rgba(255, 255, 255, 14); "
                "border: 1px solid rgba(255, 255, 255, 30); border-radius: 8px; }"
-               "QLabel { color: #dfe5ea; background: transparent; border: none; }")
+               "QLabel { color: #dfe5ea; background: transparent; border: none; }"
+               "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
+
+
+class _Name(QLabel):
+    """A reading's name, cut short with "..." to the room beside its value --
+    "12th Gen Intel(R) Core(TM) i9-12900K Temperature (Package id 0)" pushed
+    the value out of a card.  The whole name is on the tooltip."""
+
+    def __init__(self, name: str, explanation: str, parent: QWidget) -> None:
+        super().__init__(name, parent)
+        log.debug("_Name: %s", name)
+        self._full = name
+        self.setToolTip(f"{name}\n{explanation}" if explanation else name)
+        # Its width is what the value leaves, never the name's own.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """The room changed: the name cut to it again."""
+        super().resizeEvent(event)
+        shown = self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideRight,
+                                              self.width())
+        frame_log.debug("_Name.resizeEvent: %d wide -> %r", self.width(), shown)
+        if shown != self.text():
+            self.setText(shown)
 
 
 class SensorsView(QWidget):
@@ -92,24 +121,33 @@ class SensorsView(QWidget):
         self.note.setText("" if cards else words(self._app)("No sensors found."))
 
     def _card(self, name: str, readings: list[SensorInfo], parent: QWidget) -> QWidget:
-        """One card: its name, then a line per reading -- name, value."""
+        """One card, every card one size: its name, then a line per reading --
+        name, value -- scrolling inside the card when there are more lines
+        than it holds."""
         log.debug("SensorsView._card: %s (%d)", name, len(readings))
         card = QWidget(parent)
         card.setObjectName("card")
         card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         card.setStyleSheet(_CARD_STYLE)
-        card.setFixedWidth(CARD_WIDTH)
-        grid = QGridLayout(card)
-        grid.setContentsMargins(12, 8, 12, 10)
-        grid.setVerticalSpacing(3)
+        card.setFixedSize(CARD_WIDTH, CARD_HEIGHT)
+        column = QVBoxLayout(card)
+        column.setContentsMargins(12, 8, 12, 10)
+        column.setSpacing(4)
         title = QLabel(card)
         say_late(self._app, title, name)       # rebuilt on every refresh
         title.setStyleSheet("font-size: 12pt; font-weight: bold; color: #a9e6ff;")
-        grid.addWidget(title, 0, 0, 1, 2)
-        for line, reading in enumerate(readings, 1):
-            label = QLabel(reading.name, card)
-            label.setToolTip(reading.explanation or reading.id)
-            value = QLabel("--", card)
+        column.addWidget(title)
+        lines = QScrollArea(card)
+        lines.setWidgetResizable(True)
+        lines.setFrameShape(QScrollArea.Shape.NoFrame)
+        lines.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        body = QWidget()
+        grid = QGridLayout(body)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setVerticalSpacing(3)
+        for line, reading in enumerate(readings):
+            label = _Name(reading.name, reading.explanation, body)
+            value = QLabel("--", body)
             value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(label, line, 0)
             grid.addWidget(value, line, 1)
@@ -118,9 +156,11 @@ class SensorsView(QWidget):
             # was read under: format_sensor_value keeps a "°F" unit as °F.
             self._units[reading.id] = "°C" if reading.unit in ("°C", "°F") else reading.unit
         grid.setColumnStretch(0, 1)
-        # A card stands as tall as its row's tallest: the lines stay at the
-        # top, the room goes under them, not between them.
-        grid.setRowStretch(len(readings) + 1, 1)
+        # Fewer lines than the card holds: they stay at the top, the room goes
+        # under them, not between them.
+        grid.setRowStretch(len(readings), 1)
+        lines.setWidget(body)
+        column.addWidget(lines, stretch=1)
         return card
 
     def _on_sensors(self, event: SensorsUpdated) -> None:

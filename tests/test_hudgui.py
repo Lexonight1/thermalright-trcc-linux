@@ -741,7 +741,7 @@ def test_sensor_cards_flow_into_rows_and_never_scroll_sideways(
     horizontal scrollbar policy back to as-needed in ``FlowArea``."""
     from PySide6.QtCore import Qt
 
-    from trcc.ui.hudgui.sensors import CARD_WIDTH, SPACING
+    from trcc.ui.hudgui.sensors import CARD_HEIGHT, CARD_WIDTH, SPACING
 
     view = _sensors(window, qtbot)
     flow = view.flow
@@ -749,10 +749,37 @@ def test_sensor_cards_flow_into_rows_and_never_scroll_sideways(
     viewport = flow.viewport()
     viewport.resize(3 * CARD_WIDTH + 2 * SPACING, viewport.height())
     assert flow.columns == 3
-    cards = list(view.cards.values())
-    assert {card.width() for card in cards} == {CARD_WIDTH}
-    qtbot.waitUntil(lambda: cards[0].height() == cards[1].height() == cards[2].height()
-                    and cards[0].height() > 0, timeout=2000)
+    assert {(card.width(), card.height()) for card in view.cards.values()} == {
+        (CARD_WIDTH, CARD_HEIGHT)}
+
+
+def test_a_card_with_more_lines_than_it_holds_scrolls_inside_itself(
+        window: Any, qtbot: Any) -> None:
+    """His ask (2026-11-10): "each sensor box should have its own scroll if it
+    overflows" -- Board (25 lines) and Fans (15) on his box.  A long name is cut
+    with "..." so its value stays in the card; the whole name is the tooltip.
+    MUTATION CHECK: give ``_Name`` a Preferred horizontal policy -- the value
+    is pushed out of the card."""
+    from PySide6.QtWidgets import QLabel, QScrollArea
+
+    from trcc.core.models import SensorInfo
+    from trcc.ui.hudgui.sensors import CARD_HEIGHT, CARD_WIDTH
+
+    view = _sensors(window, qtbot)
+    long_name = "12th Gen Intel(R) Core(TM) i9-12900K Temperature (Package id 0)"
+    readings = [SensorInfo(id=f"board:t{i}", name=long_name if i == 0 else f"Temp {i}",
+                           category="temperature", unit="°C", source="hwmon")
+                for i in range(30)]
+    card = view._card("Board", readings, view.flow.body)
+    card.show()
+    lines = card.findChild(QScrollArea)
+    qtbot.waitUntil(lines.verticalScrollBar().isVisible, timeout=2000)
+    assert (card.width(), card.height()) == (CARD_WIDTH, CARD_HEIGHT)
+    name = next(label for label in card.findChildren(QLabel)
+                if label.toolTip() == long_name)
+    value = view.values["board:t0"]
+    qtbot.waitUntil(lambda: name.text().endswith("…"), timeout=2000)
+    assert value.geometry().right() <= lines.viewport().width()
 
 
 def test_every_panel_fits_the_minimum(window: Any, qtbot: Any) -> None:
