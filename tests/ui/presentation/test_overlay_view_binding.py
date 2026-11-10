@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 from trcc.core.models import OverlayElementConfig, OverlayMode
-from trcc.ui.gui.overlay_grid import OverlayGridPanel
 from trcc.ui.gui.settings_look import gui_skin
+from trcc.ui.settings_panel.overlay_grid import OverlayGridPanel
 
 
 def _cfg(text: str) -> OverlayElementConfig:
@@ -61,7 +61,7 @@ def test_a_refill_that_changes_nothing_logs_nothing(qtbot, caplog) -> None:
 
     panel = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(panel)
-    name = "trcc.ui.gui.overlay_element"
+    name = "trcc.ui.settings_panel.overlay_element"
     with caplog.at_level(logging.DEBUG, logger=name):
         panel.load_configs([_cfg("a"), _cfg("b")])
         panel.load_configs([_cfg("a"), _cfg("b")])
@@ -75,7 +75,7 @@ def test_a_refill_that_changes_nothing_logs_nothing(qtbot, caplog) -> None:
 
 def _fit(qtbot, text: str) -> tuple[float, tuple[str, ...]]:
     """The value row's point size and lines for *text*, as a tile draws it."""
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.ui.settings_panel.overlay_element import OverlayElementWidget
 
     tile = OverlayElementWidget(0, skin=gui_skin())
     qtbot.addWidget(tile)
@@ -86,7 +86,7 @@ def _fit(qtbot, text: str) -> tuple[float, tuple[str, ...]]:
 def _width(qtbot, text: str, size: float) -> int:
     from PySide6.QtGui import QFont, QFontMetrics
 
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.ui.settings_panel.overlay_element import OverlayElementWidget
 
     font = QFont(OverlayElementWidget._CARD_FONT)
     font.setPointSizeF(size)
@@ -96,7 +96,7 @@ def _width(qtbot, text: str, size: float) -> int:
 def test_a_tile_shrinks_a_long_date_onto_one_line(qtbot) -> None:
     """"2026/10/27" was cut off at both ends of the 56 px row; it shows
     whole, smaller, centered.  MUTATION CHECK: never shrink."""
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.ui.settings_panel.overlay_element import OverlayElementWidget
 
     full, row = OverlayElementWidget._CARD_FONT.pointSizeF(), OverlayElementWidget._VALUE_ROW[2]
     for date in ("2026/10/27", "27/10/2026"):
@@ -107,7 +107,7 @@ def test_a_tile_shrinks_a_long_date_onto_one_line(qtbot) -> None:
 def test_a_time_stays_on_one_line(qtbot) -> None:
     """"12:59 PM" is half a point too wide: it shrinks, it does not become
     "12:59" over "PM".  MUTATION CHECK: try two lines before shrinking."""
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.ui.settings_panel.overlay_element import OverlayElementWidget
 
     size, lines = _fit(qtbot, "12:59 PM")
     assert lines == ("12:59 PM",) and size >= OverlayElementWidget._ONE_LINE_MIN
@@ -119,7 +119,7 @@ def test_words_that_do_not_fit_take_two_lines(qtbot) -> None:
     TRCC's bundled YaHei and the full suite's state measured 10, 10 and 9.5
     (an exact 10.0 failed in the suite).  MUTATION CHECK: drop the two-line
     step -- it falls to the minimum."""
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.ui.settings_panel.overlay_element import OverlayElementWidget
 
     size, lines = _fit(qtbot, "Memory Clock")
     assert lines == ("Memory", "Clock") and size > OverlayElementWidget._MIN_POINT
@@ -134,7 +134,7 @@ def test_a_long_text_takes_two_lines_never_more(qtbot) -> None:
 
 
 def test_a_tile_keeps_a_short_value_at_full_size(qtbot) -> None:
-    from trcc.ui.gui.overlay_element import OverlayElementWidget
+    from trcc.ui.settings_panel.overlay_element import OverlayElementWidget
 
     assert _fit(qtbot, "10/27") == (OverlayElementWidget._CARD_FONT.pointSizeF(), ("10/27",))
 
@@ -143,9 +143,9 @@ def test_the_weekday_tile_speaks_the_windows_language(qtbot, monkeypatch) -> Non
     """It drew English whatever the language: the window's language now
     reaches every tile, and the weekday is the panel's, in it.  MUTATION
     CHECK: drop the grid's set_language loop."""
-    import trcc.ui.gui.overlay_element as tile_module
+    import trcc.ui.settings_panel.overlay_element as tile_module
     from trcc.core.models import OverlayElementConfig, OverlayMode
-    from trcc.ui.gui.overlay_grid import OverlayGridPanel
+    from trcc.ui.settings_panel.overlay_grid import OverlayGridPanel
 
     asked: list[Any] = []
     real = tile_module.format_metric

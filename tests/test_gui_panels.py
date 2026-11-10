@@ -845,8 +845,8 @@ def test_overlay_grid_loads_metric_from_the_app_with_its_ids(
     """
     from trcc.core.commands import AddOverlayElement, ResolveOverlay
     from trcc.core.models import OverlayMode
-    from trcc.ui.gui.overlay_grid import OverlayGridPanel
     from trcc.ui.presentation.overlay_serialization import entries_to_configs
+    from trcc.ui.settings_panel.overlay_grid import OverlayGridPanel
 
     key = "0402:3922"
     assert gui_app.dispatch(AddOverlayElement(
@@ -880,7 +880,7 @@ def test_color_change_sends_one_update_naming_the_element(
     del gui_app, qapp
     from trcc.core.commands import UpdateOverlayElement
     from trcc.core.models import OverlayElementConfig, OverlayMode
-    from trcc.ui.gui.uc_theme_setting import UCThemeSetting
+    from trcc.ui.settings_panel.uc_theme_setting import UCThemeSetting
 
     panel = UCThemeSetting(skin=gui_skin())
     captured: list[tuple[int, object]] = []
@@ -2553,7 +2553,7 @@ def test_screencast_aspect_lock_matches_the_panel(panel: tuple[int, int],
     ``width = height / ratio``.  Asserted against the panel geometry itself,
     never a table — a table is what drifted.
     """
-    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+    from trcc.ui.settings_panel.display_mode_panels import ScreenCastPanel
 
     width, height = panel
     ratio = height / width
@@ -2581,7 +2581,7 @@ def test_screencast_plus_button_keeps_the_region_on_aspect(
     Drives the button's own handler rather than setting text, because that is
     the path a click takes and it is where the emitted params come from.
     """
-    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+    from trcc.ui.settings_panel.display_mode_panels import ScreenCastPanel
 
     width, height = panel
     emitted: list[tuple[int, int, int, int]] = []
@@ -2609,7 +2609,7 @@ def test_screencast_does_not_lock_before_a_device_is_known(qtbot) -> None:
     ``lock_region_to_panel``'s (``None`` = nobody has told us yet), shared
     with qtgui; this panel used to keep its own ratio method for it.
     """
-    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+    from trcc.ui.settings_panel.display_mode_panels import ScreenCastPanel
 
     scp = ScreenCastPanel(skin=gui_skin())
     qtbot.addWidget(scp)
@@ -2626,7 +2626,7 @@ def test_screencast_does_not_lock_before_a_device_is_known(qtbot) -> None:
 def test_screencast_region_is_sent_when_finished_not_per_keystroke(qtbot) -> None:
     """Typing "320" is not three regions; Enter or focus leaving sends one,
     and a focus change with nothing edited sends none."""
-    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+    from trcc.ui.settings_panel.display_mode_panels import ScreenCastPanel
 
     emitted: list[tuple[int, int, int, int]] = []
     scp = ScreenCastPanel(skin=gui_skin())
@@ -2644,7 +2644,7 @@ def test_screencast_region_is_sent_when_finished_not_per_keystroke(qtbot) -> Non
 
 
 def test_showing_a_region_is_not_an_edit(qtbot) -> None:
-    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+    from trcc.ui.settings_panel.display_mode_panels import ScreenCastPanel
 
     emitted: list[tuple[int, ...]] = []
     scp = ScreenCastPanel(skin=gui_skin())
@@ -2659,7 +2659,7 @@ def test_showing_a_region_is_not_an_edit(qtbot) -> None:
 
 def test_the_border_button_toggles_hide_and_showing_it_sends_nothing(qtbot) -> None:
     """The C#'s myYcbk starts True (hidden); a click flips it."""
-    from trcc.ui.gui.display_mode_panels import ScreenCastPanel
+    from trcc.ui.settings_panel.display_mode_panels import ScreenCastPanel
 
     toggled: list[bool] = []
     scp = ScreenCastPanel(skin=gui_skin())
@@ -4627,8 +4627,8 @@ def test_a_grid_cell_shows_a_board_sensor_by_its_id(qtbot) -> None:
     names its group the way the picker does -- (0, 0) would otherwise show as
     the CPU, the C#'s main count 0."""
     from trcc.core.models import OverlayElementConfig, OverlayMode
-    from trcc.ui.gui.overlay_grid import OverlayGridPanel
     from trcc.ui.presentation.sensor_display import source_label
+    from trcc.ui.settings_panel.overlay_grid import OverlayGridPanel
 
     grid = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(grid)
@@ -4647,7 +4647,7 @@ def test_a_refilled_grid_shows_each_cells_own_reading(qtbot) -> None:
     """A delete shifts every later cell down one; each must show its NEW
     occupant's value, not the one it showed before (#301)."""
     from trcc.core.models import OverlayElementConfig, OverlayMode
-    from trcc.ui.gui.overlay_grid import OverlayGridPanel
+    from trcc.ui.settings_panel.overlay_grid import OverlayGridPanel
 
     grid = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(grid)

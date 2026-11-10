@@ -258,7 +258,7 @@ class _RealGridHandler:
 
     def __init__(self, app: App, root: Path) -> None:
         from trcc.ui.gui.lcd_handler import LCDHandler
-        from trcc.ui.gui.uc_theme_setting import UCThemeSetting
+        from trcc.ui.settings_panel.uc_theme_setting import UCThemeSetting
 
         self.panel = UCThemeSetting(skin=gui_skin())
         self.handler = LCDHandler(
@@ -270,7 +270,7 @@ class _RealGridHandler:
         self.panel.delegate.connect(self._forward)
 
     def _forward(self, cmd: int, info: Any, data: Any) -> None:
-        from trcc.ui.gui.uc_theme_setting import UCThemeSetting
+        from trcc.ui.settings_panel.uc_theme_setting import UCThemeSetting
         if cmd == UCThemeSetting.CMD_OVERLAY_CHANGED:
             self.handler.on_overlay_edit(info)
 

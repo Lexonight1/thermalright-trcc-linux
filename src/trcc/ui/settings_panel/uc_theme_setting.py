@@ -38,7 +38,7 @@ from ...core.logs import per_frame
 from ...core.models import OverlayElementConfig, OverlayMode
 from ..presentation.overlay_serialization import config_fields, entries_to_configs
 from ..presentation.theme_settings import SettingsView
-from .base import BasePanel
+from ..qt_panel import BasePanel
 from .color_and_add_panels import AddElementPanel, ColorPickerPanel
 from .display_mode_panels import (
     DataTablePanel,

@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 from functools import cache
 
+from ..settings_panel.settings_skin import SettingsSkin
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Styles
-from .settings_skin import SettingsSkin
 
 log = logging.getLogger(__name__)
 

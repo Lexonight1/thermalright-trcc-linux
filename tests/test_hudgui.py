@@ -233,38 +233,40 @@ def test_the_snapshot_says_which_background_file_the_user_chose(window: Any) -> 
 
 def test_the_settings_switches_change_the_app_and_show_what_it_holds(
         window: Any, qtbot: Any) -> None:
-    """Each switch is a Command; each shows the App's state afterwards."""
+    """The gui's Settings panel in hudgui's skin: each switch is a Command,
+    each shows the App's state afterwards."""
     from trcc.core.commands import LcdSnapshot
 
-    snap = lambda: window._app.dispatch(LcdSnapshot(key=_KEY))  # noqa: E731
-    page = _tab(window, qtbot, "Settings").sources
-    assert page.mask_switch.isChecked() == snap().mask_visible
-    page.mask_switch.click()
-    assert snap().mask_visible is page.mask_switch.isChecked() is False
-    page.background_switch.click()                      # off
-    assert (snap().background_mode, page.background_switch.isChecked()) == (
-        "transparent", False)
-    page.background_switch.click()                      # on again
-    assert (snap().background_mode, page.background_switch.isChecked()) == ("theme", True)
+    def snap() -> Any:
+        return window._app.dispatch(LcdSnapshot(key=_KEY))
+    panel = _tab(window, qtbot, "Settings").panel
+    mask = panel.mask_panel.toggle_btn
+    assert mask.isChecked() == snap().mask_visible
+    mask.click()
+    qtbot.waitUntil(lambda: snap().mask_visible is mask.isChecked() is False, timeout=2000)
+    background = panel.background_panel.toggle_btn
+    background.click()                                  # off
+    qtbot.waitUntil(lambda: snap().background_mode == "transparent", timeout=2000)
+    background.click()                                  # on again
+    qtbot.waitUntil(lambda: snap().background_mode == "theme", timeout=2000)
 
 
 def test_the_settings_switches_follow_a_cast_another_ui_starts(
         window: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """hudgui followed two events and never saw a cast start or stop
-    elsewhere; it now follows the Settings panel's list, the gui's
-    (``BusBridge.follow_settings``).  MUTATION CHECK (measured 2026-11-10):
-    give ``_SettingsTab._follow`` back the old pair (``settings_changed`` +
-    ``theme_loaded``) -- the switch never turns on."""
+    """The Settings tab follows the Settings panel's events (``follow_settings``)
+    -- a cast started or stopped in another UI shows.  MUTATION CHECK
+    (measured 2026-11-10 on the old tab): follow only ``settings_changed`` +
+    ``theme_loaded`` -- the switch never turns on."""
     from tests.conftest import FakeMic
     from trcc.core.commands import StartScreencast, StopScreencast
 
     monkeypatch.setattr(window._app, "audio", FakeMic())
-    page = _tab(window, qtbot, "Settings").sources
-    assert not page.screencast_switch.isChecked()
+    cast = _tab(window, qtbot, "Settings").panel.screencast_panel.toggle_btn
+    assert not cast.isChecked()
     assert window._app.dispatch(StartScreencast(key=_KEY, x=0, y=0, w=200, h=100)).ok
-    qtbot.waitUntil(page.screencast_switch.isChecked, timeout=2000)
+    qtbot.waitUntil(cast.isChecked, timeout=2000)
     assert window._app.dispatch(StopScreencast(key=_KEY)).ok
-    qtbot.waitUntil(lambda: not page.screencast_switch.isChecked(), timeout=2000)
+    qtbot.waitUntil(lambda: not cast.isChecked(), timeout=2000)
 
 
 def test_brightness_and_rotation_sit_under_the_preview(window: Any, qtbot: Any) -> None:
@@ -304,46 +306,41 @@ def _layout(window: Any) -> list[tuple[str, str, int, int]]:
             for e in window._app.dispatch(ResolveOverlay(key=_KEY)).elements]
 
 
-def _add(editor: Any, label: str) -> None:
+def _add(panel: Any, name: str) -> None:
+    """Add a *name* element the way a user does: an empty cell, then its button."""
     from PySide6.QtWidgets import QPushButton
 
-    next(b for b in editor.findChildren(QPushButton) if b.text() == label).click()
+    panel.overlay_grid.add_requested.emit()
+    button = next(b for b in panel.add_panel.findChildren(QPushButton) if b.text() == name)
+    button.click()
 
 
-def test_the_overlay_editor_adds_edits_and_deletes_through_the_app(
+def test_the_settings_panel_adds_edits_and_deletes_through_the_app(
         window: Any, qtbot: Any) -> None:
-    """Add selects the new element; an edit sends ONE field; the list and form
-    are the App's layout afterwards.  MUTATION CHECK: send ``x`` from
-    ``_on_text`` and the text never changes."""
-    editor = _tab(window, qtbot, "Settings").overlay
-    _add(editor, "Text")
-    assert _layout(window) == [("text", "Text", 20, 20)] and editor._picked_id()
-    editor.text_box.setText("Hello HUD")
-    editor.text_box.editingFinished.emit()
-    editor.x_box.setValue(120)
-    editor.x_box.editingFinished.emit()
-    assert _layout(window) == [("text", "Hello HUD", 120, 20)]
-    _add(editor, "Metric")
-    editor.metric_box.setCurrentIndex(editor.metric_box.findData("cpu:temp"))
-    editor.metric_box.activated.emit(editor.metric_box.currentIndex())
-    _add(editor, "Date")
-    assert [e[:2] for e in _layout(window)] == [("text", "Hello HUD"),
-                                               ("metric", "cpu:temp"), ("clock", "date")]
-    editor.list.setCurrentRow(0)
-    editor.delete.click()
-    assert [e[0] for e in _layout(window)] == ["metric", "clock"]
-    assert [editor.list.item(i).text() for i in range(editor.list.count())] == [
-        "Metric: cpu:temp", "Clock: Date"]
+    """The shared panel, bound by ``SettingsBinding``: an add, an edit of ONE
+    field, a delete -- each a Command; the App's layout afterwards."""
+    panel = _tab(window, qtbot, "Settings").panel
+    _add(panel, "Custom Text")
+    qtbot.waitUntil(lambda: [e[0] for e in _layout(window)] == ["text"], timeout=2000)
+    panel.data_table.text_input.setText("Hello HUD")
+    panel.data_table.text_input.editingFinished.emit()
+    panel.color_panel.x_spin.setValue(120)
+    qtbot.waitUntil(lambda: _layout(window)[0][1:3] == ("Hello HUD", 120), timeout=2000)
+    _add(panel, "Date")
+    qtbot.waitUntil(lambda: [e[0] for e in _layout(window)] == ["text", "clock"], timeout=2000)
+    panel.overlay_grid.delete_element(0)
+    qtbot.waitUntil(lambda: [e[0] for e in _layout(window)] == ["clock"], timeout=2000)
 
 
 def test_the_overlay_switch_is_the_apps(window: Any, qtbot: Any) -> None:
     from trcc.core.commands import ResolveOverlay
 
-    editor = _tab(window, qtbot, "Settings").overlay
+    switch = _tab(window, qtbot, "Settings").panel.overlay_grid._toggle_btn
     assert window._app.dispatch(ResolveOverlay(key=_KEY)).enabled is True
-    editor.on_switch.click()
-    assert window._app.dispatch(ResolveOverlay(key=_KEY)).enabled is False
-    assert editor.on_switch.isChecked() is False
+    switch.click()
+    qtbot.waitUntil(lambda: window._app.dispatch(ResolveOverlay(key=_KEY)).enabled is False,
+                    timeout=2000)
+    assert switch.isChecked() is False
 
 
 # ── Moving an element by hand on the preview (S3) ────────────────────────
@@ -373,43 +370,45 @@ def test_the_preview_reports_a_press_in_panel_pixels(window: Any, qtbot: Any) ->
 
 def test_dragging_on_the_preview_moves_the_element_and_keeps_it_on(
         window: Any, qtbot: Any) -> None:
-    """The gui's way: it moves as far as the pointer, never off the panel;
-    the form shows where it ended.  MUTATION CHECK: send the pointer's own
-    position from ``drag_to`` instead of the element's moved one."""
-    page = _tab(window, qtbot, "Settings")
-    editor = page.overlay
-    _add(editor, "Text")                                   # at (20, 20), selected
+    """The gui's way, through the shared binding: it moves as far as the
+    pointer, never off the canvas.  MUTATION CHECK: send the pointer's own
+    position from ``SettingsBinding.drag_to``."""
+    panel = _tab(window, qtbot, "Settings").panel
+    _add(panel, "Custom Text")                             # selected
+    qtbot.waitUntil(lambda: bool(_layout(window)), timeout=2000)
+    _type, _what, x0, y0 = _layout(window)[0]
     preview = window.panel("Devices").panel.preview
     preview.pressed.emit(30, 30)
     preview.dragged.emit(80, 60)                           # +50, +30
-    assert _layout(window) == [("text", "Text", 70, 50)]
-    preview.dragged.emit(2000, 2000)                       # far off the panel
+    qtbot.waitUntil(lambda: _layout(window)[0][2:] == (x0 + 50, y0 + 30), timeout=2000)
+    preview.dragged.emit(5000, 5000)                       # far off the panel
     preview.released.emit()
     _type, _what, x, y = _layout(window)[0]
-    assert (x, y) == (editor.x_box.maximum(), editor.y_box.maximum())
-    assert (editor.x_box.value(), editor.y_box.value()) == (x, y)
+    assert (x, y) == (panel.color_panel.x_spin.maximum(), panel.color_panel.y_spin.maximum())
 
 
 def test_a_press_with_nothing_selected_picks_the_nearest(window: Any, qtbot: Any) -> None:
-    editor = _tab(window, qtbot, "Settings").overlay
-    _add(editor, "Text")
-    _add(editor, "Time")
-    editor.x_box.setValue(250)
-    editor.x_box.editingFinished.emit()                    # Time at (250, 20)
-    editor.list.clearSelection()
-    editor.list.setCurrentRow(-1)
-    window.panel("Devices").panel.preview.pressed.emit(240, 25)
-    assert editor.list.currentItem().text() == "Clock: Time"
+    panel = _tab(window, qtbot, "Settings").panel
+    _add(panel, "Custom Text")
+    _add(panel, "Time")
+    qtbot.waitUntil(lambda: len(_layout(window)) == 2, timeout=2000)
+    panel.color_panel.x_spin.setValue(250)                 # Time to (250, y)
+    grid = panel.overlay_grid
+    grid._model.clear_selection()
+    window.panel("Devices").panel.preview.pressed.emit(245, grid.get_all_configs()[1].y)
+    assert grid.get_selected_index() == 1
 
 
 def test_a_drag_outside_the_settings_tab_moves_nothing(window: Any, qtbot: Any) -> None:
-    editor = _tab(window, qtbot, "Settings").overlay
-    _add(editor, "Text")
+    panel = _tab(window, qtbot, "Settings").panel
+    _add(panel, "Custom Text")
+    qtbot.waitUntil(lambda: bool(_layout(window)), timeout=2000)
+    before = _layout(window)
     devices = window.panel("Devices")
     devices.panel.tabs.tabs["Local Theme"].click()
     devices.panel.preview.pressed.emit(20, 20)
     devices.panel.preview.dragged.emit(120, 120)
-    assert _layout(window) == [("text", "Text", 20, 20)]
+    assert _layout(window) == before
 
 
 def _cross(grid: Any, name: str) -> Any:
@@ -728,10 +727,9 @@ def test_every_word_hudgui_says_is_in_every_language() -> None:
     is a key of the shared table -- so no language shows it in English."""
     from trcc.core.i18n import TRANSLATIONS
     from trcc.ui.hudgui.chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, MENU
-    from trcc.ui.hudgui.overlay import ADDS
 
     english = TRANSLATIONS["en"]
-    words = {*MENU, *DEVICE_TABS, DEVICE_SETTINGS_TAB, *(a[0] for a in ADDS)}
+    words = {*MENU, *DEVICE_TABS, DEVICE_SETTINGS_TAB}
     assert words <= english.keys()
 
 

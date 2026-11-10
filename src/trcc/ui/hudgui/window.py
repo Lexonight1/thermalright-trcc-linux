@@ -65,10 +65,11 @@ frame_log = per_frame(__name__)
 #: The glass under a dropped-down panel.
 GLASS = Path(__file__).parent / "assets" / "glass.png"
 #: The least room any panel is given -- the device panel's own minimum
-#: (menu, preview and its tabs; measured 1166 x 578 on 2026-11-05), so no
-#: panel is ever squeezed, nor laid out tiny while hidden (the tiles were:
-#: one to a row).  ``test_every_panel_fits_the_minimum`` keeps it true.
-PANEL_MIN = QSize(1170, 580)
+#: (menu, preview and its tabs, and the shared Settings panel at its full
+#: 732 x 661 -- measured 1434 x 705 on 2026-11-10; it was 1166 x 578 with
+#: hudgui's own smaller editor), so no panel is ever squeezed, nor laid out
+#: tiny while hidden.  ``test_every_panel_fits_the_minimum`` keeps it true.
+PANEL_MIN = QSize(1440, 710)
 #: A dropped-down panel: the minimum and the frame around it.
 DROP_HEIGHT = PANEL_MIN.height() + INSET.top() + INSET.bottom()
 #: The narrowest the window drops down -- wider than a small screen, rather

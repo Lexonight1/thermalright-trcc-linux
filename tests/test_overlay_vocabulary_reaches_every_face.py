@@ -140,7 +140,7 @@ def test_the_gui_carries_the_whole_vocabulary_through_config_fields() -> None:
     from trcc.core.models import OverlayElementConfig, OverlayMode
     from trcc.ui.presentation.overlay_serialization import config_fields
 
-    source = (_UI_ROOT / "gui" / "uc_theme_setting.py").read_text()
+    source = (_UI_ROOT / "settings_panel" / "uc_theme_setting.py").read_text()
     sent_through = {
         node.args[0].id
         for node in ast.walk(ast.parse(source))

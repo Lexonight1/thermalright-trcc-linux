@@ -371,8 +371,9 @@ def test_every_tooltip_the_gui_sets_is_a_word_of_the_table() -> None:
 
     english = TRANSLATIONS["en"]
     found: dict[str, str] = {}
-    gui = Path(__file__).resolve().parents[1] / "src" / "trcc" / "ui" / "gui"
-    for source in sorted(gui.glob("*.py")):
+    ui = Path(__file__).resolve().parents[1] / "src" / "trcc" / "ui"
+    # The gui's own files and the Settings panel every GUI shares.
+    for source in sorted([*(ui / "gui").glob("*.py"), *(ui / "settings_panel").glob("*.py")]):
         for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
             texts: list[ast.expr] = []
             if isinstance(node, ast.Call):

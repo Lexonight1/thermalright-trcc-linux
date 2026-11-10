@@ -83,7 +83,7 @@ def test_a_malformed_stored_row_falls_back_to_silver(tmp_path: Path,
 def test_an_edit_is_reported_once_when_the_user_moves_on(qtbot) -> None:
     from PySide6.QtCore import QPoint, Qt
 
-    from trcc.ui.gui.color_and_add_panels import ColorPickerPanel
+    from trcc.ui.settings_panel.color_and_add_panels import ColorPickerPanel
 
     panel = ColorPickerPanel(skin=gui_skin())
     qtbot.addWidget(panel)
@@ -98,7 +98,7 @@ def test_an_edit_is_reported_once_when_the_user_moves_on(qtbot) -> None:
 
 
 def test_a_swatch_is_not_an_edit(qtbot) -> None:
-    from trcc.ui.gui.color_and_add_panels import ColorPickerPanel
+    from trcc.ui.settings_panel.color_and_add_panels import ColorPickerPanel
 
     panel = ColorPickerPanel(skin=gui_skin())
     qtbot.addWidget(panel)
@@ -155,7 +155,7 @@ def test_moving_to_another_element_asks_the_app_to_remember(qtbot) -> None:
     from PySide6.QtCore import QPoint, Qt
 
     from trcc.core.models import OverlayElementConfig
-    from trcc.ui.gui.uc_theme_setting import UCThemeSetting
+    from trcc.ui.settings_panel.uc_theme_setting import UCThemeSetting
 
     setting = UCThemeSetting(skin=gui_skin())
     qtbot.addWidget(setting)

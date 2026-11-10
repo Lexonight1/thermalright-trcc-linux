@@ -10,12 +10,12 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import QPoint, Qt
 
-from trcc.ui.gui.color_and_add_panels import (
+from trcc.ui.gui.settings_look import gui_skin
+from trcc.ui.settings_panel.color_and_add_panels import (
     ColorPickerPanel,
     color_square_rgb,
     hue_strip_rgb,
 )
-from trcc.ui.gui.settings_look import gui_skin
 
 # UCColorB: 158 px wide, an 8 px thumb -> 150 px of travel, 25 per segment.
 W, THUMB = 158, 8

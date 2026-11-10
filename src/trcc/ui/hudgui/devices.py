@@ -34,14 +34,18 @@ from ...core.events import DeviceConnected, DeviceDisconnected
 from ...core.logs import per_frame
 from ..presentation.device_choice import DeviceChoice
 from ..presentation.device_symbols import device_symbols
+from ..presentation.theme_settings import ThemeSettings
 from ..qt_assets import Assets
 from ..qt_preview import FRAME_EDGE, PreviewSurface
+from ..settings_panel.binding import SettingsBinding, SettingsSteps
+from ..settings_panel.uc_theme_setting import UCThemeSetting
 from .chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, TabBar
-from .overlay import OverlayEditor
-from .sources import DeviceControls, SourcesPanel
+from .settings_look import hud_skin
+from .sources import DeviceControls
 from .themes import CloudBackgrounds, CloudMasks, LocalThemes
 
 if TYPE_CHECKING:
+    from ...core.events import SensorsUpdated
     from ...core.ports import CommandBus
     from ..bus_bridge import BusBridge
     from ..device_selection import DeviceSelection
@@ -191,10 +195,10 @@ class DevicePanel(QWidget):
         log.info("DevicePanel._on_tab: %s", name)
         self.area.setCurrentWidget(self.pages[name])
 
-    def _editor(self) -> OverlayEditor | None:
-        """The overlay editor, while the Settings tab is the one shown."""
+    def _editor(self) -> SettingsBinding | None:
+        """The Settings panel's binding, while the Settings tab is the one shown."""
         page = self.pages[DEVICE_SETTINGS_TAB]
-        found = (page.overlay if isinstance(page, SettingsPage)
+        found = (page.binding if isinstance(page, SettingsPage)
                  and self.tabs.current == DEVICE_SETTINGS_TAB else None)
         log.debug("DevicePanel._editor: %s", found is not None)
         return found
@@ -273,25 +277,52 @@ class DevicesView(QWidget):
 
 
 class SettingsPage(QScrollArea):
-    """The Settings tab, as the gui's: the overlay editor, then the four
-    display sources -- one column, scrolled."""
+    """The Settings tab: the gui's Settings panel -- its layout, its behaviour --
+    in hudgui's look (``settings_look.hud_skin``), bound to the App by the
+    shared ``SettingsBinding``.  One panel for every GUI; only the skin is
+    hudgui's own (his rule, 2026-11-10)."""
 
     def __init__(self, app: CommandBus, bus: BusBridge, selection: DeviceSelection,
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        log.info("SettingsPage: overlay + sources")
-        self.setWidgetResizable(True)
+        log.info("SettingsPage: the shared Settings panel, hud skin")
+        self._selection = selection
+        self.setWidgetResizable(False)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget "
                            "{ background: transparent; }")
-        body = QWidget()
-        column = QVBoxLayout(body)
-        column.setContentsMargins(0, 0, 8, 0)
-        column.setSpacing(16)
-        self.overlay = OverlayEditor(app, bus, selection, body)
-        self.sources = SourcesPanel(app, bus, selection, body)
-        column.addWidget(self.overlay)
-        column.addWidget(self.sources)
-        column.addStretch(1)
-        self.setWidget(body)
+        self.panel = UCThemeSetting(skin=hud_skin())
+        self.binding = SettingsBinding(self.panel, app, self._device_key,
+                                       SettingsSteps(self, app))
+        self.setWidget(self.panel)
+        # Never scrolled: the panel is drawn at its own size, the gui's.
+        self.setMinimumSize(self.panel.size())
+        bus.follow_settings(self._on_settings_event)
+        bus.sensors_updated.connect(self._on_sensors, type=Qt.ConnectionType.QueuedConnection)
+        for signal in (bus.theme_loaded, bus.orientation_changed):
+            signal.connect(self.binding.size_to_canvas, type=Qt.ConnectionType.QueuedConnection)
+        selection.changed.connect(self._on_device)
+        self._on_device()
+
+    def _device_key(self) -> str:
+        """The device this panel edits -- the window's selection."""
+        log.debug("SettingsPage._device_key: %s", self._selection.key)
+        return self._selection.key
+
+    def _on_device(self, *_key: object) -> None:
+        """Another device picked: its canvas, then its settings."""
+        log.info("SettingsPage._on_device: %s", self._selection.key)
+        self.binding.size_to_canvas()
+        self.binding.refresh()
+
+    def _on_settings_event(self, event: object) -> None:
+        """Something the panel shows changed -- here, if it is this device's."""
+        if ThemeSettings.concerns(event, self._selection.key):
+            log.debug("SettingsPage._on_settings_event: %s", type(event).__name__)
+            self.binding.refresh()
+
+    def _on_sensors(self, event: SensorsUpdated) -> None:
+        """A sensor tick: the element tiles' live values, while on screen."""
+        if self.isVisible():
+            frame_log.debug("SettingsPage._on_sensors: %d", len(event.readings))
+            self.panel.update_metrics(event.readings, event.temp_unit)

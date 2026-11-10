@@ -81,13 +81,14 @@ from ..presentation.device_choice import DeviceChoice
 from ..presentation.theme_settings import ElementDrag, ThemeSettings, nudge
 from ..qt_tray import TrayController
 from ..qt_words import retranslate, say_tip
+from ..settings_panel.display_mode_panels import InsetDialog
+from ..settings_panel.uc_theme_setting import UCThemeSetting
 from ..ui_state import UiStateStore
 from ..viewfinder import ViewfinderFleet, open_picker, store_picked_region
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
 from .base_handler import BaseHandler
 from .constants import Colors, Layout, Sizes, Styles
-from .display_mode_panels import InsetDialog
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
 from .module_page import ModulePage
@@ -105,7 +106,6 @@ from .uc_system_info import UCSystemInfo
 from .uc_thanks import UCThanks
 from .uc_theme_local import UCThemeLocal
 from .uc_theme_mask import UCThemeMask
-from .uc_theme_setting import UCThemeSetting
 from .uc_theme_web import UCThemeWeb
 from .uc_video_cut import UCVideoCut
 

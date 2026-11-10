@@ -1,8 +1,8 @@
 """The X / Y inputs follow the canvas, not a fixed 480."""
 from __future__ import annotations
 
-from trcc.ui.gui.color_and_add_panels import ColorPickerPanel
 from trcc.ui.gui.settings_look import gui_skin
+from trcc.ui.settings_panel.color_and_add_panels import ColorPickerPanel
 
 
 def test_position_range_follows_canvas(qtbot):

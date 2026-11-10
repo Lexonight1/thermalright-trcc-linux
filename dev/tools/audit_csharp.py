@@ -89,7 +89,7 @@ _PANEL_MAP: dict[str, str | None] = {
     "FormSystemInfo": "src/trcc/ui/gui/uc_system_info.py",
     "FormStart": "src/trcc/ui/gui/splash.py",
     "Form1": "src/trcc/ui/gui/trcc_app.py",
-    "DCUserControl.UCThemeSetting": "src/trcc/ui/gui/uc_theme_setting.py",
+    "DCUserControl.UCThemeSetting": "src/trcc/ui/settings_panel/uc_theme_setting.py",
     "DCUserControl.UCShortcut": None,        # the icon element (mode 5)
     "KVMALED6.FormKVMALED6": "src/trcc/ui/gui/uc_led_control.py",  # via KVMALEDC6 -> PA120
     "CZTV.FormCZTV": "src/trcc/ui/gui/lcd_handler.py",
