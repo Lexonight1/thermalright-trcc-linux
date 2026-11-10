@@ -10,6 +10,7 @@ import logging
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
+    QFontComboBox,
     QFrame,
     QLineEdit,
     QPushButton,
@@ -249,13 +250,17 @@ class ColorPickerPanel(QFrame):
         self.y_spin.valueChanged.connect(self._on_position_changed)
 
         # Font picker button (name only)
-        self.font_btn = QPushButton(self)
-        self.font_btn.setGeometry(*COLOR_FONT_BTN)
-        self.font_btn.setStyleSheet(self._skin.font_button)
-        self.font_btn.setText(THEME_FONT)
-        self.font_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        say_tip(self.font_btn, "Choose font")
-        self.font_btn.clicked.connect(self._pick_font)
+        # The font: a select, right where its name shows -- a click opens a
+        # scrollable list of the installed families, no dialog (his ask,
+        # 2026-11-10).  Size and bold stay as they are.
+        self.font_select = QFontComboBox(self)
+        self.font_select.setGeometry(*COLOR_FONT_BTN)
+        self.font_select.setStyleSheet(self._skin.font_select)
+        self.font_select.setMaxVisibleItems(15)
+        self.font_select.setCurrentFont(QFont(THEME_FONT))
+        self.font_select.setCursor(Qt.CursorShape.PointingHandCursor)
+        say_tip(self.font_select, "Choose font")
+        self.font_select.currentFontChanged.connect(self._on_font_picked)
         self._current_font_name = THEME_FONT
         self._current_font_size = 36
         self._current_font_style = 0  # 0=Regular, 1=Bold
@@ -451,37 +456,14 @@ class ColorPickerPanel(QFrame):
         self.x_spin.blockSignals(False)
         self.y_spin.blockSignals(False)
 
-    def _pick_font(self):
-        """Open font dialog (matches Windows FontDialog in UCXiTongXianShiColor)."""
-        log.info("ColorPickerPanel._pick_font: opening QFontDialog")
-        from PySide6.QtWidgets import QDialog, QFontDialog
-        current = QFont(self._current_font_name, self._current_font_size)
-        # An instance and exec(), never the static QFontDialog.getFont: that
-        # one holds the GIL for as long as the dialog is open (measured, 2
-        # ticks of a background thread in 1.6 s; every other static dialog we
-        # use runs ~150).  It froze the event-stream reader, the App evicted
-        # the stalled window, and its preview stopped for good (#301).
-        dialog = QFontDialog(current, self)
-        dialog.setWindowTitle("Pick Font")
-        ok = dialog.exec() == QDialog.DialogCode.Accepted
-        font = dialog.selectedFont()
-        if ok:
-            self._current_font_name = font.family()
-            self._current_font_size = font.pointSize()
-            # C# Font.Style: 0=Regular, 1=Bold, 2=Italic, 3=BoldItalic
-            self._current_font_style = 1 if font.bold() else 0
-            log.info(
-                "ColorPickerPanel._pick_font: picked %s size=%d bold=%s",
-                font.family(), font.pointSize(), font.bold(),
-            )
-            self.font_btn.setText(font.family())
-            self.font_size_spin.blockSignals(True)
-            self.font_size_spin.setValue(font.pointSize())
-            self.font_size_spin.blockSignals(False)
-            self.font_changed.emit(font.family(), font.pointSize(),
-                                   self._current_font_style)
-        else:
-            log.info("ColorPickerPanel._pick_font: dialog cancelled")
+    def _on_font_picked(self, font: QFont) -> None:
+        """A family picked from the select: the element's font, its size and
+        style kept."""
+        log.info("ColorPickerPanel._on_font_picked: %r -> %r",
+                 self._current_font_name, font.family())
+        self._current_font_name = font.family()
+        self.font_changed.emit(self._current_font_name, self._current_font_size,
+                               self._current_font_style)
 
     def _on_font_size_changed(self, size: int):
         """Handle font size spinbox change independently."""
@@ -499,7 +481,9 @@ class ColorPickerPanel(QFrame):
         self._current_font_name = font_name
         self._current_font_size = font_size
         self._current_font_style = font_style
-        self.font_btn.setText(font_name)
+        self.font_select.blockSignals(True)
+        self.font_select.setCurrentFont(QFont(font_name))
+        self.font_select.blockSignals(False)
         self.font_size_spin.blockSignals(True)
         self.font_size_spin.setValue(font_size)
         self.font_size_spin.blockSignals(False)

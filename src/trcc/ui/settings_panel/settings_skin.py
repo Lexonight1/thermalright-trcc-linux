@@ -74,7 +74,7 @@ class SettingsSkin:
     icon_button_hover: str
     add_button: str
     action_text_button: str     # an action with no icon (the Background's Box)
-    font_button: str
+    font_select: str            # the font family select and its list
     #: A colour swatch, ``{r}`` ``{g}`` ``{b}`` filled in.
     swatch: str
     entry: str                  # a mask / cast coordinate box

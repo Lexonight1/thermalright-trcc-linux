@@ -960,3 +960,29 @@ def test_the_settings_panel_says_its_own_words_in_the_apps_language(
     said = {label.text() for label, _key in panel._labels}
     assert tr("Coordinate", "de") in said
     assert panel.video_panel._title_lbl.text() == tr("Media Player", "de")
+
+
+def test_the_font_is_a_select_in_the_panel_not_a_dialog(window: Any, qtbot: Any) -> None:
+    """His ask (2026-11-10): the font name IS the control -- a click opens a
+    scrollable list, no window.  Picking a family edits the selected
+    element's font through the App, its size kept.  MUTATION CHECK: drop the
+    ``currentFontChanged`` connection in ``ColorPickerPanel``."""
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QFontComboBox
+
+    from trcc.core.commands import ResolveOverlay
+
+    panel = _tab(window, qtbot, "Settings").panel
+    select = panel.color_panel.font_select
+    assert isinstance(select, QFontComboBox) and select.count() > 1
+    _add(panel, "Custom Text")
+    qtbot.waitUntil(lambda: bool(_layout(window)), timeout=2000)
+    size = window._app.dispatch(ResolveOverlay(key=_KEY)).elements[0].size
+    family = next(select.itemText(i) for i in range(select.count())
+                  if select.itemText(i) != select.currentFont().family())
+    select.setCurrentFont(QFont(family))
+
+    def element() -> Any:
+        return window._app.dispatch(ResolveOverlay(key=_KEY)).elements[0]
+    qtbot.waitUntil(lambda: element().font == family, timeout=2000)
+    assert element().size == size

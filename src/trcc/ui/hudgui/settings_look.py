@@ -98,8 +98,11 @@ def hud_skin() -> SettingsSkin:
                             f"border: 1px solid {ACCENT}; border-radius: 5px; }}"
                             f"QPushButton:hover {{ background-color: {GLASS}; }}"
                             f"QPushButton:disabled {{ color: gray; border-color: gray; }}"),
-        font_button=(f"QPushButton {{ background-color: transparent; border: none; "
-                     f"color: {TEXT}; font-size: 10px; text-align: left; padding-left: 27px; }}"),
+        font_select=(f"QFontComboBox {{ background-color: transparent; border: none; "
+                     f"color: {TEXT}; font-size: 10px; padding-left: 27px; }}"
+                     "QFontComboBox::drop-down { border: none; width: 14px; }"
+                     f"QFontComboBox QAbstractItemView {{ background-color: #10202b; "
+                     f"color: {TEXT}; selection-background-color: rgba(127, 212, 255, 70); }}"),
         swatch=("QPushButton {{ background-color: rgb({r},{g},{b}); border: none; "
                 "border-radius: 2px; }}"
                 f"QPushButton:hover {{{{ border: 1px solid {ACCENT}; }}}}"),
