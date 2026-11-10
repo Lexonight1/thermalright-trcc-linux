@@ -95,10 +95,6 @@ def hud_skin() -> SettingsSkin:
                     f"border: 1px solid {GLASS_EDGE}; padding: 8px; border-radius: 4px; "
                     f"text-align: left; }}"
                     f"QPushButton:hover {{ border-color: {ACCENT}; }}"),
-        action_text_button=(f"QPushButton {{ background-color: transparent; color: {TEXT}; "
-                            f"border: 1px solid {ACCENT}; border-radius: 5px; }}"
-                            f"QPushButton:hover {{ background-color: {GLASS}; }}"
-                            f"QPushButton:disabled {{ color: gray; border-color: gray; }}"),
         # A field with its arrow, so it reads as a select, not as text.
         font_select=(f"QFontComboBox {{ background-color: rgba(0, 0, 0, 90); "
                      f"border: 1px solid rgba(255, 255, 255, 40); border-radius: 3px; "

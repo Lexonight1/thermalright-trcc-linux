@@ -389,17 +389,15 @@ class DisplayModePanel(QFrame):
                 break
             btn = QPushButton(self)
             btn.setGeometry(*action_positions[i])
-            if (icon_name := _ICON_MAP.get(action_name)):
-                btn.setStyleSheet(self._skin.flat_button_hover)
-                px = self._skin.pixmap(icon_name, 40, 40)
-                if not px.isNull():
-                    btn.setIcon(QIcon(px))
-                    btn.setIconSize(btn.size())
-            else:
-                # An action of ours with no Windows icon says what it is.
-                log.debug("_setup_ui: %s has no icon -- a text button", action_name)
-                btn.setText(action_name)
-                btn.setStyleSheet(self._skin.action_text_button)
+            # Every action has its icon (``ACTION_ICON_IMAGES``) -- Box's too,
+            # since 2026-11-10; it was the bare word until then.
+            btn.setStyleSheet(self._skin.flat_button_hover)
+            log.debug("_setup_ui: %s %s -> %s", self.mode_id, action_name,
+                      _ICON_MAP[action_name])
+            px = self._skin.pixmap(_ICON_MAP[action_name], 40, 40)
+            if not px.isNull():
+                btn.setIcon(QIcon(px))
+                btn.setIconSize(btn.size())
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             say_tip(btn, self._TOOLTIP_MAP.get(action_name, action_name))
             btn.setEnabled(False)  # Disabled until toggle is ON (C# buttonOnOff_Set)

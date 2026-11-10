@@ -58,7 +58,6 @@ def gui_skin() -> SettingsSkin:
         rgb_input=Styles.RGB_INPUT,
         icon_button_hover=Styles.ICON_BUTTON_HOVER,
         add_button=Styles.ADD_ELEMENT_BTN,
-        action_text_button=Styles.ACTION_TEXT_BUTTON,
         # A field with its arrow, so it reads as a select, not as text.
         font_select=(f"QFontComboBox {{ background-color: rgba(0, 0, 0, 70); "
                      f"border: 1px solid #555; border-radius: 3px; "

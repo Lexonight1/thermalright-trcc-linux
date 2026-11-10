@@ -1366,6 +1366,9 @@ ACTION_ICON_IMAGES: dict[str, str] = {
     # The media player's web source -- no C# twin (its player opens files only);
     # the C#'s network art, since the C# names its load icon 直播 (live).
     "VideoUrl":  "display_mode_icon_network.png",
+    # The Background's Box (a module's picture in a box over the theme) -- no C#
+    # twin; drawn in its neighbours' style by dev/tools/gen_inset_icon.py.
+    "Box":       "display_mode_icon_inset.png",
 }
 
 

@@ -284,13 +284,6 @@ class Styles:
 
     #: An action of ours with no Windows icon: its name, drawn like the
     #: white outlined icons beside it.
-    ACTION_TEXT_BUTTON = """
-        QPushButton { background-color: transparent; color: white;
-                      border: 2px solid white; border-radius: 5px;
-                      font-family: 'Microsoft YaHei'; font-size: 10pt; }
-        QPushButton:hover { background-color: rgba(255, 255, 255, 15); }
-        QPushButton:disabled { color: gray; border-color: gray; }
-    """
 
     TEXT_BUTTON = """
         QPushButton {

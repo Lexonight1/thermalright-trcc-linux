@@ -35,6 +35,7 @@ from ...core.commands import (
     UpdateOverlayElement,
 )
 from ...core.i18n import (
+    BACKGROUND_BOX_POS,
     BACKGROUND_LOAD_IMG_POS,
     BACKGROUND_LOAD_VIDEO_POS,
     MASK_DESC_POS,
@@ -449,6 +450,7 @@ class UCThemeSetting(BasePanel):
                  MASK_DESC_POS, True, False),
                 (background, 'Load Image', BACKGROUND_LOAD_IMG_POS, False, False),
                 (background, 'Load Video', BACKGROUND_LOAD_VIDEO_POS, False, False),
+                (background, 'Box', BACKGROUND_BOX_POS, False, True),
                 (video, 'Load Video', MEDIA_PLAYER_LOAD_POS, False, False),
                 (video, 'Web Video', MEDIA_PLAYER_URL_POS, False, False)):
             x, y, w, h, pt = place

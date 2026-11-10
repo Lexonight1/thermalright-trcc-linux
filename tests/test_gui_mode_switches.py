@@ -290,7 +290,7 @@ def test_the_background_panels_box_sets_and_clears_a_module_box(
 
     monkeypatch.setattr(trcc_app_module, "InsetDialog", _Dialog)
     box = window.uc_theme_setting.background_panel._action_buttons[2]
-    assert box.text() == "Box" and box.isEnabled()
+    assert box.text() == "" and not box.icon().isNull() and box.isEnabled()  # its icon
     box.click()
     snap = _snap(window)
     assert (snap.inset_module, snap.inset_corner, snap.inset_size) == (
