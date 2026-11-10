@@ -82,6 +82,7 @@ def hud_skin() -> SettingsSkin:
         switch_on_text="#0b1620",
         switch_off_text=TEXT,
         hue_rainbow=True,           # no picture behind the strip
+        coordinate_letters=True,
         preset_colours=((255, 255, 255), (192, 192, 192), (127, 212, 255), (0, 120, 215),
                         (0, 200, 120), (255, 214, 0), (255, 140, 0), (232, 17, 35),
                         (180, 0, 158), (255, 0, 255), (0, 0, 0)),

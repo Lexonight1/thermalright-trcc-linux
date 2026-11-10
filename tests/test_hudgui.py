@@ -986,3 +986,19 @@ def test_the_font_is_a_select_in_the_panel_not_a_dialog(window: Any, qtbot: Any)
         return window._app.dispatch(ResolveOverlay(key=_KEY)).elements[0]
     qtbot.waitUntil(lambda: element().font == family, timeout=2000)
     assert element().size == size
+
+
+def test_every_box_says_what_it_is(window: Any, qtbot: Any) -> None:
+    """His run (2026-11-10): the coordinate and screencast boxes did not say
+    which was X, Y, width or height -- the gui's coordinate letters are painted
+    into its picture, and its screencast boxes had none at all.  MUTATION
+    CHECK: set ``coordinate_letters=False`` in hudgui's skin."""
+    from PySide6.QtWidgets import QLabel
+
+    panel = _tab(window, qtbot, "Settings").panel
+
+    def letters(widget: Any) -> set[str]:
+        return {label.text() for label in widget.findChildren(QLabel)
+                if label.text() in {"X", "Y", "W", "H"}}
+    assert letters(panel.color_panel) == {"X", "Y"}
+    assert letters(panel.screencast_panel) == {"X", "Y", "W", "H"}

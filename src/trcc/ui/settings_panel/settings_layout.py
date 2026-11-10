@@ -49,6 +49,9 @@ COLOR_PANEL_W = 230
 COLOR_PANEL_H = 374
 COLOR_X_SPIN = (32, 32, 53, 19)
 COLOR_Y_SPIN = (121, 32, 53, 19)
+#: The X / Y letters beside them (the gui's are painted into its picture).
+COLOR_X_LABEL = (19, 33, 12, 16)
+COLOR_Y_LABEL = (108, 33, 12, 16)
 COLOR_FONT_BTN = (12, 87, 125, 24)
 COLOR_FONT_SIZE_SPIN = (140, 89, 42, 20)
 COLOR_AREA = (8, 139, 214, 136)        # UCColorC, the colour square
@@ -103,6 +106,9 @@ MASK_BTN_SUB_X = (319, 42, 14, 14)
 MASK_BTN_ADD_Y = (301, 67, 14, 14)
 MASK_BTN_SUB_Y = (319, 67, 14, 14)
 MASK_BTN_EYE = (309, 6, 24, 16)
+#: The X / Y letters beside the mask's boxes.
+MASK_LABEL_X = (247, 40, 10, 16)
+MASK_LABEL_Y = (247, 65, 10, 16)
 
 # The Screencast panel: X / Y / W / H with their steppers, border and sound.
 CAST_TEXTBOX_X = (110, 40, 56, 16)
@@ -119,3 +125,8 @@ CAST_BTN_ADD_H = (301, 67, 14, 14)
 CAST_BTN_SUB_H = (319, 67, 14, 14)
 CAST_BTN_BORDER = (309, 16, 24, 16)
 CAST_BTN_AUDIO = (280, 16, 24, 16)
+#: What each box is: X, Y, width, height -- in each box's left gutter.
+CAST_LABEL_X = (96, 40, 12, 16)
+CAST_LABEL_Y = (96, 65, 12, 16)
+CAST_LABEL_W = (226, 40, 13, 16)    # W is the widest letter
+CAST_LABEL_H = (227, 65, 12, 16)

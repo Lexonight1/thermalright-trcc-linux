@@ -63,6 +63,9 @@ class SettingsSkin:
     #: Whether the hue strip paints its own rainbow -- the gui's is in the
     #: picture behind it; a skin with no such picture needs it drawn.
     hue_rainbow: bool
+    #: Whether the colour picker labels its X / Y boxes -- the gui's letters
+    #: are in the picture behind them.
+    coordinate_letters: bool
     #: The colour picker's fixed swatches, (r, g, b).
     preset_colours: tuple[tuple[int, int, int], ...]
 

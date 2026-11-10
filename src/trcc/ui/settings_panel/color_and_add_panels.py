@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
     QFontComboBox,
     QFrame,
+    QLabel,
     QLineEdit,
     QPushButton,
     QSpinBox,
@@ -50,7 +51,9 @@ from .settings_layout import (
     COLOR_SWATCH_PRESET_Y,
     COLOR_SWATCH_SIZE,
     COLOR_SWATCH_X0,
+    COLOR_X_LABEL,
     COLOR_X_SPIN,
+    COLOR_Y_LABEL,
     COLOR_Y_SPIN,
 )
 from .settings_skin import SettingsSkin
@@ -236,6 +239,9 @@ class ColorPickerPanel(QFrame):
         self.x_spin.setGeometry(*COLOR_X_SPIN)
         self.x_spin.setRange(0, 480)
         self.x_spin.setStyleSheet(self._skin.input_field)
+        if self._skin.coordinate_letters:
+            self._letter("X", COLOR_X_LABEL)
+            self._letter("Y", COLOR_Y_LABEL)
         self.x_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         say_tip(self.x_spin, "X position")
         self.x_spin.valueChanged.connect(self._on_position_changed)
@@ -392,6 +398,13 @@ class ColorPickerPanel(QFrame):
         self._edited = self._edited or edited
         self.set_color(r, g, b, rebase=rebase)
         self.color_changed.emit(r, g, b)
+
+    def _letter(self, text: str, place: tuple[int, int, int, int]) -> None:
+        """A letter saying what the box beside it is."""
+        log.debug("ColorPickerPanel._letter: %s at %s", text, place)
+        label = QLabel(text, self)
+        label.setGeometry(*place)
+        label.setStyleSheet(self._skin.mode_label)
 
     def set_recent_colors(self, colors):
         """Show the device's recent row (newest first) on the 11 swatches."""

@@ -50,6 +50,7 @@ def gui_skin() -> SettingsSkin:
         switch_on_text='#2b2b2b',
         switch_off_text='#aaaaaa',
         hue_rainbow=False,          # it is in settings_params.png
+        coordinate_letters=False,   # so are the X / Y letters
         preset_colours=tuple(Colors.PRESET_COLORS),
         flat_button=Styles.FLAT_BUTTON,
         flat_button_hover=Styles.FLAT_BUTTON_HOVER,

@@ -52,6 +52,10 @@ from .settings_layout import (
     CAST_BTN_SUB_W,
     CAST_BTN_SUB_X,
     CAST_BTN_SUB_Y,
+    CAST_LABEL_H,
+    CAST_LABEL_W,
+    CAST_LABEL_X,
+    CAST_LABEL_Y,
     CAST_TEXTBOX_H,
     CAST_TEXTBOX_W,
     CAST_TEXTBOX_X,
@@ -69,6 +73,8 @@ from .settings_layout import (
     MASK_BTN_EYE,
     MASK_BTN_SUB_X,
     MASK_BTN_SUB_Y,
+    MASK_LABEL_X,
+    MASK_LABEL_Y,
     MASK_TEXTBOX_X,
     MASK_TEXTBOX_Y,
     MODE_TITLE,
@@ -411,6 +417,14 @@ class DisplayModePanel(QFrame):
         if action:
             self.action_requested.emit(action)
 
+    def _make_label(self, text: str, place: tuple[int, int, int, int]) -> QLabel:
+        """A small letter saying what the box beside it is -- X, Y, W, H."""
+        log.debug("%s._make_label: %s at %s", type(self).__name__, text, place)
+        label = QLabel(text, self)
+        label.setGeometry(*place)
+        label.setStyleSheet(self._skin.mode_label)
+        return label
+
     def _make_entry(self, x, y, w, h):
         """Create a numeric coordinate entry field (0-9999)."""
         entry = QLineEdit(self)
@@ -541,8 +555,8 @@ class MaskPanel(DisplayModePanel):
 
     def _setup_mask_ui(self):
         """Add X/Y coordinate inputs and eye toggle on top of base panel."""
-        self._make_label("X", 247, 40)
-        self._make_label("Y", 247, 65)
+        self._make_label("X", MASK_LABEL_X)
+        self._make_label("Y", MASK_LABEL_Y)
 
         self.entry_x = self._make_entry(*self._TEXTBOX_X)
         self.entry_y = self._make_entry(*self._TEXTBOX_Y)
@@ -563,13 +577,6 @@ class MaskPanel(DisplayModePanel):
         say_tip(self.eye_btn, "Toggle mask visibility")
         self.eye_btn.clicked.connect(self._on_eye_toggle)
         self._update_eye_icon()
-
-    def _make_label(self, text, x, y):
-        """Create a small coordinate label."""
-        lbl = QLabel(text, self)
-        lbl.setGeometry(x, y, 10, 16)
-        lbl.setStyleSheet(self._skin.mode_label)
-        return lbl
 
     def _on_position_changed(self):
         """Handle X/Y value change."""
@@ -683,7 +690,11 @@ class ScreenCastPanel(DisplayModePanel):
 
     def _setup_screencast_ui(self):
         """Add coordinate inputs on top of base DisplayModePanel."""
-        # X/Y/W/H entries
+        # X/Y/W/H entries, each with its letter -- the gui's had none, so
+        # nobody could tell the width box from the X box (2026-11-10).
+        for text, place in (("X", CAST_LABEL_X), ("Y", CAST_LABEL_Y),
+                            ("W", CAST_LABEL_W), ("H", CAST_LABEL_H)):
+            self._make_label(text, place)
         self.entry_x = self._make_entry(*self._TEXTBOX_X)
         self.entry_y = self._make_entry(*self._TEXTBOX_Y)
         self.entry_w = self._make_entry(*self._TEXTBOX_W)
