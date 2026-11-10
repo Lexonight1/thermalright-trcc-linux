@@ -516,6 +516,24 @@ def test_a_reading_not_seen_before_lists_the_sensors_again(window: Any, qtbot: A
     assert view.cards["CPU"] is not before
 
 
+def test_a_key_the_list_never_has_lists_the_sensors_once_not_every_tick(
+        window: Any, qtbot: Any) -> None:
+    """His log (2026-11-10): an NVIDIA box broadcasts gpu:0:* / gpu:nvidia:0:*
+    aliases that ReadSensors never lists, so every broadcast was "new" and
+    every card was rebuilt every 2 s -- 55 rebuilds in 2 minutes.  MUTATION
+    CHECK: drop ``self._known |= event.readings.keys()``."""
+    from trcc.core.events import SensorsUpdated
+    from trcc.core.models import HardwareMetrics
+
+    view = _sensors(window, qtbot)
+    alias = SensorsUpdated(readings={"gpu:0:temp": 40.0}, temp_unit="C",
+                           reading_count=1, metrics=HardwareMetrics())
+    view._on_sensors(alias)
+    after_first = view.cards["CPU"]
+    view._on_sensors(alias)
+    assert view.cards["CPU"] is after_first
+
+
 def test_sensors_write_a_value_as_the_guis_picker_and_follow_the_unit_back(
         window: Any, qtbot: Any) -> None:
     """One format for both windows (``sensor_display.format_sensor_value``);

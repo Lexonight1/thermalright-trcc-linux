@@ -132,9 +132,14 @@ class SensorsView(QWidget):
         if not self.isVisible():
             return
         frame_log.debug("SensorsView._on_sensors: %d", len(event.readings))
-        if not event.readings.keys() <= self._known:
-            log.info("SensorsView._on_sensors: a new reading -- listing again")
+        if new := event.readings.keys() - self._known:
+            log.info("SensorsView._on_sensors: %d new reading(s) %s -- listing again",
+                     len(new), sorted(new)[:5])
             self.refresh()
+            # The broadcast also carries keys ReadSensors never lists (the GPU
+            # aliases gpu:0:* and gpu:nvidia:0:* on an NVIDIA box): known now,
+            # or every broadcast rebuilt every card -- on his box, every 2 s.
+            self._known |= event.readings.keys()
             return
         self._show_values(event.readings, event.temp_unit)
 

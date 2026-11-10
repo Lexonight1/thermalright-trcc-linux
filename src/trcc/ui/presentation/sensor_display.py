@@ -26,6 +26,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
+from ...core.logs import per_frame
 from ...core.models import (
     OverlayElementConfig,
     OverlayMode,
@@ -37,6 +38,8 @@ from ...core.models import (
 from ...services.metrics_personalize import personalize_unit
 
 log = logging.getLogger(__name__)
+#: Every value on every sensor tick: the per-frame family, off by default.
+frame_log = per_frame(__name__)
 
 # Hardware-source → display header (the sensor-id prefix IS the source).
 _SOURCE_LABELS = {
@@ -65,7 +68,7 @@ def format_sensor_value(value: float, unit: str, temp_unit: int = 0) -> str:
     Both are honoured, so a °F reading keeps its degree sign instead of
     falling through to the unit-less default and rendering "122.0".
     """
-    log.debug("format_sensor_value: %.2f unit=%s temp_unit=%d", value, unit, temp_unit)
+    frame_log.debug("format_sensor_value: %.2f unit=%s temp_unit=%d", value, unit, temp_unit)
     if unit in ("°C", "°F"):
         symbol = "°F" if (unit == "°F" or temp_unit == 1) else "°C"
         return f"{value:.0f}{symbol}"
