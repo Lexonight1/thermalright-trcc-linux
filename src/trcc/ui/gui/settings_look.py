@@ -58,9 +58,10 @@ def gui_skin() -> SettingsSkin:
         icon_button_hover=Styles.ICON_BUTTON_HOVER,
         add_button=Styles.ADD_ELEMENT_BTN,
         action_text_button=Styles.ACTION_TEXT_BUTTON,
-        font_select=(f"QFontComboBox {{ background-color: transparent; border: none; "
+        # A field with its arrow, so it reads as a select, not as text.
+        font_select=(f"QFontComboBox {{ background-color: rgba(0, 0, 0, 70); "
+                     f"border: 1px solid #555; border-radius: 3px; "
                      f"color: {Colors.TEXT}; font-size: 10px; padding-left: 27px; }}"
-                     "QFontComboBox::drop-down { border: none; width: 14px; }"
                      "QFontComboBox QAbstractItemView { background-color: #2b2b2b; "
                      "color: white; selection-background-color: #4a4a4a; }"),
         swatch=("QPushButton {{ background-color: rgb({r},{g},{b}); border: none; }}"
