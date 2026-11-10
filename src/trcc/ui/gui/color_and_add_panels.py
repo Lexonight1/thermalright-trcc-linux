@@ -28,7 +28,33 @@ from ...core.models import (
 from ..qt_words import say_tip
 from .assets import Assets
 from .base import set_background_pixmap
-from .constants import Colors, Layout, Sizes, Styles
+from .constants import Colors, Styles
+from .settings_layout import (
+    ADD_BTN_DY,
+    ADD_BTN_H,
+    ADD_BTN_W,
+    ADD_BTN_X,
+    ADD_BTN_Y0,
+    ADD_PANEL_H,
+    ADD_PANEL_W,
+    COLOR_AREA,
+    COLOR_B,
+    COLOR_EYEDROPPER,
+    COLOR_FONT_BTN,
+    COLOR_FONT_SIZE_SPIN,
+    COLOR_G,
+    COLOR_HUE,
+    COLOR_PANEL_H,
+    COLOR_PANEL_W,
+    COLOR_R,
+    COLOR_SWATCH_DX,
+    COLOR_SWATCH_HISTORY_Y,
+    COLOR_SWATCH_PRESET_Y,
+    COLOR_SWATCH_SIZE,
+    COLOR_SWATCH_X0,
+    COLOR_X_SPIN,
+    COLOR_Y_SPIN,
+)
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -184,10 +210,10 @@ class ColorPickerPanel(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(Sizes.COLOR_PANEL_W, Sizes.COLOR_PANEL_H)
+        self.setFixedSize(COLOR_PANEL_W, COLOR_PANEL_H)
 
         set_background_pixmap(self, 'settings_overlay_color_bg.png',
-            Sizes.COLOR_PANEL_W, Sizes.COLOR_PANEL_H,
+            COLOR_PANEL_W, COLOR_PANEL_H,
             fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
 
         self._current_color = QColor(255, 255, 255)
@@ -199,7 +225,7 @@ class ColorPickerPanel(QFrame):
     def _setup_ui(self):
         # X coordinate input
         self.x_spin = QSpinBox(self)
-        self.x_spin.setGeometry(*Layout.COLOR_X_SPIN)
+        self.x_spin.setGeometry(*COLOR_X_SPIN)
         self.x_spin.setRange(0, 480)
         self.x_spin.setStyleSheet(Styles.INPUT_FIELD)
         self.x_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
@@ -208,7 +234,7 @@ class ColorPickerPanel(QFrame):
 
         # Y coordinate input
         self.y_spin = QSpinBox(self)
-        self.y_spin.setGeometry(*Layout.COLOR_Y_SPIN)
+        self.y_spin.setGeometry(*COLOR_Y_SPIN)
         self.y_spin.setRange(0, 480)
         self.y_spin.setStyleSheet(Styles.INPUT_FIELD)
         self.y_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
@@ -217,7 +243,7 @@ class ColorPickerPanel(QFrame):
 
         # Font picker button (name only)
         self.font_btn = QPushButton(self)
-        self.font_btn.setGeometry(*Layout.COLOR_FONT_BTN)
+        self.font_btn.setGeometry(*COLOR_FONT_BTN)
         self.font_btn.setStyleSheet(
             f"QPushButton {{ background-color: transparent; border: none; "
             f"color: {Colors.TEXT}; font-size: 10px; text-align: left; padding-left: 27px; }}"
@@ -232,7 +258,7 @@ class ColorPickerPanel(QFrame):
 
         # Font size spinbox (separate adjuster)
         self.font_size_spin = QSpinBox(self)
-        self.font_size_spin.setGeometry(*Layout.COLOR_FONT_SIZE_SPIN)
+        self.font_size_spin.setGeometry(*COLOR_FONT_SIZE_SPIN)
         self.font_size_spin.setRange(6, 200)
         self.font_size_spin.setValue(36)
         self.font_size_spin.setStyleSheet(Styles.INPUT_FIELD)
@@ -243,27 +269,27 @@ class ColorPickerPanel(QFrame):
         # This was a click target that opened a modal QColorDialog instead --
         # the first commit's stand-in, never revisited.
         self.color_square = _ColorSquare(self)
-        self.color_square.setGeometry(*Layout.COLOR_AREA)
+        self.color_square.setGeometry(*COLOR_AREA)
         self.color_square.color_picked.connect(self._on_square_picked)
         self.hue_strip = _HueStrip(self)
-        self.hue_strip.setGeometry(*Layout.COLOR_HUE)
+        self.hue_strip.setGeometry(*COLOR_HUE)
         self.hue_strip.hue_picked.connect(self._on_hue_picked)
 
         # RGB input boxes
         self.r_input = QLineEdit("255", self)
-        self.r_input.setGeometry(*Layout.COLOR_R)
+        self.r_input.setGeometry(*COLOR_R)
         self.r_input.setStyleSheet(Styles.RGB_INPUT)
         self.r_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         say_tip(self.r_input, "Red (0-255)")
 
         self.g_input = QLineEdit("255", self)
-        self.g_input.setGeometry(*Layout.COLOR_G)
+        self.g_input.setGeometry(*COLOR_G)
         self.g_input.setStyleSheet(Styles.RGB_INPUT)
         self.g_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         say_tip(self.g_input, "Green (0-255)")
 
         self.b_input = QLineEdit("255", self)
-        self.b_input.setGeometry(*Layout.COLOR_B)
+        self.b_input.setGeometry(*COLOR_B)
         self.b_input.setStyleSheet(Styles.RGB_INPUT)
         self.b_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         say_tip(self.b_input, "Blue (0-255)")
@@ -275,9 +301,9 @@ class ColorPickerPanel(QFrame):
         for i, (r, g, b) in enumerate(Colors.PRESET_COLORS):
             btn = QPushButton(self)
             btn.setGeometry(
-                Layout.COLOR_SWATCH_X0 + i * Layout.COLOR_SWATCH_DX,
-                Layout.COLOR_SWATCH_PRESET_Y,
-                Layout.COLOR_SWATCH_SIZE, Layout.COLOR_SWATCH_SIZE
+                COLOR_SWATCH_X0 + i * COLOR_SWATCH_DX,
+                COLOR_SWATCH_PRESET_Y,
+                COLOR_SWATCH_SIZE, COLOR_SWATCH_SIZE
             )
             btn.setStyleSheet(
                 f"QPushButton {{ background-color: rgb({r},{g},{b}); border: none; }}"
@@ -294,9 +320,9 @@ class ColorPickerPanel(QFrame):
         for i in range(RECENT_COLOR_SLOTS):
             btn = QPushButton(self)
             btn.setGeometry(
-                Layout.COLOR_SWATCH_X0 + i * Layout.COLOR_SWATCH_DX,
-                Layout.COLOR_SWATCH_HISTORY_Y,
-                Layout.COLOR_SWATCH_SIZE, Layout.COLOR_SWATCH_SIZE
+                COLOR_SWATCH_X0 + i * COLOR_SWATCH_DX,
+                COLOR_SWATCH_HISTORY_Y,
+                COLOR_SWATCH_SIZE, COLOR_SWATCH_SIZE
             )
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(self._on_swatch_clicked)
@@ -305,7 +331,7 @@ class ColorPickerPanel(QFrame):
 
         # Eyedropper button (matches Windows buttonGetColor at (12, 276, 48, 48))
         self.eyedropper_btn = QPushButton(self)
-        self.eyedropper_btn.setGeometry(*Layout.COLOR_EYEDROPPER)
+        self.eyedropper_btn.setGeometry(*COLOR_EYEDROPPER)
         eyedrop_pixmap = Assets.load_pixmap('color_panel_eyedropper.png', 48, 48)
         if not eyedrop_pixmap.isNull():
             self.eyedropper_btn.setIcon(QIcon(eyedrop_pixmap))
@@ -497,24 +523,24 @@ class AddElementPanel(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(Sizes.ADD_PANEL_W, Sizes.ADD_PANEL_H)
+        self.setFixedSize(ADD_PANEL_W, ADD_PANEL_H)
 
         set_background_pixmap(self, 'settings_overlay_add_bg.png',
-            Sizes.ADD_PANEL_W, Sizes.ADD_PANEL_H,
+            ADD_PANEL_W, ADD_PANEL_H,
             fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
 
         self._setup_ui()
 
     def _setup_ui(self):
-        y = Layout.ADD_BTN_Y0
+        y = ADD_BTN_Y0
         for name, mode in self.ELEMENT_TYPES:
             btn = QPushButton(name, self)
-            btn.setGeometry(Layout.ADD_BTN_X, y, Layout.ADD_BTN_W, Layout.ADD_BTN_H)
+            btn.setGeometry(ADD_BTN_X, y, ADD_BTN_W, ADD_BTN_H)
             btn.setStyleSheet(Styles.ADD_ELEMENT_BTN)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setProperty(_MODE_PROPERTY, mode)
             btn.clicked.connect(self._on_type_button)
-            y += Layout.ADD_BTN_DY
+            y += ADD_BTN_DY
 
     def _on_type_button(self) -> None:
         """An add-element button was pressed — read its mode off the button."""

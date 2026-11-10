@@ -129,33 +129,6 @@ class Sizes:
     FILTER_BTN_H = 18
     FILTER_BTN_Y = 29
 
-    # Overlay grid
-    OVERLAY_GRID_W = 472
-    OVERLAY_GRID_H = 430
-    OVERLAY_CELL = 60
-    OVERLAY_X0 = 5
-    OVERLAY_Y0 = 35
-    OVERLAY_DX = 67
-    OVERLAY_DY = 66
-    OVERLAY_ROWS = 6
-    OVERLAY_COLS = 7
-
-    # Color picker
-    COLOR_PANEL_W = 230
-    COLOR_PANEL_H = 374
-
-    # Add element panel
-    ADD_PANEL_W = 230
-    ADD_PANEL_H = 430
-
-    # Data table
-    DATA_TABLE_W = 230
-    DATA_TABLE_H = 54
-
-    # Display mode panels
-    DISPLAY_MODE_W = 351
-    DISPLAY_MODE_H = 100
-
     # Device buttons
     DEVICE_BTN_W = 140
     DEVICE_BTN_H = 50
@@ -167,10 +140,6 @@ class Sizes:
     # Video controls
     VIDEO_CONTROLS_W = 500
     VIDEO_CONTROLS_H = 56
-
-    # Settings panel
-    SETTING_W = 732
-    SETTING_H = 661
 
 
 class Layout:
@@ -262,47 +231,6 @@ class Layout:
     WIDTH_FIT_BTN = (108, 26, 34, 26)   # C# buttonTPJCW
     TIME_LABEL = (274, 26, 220, 20)
     PROGRESS_SLIDER = (10, 5, 479, 16)
-
-    # Settings sub-panels (within UCThemeSetting)
-    OVERLAY_GRID = (10, 1)
-    RIGHT_STACK = (492, 1, 230, 430)
-    DATA_TABLE = (492, 376)
-    MASK_PANEL = (10, 441)
-    BG_PANEL = (371, 441)
-    SCREENCAST_PANEL = (10, 551)
-    VIDEO_PANEL = (371, 551)
-
-    # Color picker positions
-    COLOR_X_SPIN = (32, 32, 53, 19)
-    COLOR_Y_SPIN = (121, 32, 53, 19)
-    COLOR_FONT_BTN = (12, 87, 125, 24)
-    COLOR_FONT_SIZE_SPIN = (140, 89, 42, 20)
-    COLOR_AREA = (8, 139, 214, 136)        # UCColorC, the colour square
-    COLOR_HUE = (65, 273, 158, 19)         # UCColorB, the hue strip
-    COLOR_R = (83, 304, 36, 16)
-    COLOR_G = (132, 304, 36, 16)
-    COLOR_B = (181, 304, 36, 16)
-    COLOR_SWATCH_HISTORY_Y = 333
-    COLOR_SWATCH_PRESET_Y = 354
-    COLOR_SWATCH_X0 = 13
-    COLOR_SWATCH_DX = 19
-    COLOR_SWATCH_SIZE = 14
-
-    # Eyedropper button (matches Windows buttonGetColor in UCXiTongXianShiColor)
-    COLOR_EYEDROPPER = (12, 276, 48, 48)
-
-    # Display mode panel toggle/action positions
-    TOGGLE_MASK = (5, 5, 36, 18)
-    ACTION_BTN_1 = (149, 30, 40, 40)
-    ACTION_BTN_2 = (219, 30, 40, 40)
-    ACTION_BTN_3 = (289, 30, 40, 40)   # ours: the Background panel's Box
-
-    # Add element panel buttons
-    ADD_BTN_X = 12
-    ADD_BTN_W = 206
-    ADD_BTN_H = 35
-    ADD_BTN_Y0 = 55
-    ADD_BTN_DY = 42
 
     # UCSystemInfoOptions (sensor grid) — Windows: (190, 98) on Form1, size 1254x692
     # Sibling of FormCZTV on Form1, not a child

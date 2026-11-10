@@ -19,8 +19,20 @@ from ..presentation.overlay_serialization import tile_reading
 from ..qt_words import say_tip
 from .assets import Assets
 from .base import set_background_pixmap
-from .constants import Colors, Sizes, Styles
+from .constants import Colors, Styles
 from .overlay_element import OverlayElementWidget
+from .settings_layout import (
+    GRID_TOGGLE,
+    OVERLAY_CELL,
+    OVERLAY_COLS,
+    OVERLAY_DX,
+    OVERLAY_DY,
+    OVERLAY_GRID_H,
+    OVERLAY_GRID_W,
+    OVERLAY_ROWS,
+    OVERLAY_X0,
+    OVERLAY_Y0,
+)
 
 log = logging.getLogger(__name__)
 #: The metrics tick reaches every cell, once a second.
@@ -44,10 +56,10 @@ class OverlayGridPanel(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(Sizes.OVERLAY_GRID_W, Sizes.OVERLAY_GRID_H)
+        self.setFixedSize(OVERLAY_GRID_W, OVERLAY_GRID_H)
 
         set_background_pixmap(self, 'settings_overlay_grid_bg.png',
-            Sizes.OVERLAY_GRID_W, Sizes.OVERLAY_GRID_H,
+            OVERLAY_GRID_W, OVERLAY_GRID_H,
             fallback_style=f"background-color: {Colors.BASE_BG}; border-radius: 5px;")
 
         # Interaction state lives in the toolkit-free Presentation Model;
@@ -64,7 +76,7 @@ class OverlayGridPanel(QFrame):
     def _setup_toggle(self):
         """On/Off toggle at (5, 5) using slide switch images."""
         self._toggle_btn = QPushButton(self)
-        self._toggle_btn.setGeometry(5, 5, 36, 18)
+        self._toggle_btn.setGeometry(*GRID_TOGGLE)
         self._toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._toggle_btn.setCheckable(True)
         self._toggle_btn.setChecked(True)
@@ -101,14 +113,14 @@ class OverlayGridPanel(QFrame):
 
     def _setup_cells(self):
         """Create 42 cell widgets in the 7x6 grid."""
-        for row in range(Sizes.OVERLAY_ROWS):
-            for col in range(Sizes.OVERLAY_COLS):
-                index = row * Sizes.OVERLAY_COLS + col
-                x = Sizes.OVERLAY_X0 + col * Sizes.OVERLAY_DX
-                y = Sizes.OVERLAY_Y0 + row * Sizes.OVERLAY_DY
+        for row in range(OVERLAY_ROWS):
+            for col in range(OVERLAY_COLS):
+                index = row * OVERLAY_COLS + col
+                x = OVERLAY_X0 + col * OVERLAY_DX
+                y = OVERLAY_Y0 + row * OVERLAY_DY
 
                 cell = OverlayElementWidget(index, self)
-                cell.setGeometry(x, y, Sizes.OVERLAY_CELL, Sizes.OVERLAY_CELL)
+                cell.setGeometry(x, y, OVERLAY_CELL, OVERLAY_CELL)
                 cell.clicked.connect(self._on_cell_clicked)
                 cell.double_clicked.connect(self._on_cell_double_clicked)
                 self._cells.append(cell)

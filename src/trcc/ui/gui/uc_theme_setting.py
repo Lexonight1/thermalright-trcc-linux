@@ -40,7 +40,6 @@ from ..presentation.overlay_serialization import config_fields, entries_to_confi
 from ..presentation.theme_settings import SettingsView
 from .base import BasePanel
 from .color_and_add_panels import AddElementPanel, ColorPickerPanel
-from .constants import Layout, Sizes
 from .display_mode_panels import (
     DataTablePanel,
     DisplayModePanel,
@@ -62,6 +61,17 @@ from .overlay_element import (  # noqa: F401
     OverlayElementWidget,
 )
 from .overlay_grid import OverlayGridPanel
+from .settings_layout import (
+    BG_PANEL,
+    DATA_TABLE,
+    MASK_PANEL,
+    OVERLAY_GRID,
+    RIGHT_STACK,
+    SCREENCAST_PANEL,
+    SETTING_H,
+    SETTING_W,
+    VIDEO_PANEL,
+)
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -104,7 +114,7 @@ class UCThemeSetting(BasePanel):
     temp_unit_changed = Signal(str)
 
     def __init__(self, parent=None):
-        super().__init__(parent, width=Sizes.SETTING_W, height=Sizes.SETTING_H)
+        super().__init__(parent, width=SETTING_W, height=SETTING_H)
         self._setup_ui()
 
     def update_metrics(self, readings: Any, temp_unit: str) -> None:
@@ -117,7 +127,7 @@ class UCThemeSetting(BasePanel):
         """Build UI with absolute positioning matching Windows."""
         # Overlay grid
         self.overlay_grid = OverlayGridPanel(self)
-        self.overlay_grid.move(*Layout.OVERLAY_GRID)
+        self.overlay_grid.move(*OVERLAY_GRID)
         self.overlay_grid.element_selected.connect(self._on_element_selected)
         self.overlay_grid.add_requested.connect(self._on_add_requested)
         self.overlay_grid.element_added.connect(self._on_grid_element_added)
@@ -125,7 +135,7 @@ class UCThemeSetting(BasePanel):
 
         # Right panel stack — Color picker and Add element share this spot
         self.right_stack = QStackedWidget(self)
-        self.right_stack.setGeometry(*Layout.RIGHT_STACK)
+        self.right_stack.setGeometry(*RIGHT_STACK)
 
         self.color_panel = ColorPickerPanel()
         self.color_panel.color_changed.connect(self._on_color_changed)
@@ -143,14 +153,14 @@ class UCThemeSetting(BasePanel):
 
         # Data table
         self.data_table = DataTablePanel(self)
-        self.data_table.move(*Layout.DATA_TABLE)
+        self.data_table.move(*DATA_TABLE)
         self.data_table.format_changed.connect(self._on_format_changed)
         self.data_table.text_changed.connect(self._on_text_changed)
         self.data_table.temp_unit_changed.connect(self.temp_unit_changed)
 
         # Display mode panels
         self.mask_panel = MaskPanel(self)
-        self.mask_panel.move(*Layout.MASK_PANEL)
+        self.mask_panel.move(*MASK_PANEL)
         self.mask_panel.mode_changed.connect(self._on_mode_changed)
         self.mask_panel.action_requested.connect(self._on_action_requested)
         self.mask_panel.mask_position_changed.connect(self._on_mask_position)
@@ -158,16 +168,16 @@ class UCThemeSetting(BasePanel):
 
         self.background_panel = DisplayModePanel("background", ["Image", "Video", "Box"],
                                                  self)
-        self.background_panel.move(*Layout.BG_PANEL)
+        self.background_panel.move(*BG_PANEL)
         self.background_panel.mode_changed.connect(self._on_mode_changed)
         self.background_panel.action_requested.connect(self._on_action_requested)
 
         self.screencast_panel = ScreenCastPanel(self)
-        self.screencast_panel.move(*Layout.SCREENCAST_PANEL)
+        self.screencast_panel.move(*SCREENCAST_PANEL)
         self.screencast_panel.mode_changed.connect(self._on_mode_changed)
 
         self.video_panel = DisplayModePanel("video", ["VideoLoad", "VideoUrl"], self)
-        self.video_panel.move(*Layout.VIDEO_PANEL)
+        self.video_panel.move(*VIDEO_PANEL)
         self.video_panel.mode_changed.connect(self._on_mode_changed)
         self.video_panel.action_requested.connect(self._on_action_requested)
 

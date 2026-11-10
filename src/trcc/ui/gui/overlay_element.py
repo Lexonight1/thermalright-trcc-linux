@@ -24,7 +24,11 @@ from ...core.models import (
 )
 from ..presentation.sensor_display import source_label
 from .assets import Assets
-from .constants import Colors, Sizes
+from .constants import Colors
+from .settings_layout import (
+    CELL_VALUE_ROW,
+    OVERLAY_CELL,
+)
 
 log = logging.getLogger(__name__)
 #: Per metrics tick, once a second per card.
@@ -75,17 +79,17 @@ class OverlayElementWidget(QWidget):
         self._live_unit = ''    # label3: unit suffix
         self._lang = 'en'       # the window's: a weekday is drawn in it
 
-        self.setFixedSize(Sizes.OVERLAY_CELL, Sizes.OVERLAY_CELL)
+        self.setFixedSize(OVERLAY_CELL, OVERLAY_CELL)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         # Preload mode images (shared via lru_cache)
         self._mode_pixmaps = {}
         for mode, img_name in MODE_IMAGES.items():
-            px = Assets.load_pixmap(img_name, Sizes.OVERLAY_CELL, Sizes.OVERLAY_CELL)
+            px = Assets.load_pixmap(img_name, OVERLAY_CELL, OVERLAY_CELL)
             if not px.isNull():
                 self._mode_pixmaps[mode] = px
 
-        self._select_pixmap = Assets.load_pixmap(SELECT_IMAGE, Sizes.OVERLAY_CELL, Sizes.OVERLAY_CELL)
+        self._select_pixmap = Assets.load_pixmap(SELECT_IMAGE, OVERLAY_CELL, OVERLAY_CELL)
 
     def set_config(self, config):
         """Set element config or None to clear."""
@@ -133,7 +137,7 @@ class OverlayElementWidget(QWidget):
     # Card UI font matching Windows 微软雅黑 10.5pt
     _CARD_FONT = QFont('Microsoft YaHei', 10)
     #: The value row -- a clock's or custom text: x, y, width, height.
-    _VALUE_ROW = (2, 21, 56, 18)
+    _VALUE_ROW = CELL_VALUE_ROW
     #: The smallest a value shrinks to; past it, it stays centered and its
     #: ends go past the row equally.
     _MIN_POINT = 6.0

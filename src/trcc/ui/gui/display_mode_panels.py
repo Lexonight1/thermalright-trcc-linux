@@ -40,7 +40,44 @@ from ...core.models import ACTION_ICON_IMAGES, InsetCorner, InsetSize, OverlayMo
 from ..qt_words import say_tip
 from .assets import Assets
 from .base import set_background_pixmap
-from .constants import Colors, Layout, Sizes, Styles
+from .constants import Colors, Styles
+from .settings_layout import (
+    ACTION_BTN_1,
+    ACTION_BTN_2,
+    ACTION_BTN_3,
+    CAST_BTN_ADD_H,
+    CAST_BTN_ADD_W,
+    CAST_BTN_ADD_X,
+    CAST_BTN_ADD_Y,
+    CAST_BTN_AUDIO,
+    CAST_BTN_BORDER,
+    CAST_BTN_SUB_H,
+    CAST_BTN_SUB_W,
+    CAST_BTN_SUB_X,
+    CAST_BTN_SUB_Y,
+    CAST_TEXTBOX_H,
+    CAST_TEXTBOX_W,
+    CAST_TEXTBOX_X,
+    CAST_TEXTBOX_Y,
+    DATA_TABLE_H,
+    DATA_TABLE_W,
+    DATE_SWITCH,
+    DISPLAY_MODE_H,
+    DISPLAY_MODE_W,
+    FORMAT_SWITCH,
+    MASK_ACTION_BTN_1,
+    MASK_ACTION_BTN_2,
+    MASK_BTN_ADD_X,
+    MASK_BTN_ADD_Y,
+    MASK_BTN_EYE,
+    MASK_BTN_SUB_X,
+    MASK_BTN_SUB_Y,
+    MASK_TEXTBOX_X,
+    MASK_TEXTBOX_Y,
+    MODE_TITLE,
+    TEXT_INPUT,
+    TOGGLE_MASK,
+)
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -131,10 +168,10 @@ class DataTablePanel(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(Sizes.DATA_TABLE_W, Sizes.DATA_TABLE_H)
+        self.setFixedSize(DATA_TABLE_W, DATA_TABLE_H)
 
         set_background_pixmap(self, 'settings_overlay_table_bg.png',
-            Sizes.DATA_TABLE_W, Sizes.DATA_TABLE_H,
+            DATA_TABLE_W, DATA_TABLE_H,
             fallback_style=f"background-color: {Colors.PANEL_FALLBACK}; border-radius: 5px;")
 
         # — | <unit> (mode 0, any reading but a temperature) -- the C#'s
@@ -142,7 +179,7 @@ class DataTablePanel(QFrame):
         # bare number (the unit baked into the theme art).  Windows: (80, 15)
         # 70x24, drawn as P单位开关 / P单位开关a; the same switch as °C | °F now.
         self.unit_switch = ChoiceSwitch(("—", "%"), self)
-        self.unit_switch.setGeometry(80, 15, 70, 24)
+        self.unit_switch.setGeometry(*FORMAT_SWITCH)
         say_tip(self.unit_switch, "Show the unit after the value")
         self.unit_switch.picked.connect(self._on_unit_picked)
         self.unit_switch.setVisible(False)
@@ -151,7 +188,7 @@ class DataTablePanel(QFrame):
         # the About panel's radios and this switch always the same answer.
         # Legacy had it; the cutover left it inert, then it was gone.
         self.temp_switch = ChoiceSwitch(("°C", "°F"), self)
-        self.temp_switch.setGeometry(80, 15, 70, 24)
+        self.temp_switch.setGeometry(*FORMAT_SWITCH)
         say_tip(self.temp_switch, "Temperature unit")
         self.temp_switch.picked.connect(self._on_temp_picked)
         self.temp_switch.setVisible(False)
@@ -159,7 +196,7 @@ class DataTablePanel(QFrame):
 
         # 12H | 24H (mode 1: time) -- myModeSub 1 = 12H, 2 = 24H.
         self.time_switch = ChoiceSwitch(("12H", "24H"), self)
-        self.time_switch.setGeometry(80, 15, 70, 24)
+        self.time_switch.setGeometry(*FORMAT_SWITCH)
         say_tip(self.time_switch, "Time format (12h/24h)")
         self.time_switch.picked.connect(self._on_time_picked)
         self.time_switch.setVisible(False)
@@ -167,7 +204,7 @@ class DataTablePanel(QFrame):
         # The four date formats (mode 3: date) -- myModeSub 1..4, the C#'s
         # button3 cycling P YMD / DMY / MD / DM, all four shown at once now.
         self.date_switch = ChoiceSwitch(("Y/M/D", "D/M/Y", "M/D", "D/M"), self)
-        self.date_switch.setGeometry(15, 15, 200, 24)
+        self.date_switch.setGeometry(*DATE_SWITCH)
         say_tip(self.date_switch, "Date format")
         self.date_switch.picked.connect(self._on_date_picked)
         self.date_switch.setVisible(False)
@@ -175,7 +212,7 @@ class DataTablePanel(QFrame):
         # textBox1 — custom text input (mode 4: custom)
         # Windows: (15, 15) 200x22
         self.text_input = QLineEdit(self)
-        self.text_input.setGeometry(15, 15, 200, 22)
+        self.text_input.setGeometry(*TEXT_INPUT)
         self.text_input.setStyleSheet(Styles.INPUT_FIELD)
         self.text_input.setPlaceholderText("Text/Value")
         say_tip(self.text_input, "Custom text")
@@ -277,7 +314,7 @@ class DisplayModePanel(QFrame):
         self.mode_id = mode_id
         self.actions: list[str] = actions or []
 
-        self.setFixedSize(Sizes.DISPLAY_MODE_W, Sizes.DISPLAY_MODE_H)
+        self.setFixedSize(DISPLAY_MODE_W, DISPLAY_MODE_H)
         self.setAutoFillBackground(True)
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Window, QColor(Colors.PANEL_FALLBACK))
@@ -316,7 +353,7 @@ class DisplayModePanel(QFrame):
     def _setup_ui(self):
         # Toggle button — small slider for all panels
         self.toggle_btn = QPushButton(self)
-        self.toggle_btn.setGeometry(*Layout.TOGGLE_MASK)
+        self.toggle_btn.setGeometry(*TOGGLE_MASK)
         on_px = Assets.load_pixmap(Assets.TOGGLE_ON, 36, 18)
         off_px = Assets.load_pixmap(Assets.TOGGLE_OFF, 36, 18)
 
@@ -334,14 +371,14 @@ class DisplayModePanel(QFrame):
 
         # Title label next to toggle
         self._title_lbl = QLabel(self.mode_id.title(), self)
-        self._title_lbl.setGeometry(44, 5, 140, 18)
+        self._title_lbl.setGeometry(*MODE_TITLE)
         self._title_lbl.setStyleSheet(self._TITLE_STYLE)
 
         # Action buttons with icon images
         _ICON_MAP = ACTION_ICON_IMAGES
         self._action_buttons: list[QPushButton] = []
-        action_positions = [Layout.ACTION_BTN_1, Layout.ACTION_BTN_2,
-                            Layout.ACTION_BTN_3]
+        action_positions = [ACTION_BTN_1, ACTION_BTN_2,
+                            ACTION_BTN_3]
         for i, action_name in enumerate(self.actions):
             if i >= len(action_positions):
                 break
@@ -491,25 +528,25 @@ class MaskPanel(DisplayModePanel):
     mask_visibility_toggled = Signal(bool)
 
     # X/Y entry positions (right side of panel)
-    _TEXTBOX_X = (259, 40, 38, 16)
-    _TEXTBOX_Y = (259, 65, 38, 16)
+    _TEXTBOX_X = MASK_TEXTBOX_X
+    _TEXTBOX_Y = MASK_TEXTBOX_Y
 
     # +/- button positions
-    _BTN_ADD_X = (301, 42, 14, 14)
-    _BTN_SUB_X = (319, 42, 14, 14)
-    _BTN_ADD_Y = (301, 67, 14, 14)
-    _BTN_SUB_Y = (319, 67, 14, 14)
+    _BTN_ADD_X = MASK_BTN_ADD_X
+    _BTN_SUB_X = MASK_BTN_SUB_X
+    _BTN_ADD_Y = MASK_BTN_ADD_Y
+    _BTN_SUB_Y = MASK_BTN_SUB_Y
 
     # Eye toggle position
-    _BTN_EYE = (309, 6, 24, 16)
+    _BTN_EYE = MASK_BTN_EYE
 
     def __init__(self, parent=None):
         super().__init__("mask", ["Load", "Upload"], parent)
         # Reposition action buttons to align with left-side text labels
         if len(self._action_buttons) >= 1:
-            self._action_buttons[0].setGeometry(115, 30, 40, 40)  # Load/Masks
+            self._action_buttons[0].setGeometry(*MASK_ACTION_BTN_1)  # Load/Masks
         if len(self._action_buttons) >= 2:
-            self._action_buttons[1].setGeometry(175, 30, 40, 40)  # Upload
+            self._action_buttons[1].setGeometry(*MASK_ACTION_BTN_2)  # Upload
         self._updating = False
         self._mask_visible = True
         self._setup_mask_ui()
@@ -633,22 +670,22 @@ class ScreenCastPanel(DisplayModePanel):
     audio_toggled = Signal(bool)
 
     # Positions from Windows UCTouPingXianShi.cs
-    _TEXTBOX_X = (110, 40, 56, 16)
-    _TEXTBOX_Y = (110, 65, 56, 16)
-    _TEXTBOX_W = (241, 40, 56, 16)
-    _TEXTBOX_H = (241, 65, 56, 16)
+    _TEXTBOX_X = CAST_TEXTBOX_X
+    _TEXTBOX_Y = CAST_TEXTBOX_Y
+    _TEXTBOX_W = CAST_TEXTBOX_W
+    _TEXTBOX_H = CAST_TEXTBOX_H
 
-    _BTN_ADD_X = (171, 42, 14, 14)
-    _BTN_SUB_X = (189, 42, 14, 14)
-    _BTN_ADD_Y = (171, 67, 14, 14)
-    _BTN_SUB_Y = (189, 67, 14, 14)
-    _BTN_ADD_W = (301, 42, 14, 14)
-    _BTN_SUB_W = (319, 42, 14, 14)
-    _BTN_ADD_H = (301, 67, 14, 14)
-    _BTN_SUB_H = (319, 67, 14, 14)
+    _BTN_ADD_X = CAST_BTN_ADD_X
+    _BTN_SUB_X = CAST_BTN_SUB_X
+    _BTN_ADD_Y = CAST_BTN_ADD_Y
+    _BTN_SUB_Y = CAST_BTN_SUB_Y
+    _BTN_ADD_W = CAST_BTN_ADD_W
+    _BTN_SUB_W = CAST_BTN_SUB_W
+    _BTN_ADD_H = CAST_BTN_ADD_H
+    _BTN_SUB_H = CAST_BTN_SUB_H
 
-    _BTN_BORDER = (309, 16, 24, 16)
-    _BTN_AUDIO = (280, 16, 24, 16)
+    _BTN_BORDER = CAST_BTN_BORDER
+    _BTN_AUDIO = CAST_BTN_AUDIO
 
 
     def __init__(self, parent=None):
