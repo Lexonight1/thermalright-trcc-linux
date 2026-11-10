@@ -14,6 +14,7 @@ from ...core.commands import (
     DiscoverDevices,
     ResetDevice,
 )
+from ...core.models import canonical_device_key
 from ...core.results import DeviceCanvasResult, DeviceStateResult, DisconnectResult
 from ._shared import (
     http_error_if_failed,
@@ -59,8 +60,9 @@ def device_detail(key: str, request: Request) -> ProductSchema:
     """Detail for one discovered device — 404 if not currently present."""
     log.info("api GET /devices/%s", key)
     result = request.app.state.trcc.dispatch(DiscoverDevices())
+    wanted = canonical_device_key(key)      # as typed: 87AD:70DB is 87ad:70db
     for unit_key, product in result.units():
-        if unit_key == key:
+        if unit_key == wanted:
             return product_to_schema(product, unit_key)
     raise HTTPException(status_code=404, detail=f"device {key} not found")
 

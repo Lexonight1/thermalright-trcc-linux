@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import fields
 from typing import TYPE_CHECKING, ClassVar, Generic, TypeVar, cast, get_args
 
-from ..models import Capability
+from ..models import Capability, canonical_device_key
 from ..results import (
     Result,
 )
@@ -81,6 +81,23 @@ class Command(ABC, Generic[R_co]):
     #: refuses it while that module is off or not installed, saying where to
     #: turn it on -- every UI the same, instead of each hiding its own way.
     MODULE: ClassVar[str] = ""
+
+    def __post_init__(self) -> None:
+        """Hold ``key`` in its one spelling from the moment the Command exists.
+
+        Every UI builds Commands from what a person typed, and the App looks
+        devices and settings up by exact string: ``87AD:70DB`` from the API
+        missed the connected ``87ad:70db``, attached a second device over it
+        and filed its settings under a key nothing reads (#334).  Here, once,
+        for every Command, in-process or decoded off the socket.
+        """
+        key = getattr(self, "key", None)
+        if not isinstance(key, str):
+            return
+        if (canonical := canonical_device_key(key)) != key:
+            log.info("%s: device key %r -> %r", type(self).__name__, key,
+                     canonical)
+            object.__setattr__(self, "key", canonical)
 
     @abstractmethod
     def execute(self, app: App) -> R_co: ...

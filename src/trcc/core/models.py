@@ -414,6 +414,36 @@ def parse_device_key(key: str) -> tuple[int, int, str]:
     return int(vid, 16), int(pid, 16), unit
 
 
+#: A device key as a person may type it: any case, an optional opaque unit.
+_TYPED_DEVICE_KEY = re.compile(r"[0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}(@.+)?")
+
+
+def canonical_device_key(key: str) -> str:
+    """*key* in the one spelling :func:`format_device_key` writes, if it is one.
+
+    A key reaches the App from whatever a person typed -- an API path, a CLI
+    argument, a script's JSON -- and ``87AD:70DB`` named the same cooler as
+    ``87ad:70db`` to them and a different one to every dict keyed on it.  The
+    App took the uppercase one for a second device, attached it over the live
+    panel's entry, and lost the panel until a restart (#334).  Anything that is
+    not a device key (a module name, a path name) comes back untouched; so does
+    the unit, which is opaque.
+
+    A per-frame Command is built with a key that is already canonical, and
+    going the long way cost ~19,000 instructions per Command (5x building
+    one).  Lowercase already IS the one spelling, or is not a key at all --
+    both come back untouched -- so that case returns at once.
+    """
+    if key == key.lower():
+        return key
+    if _TYPED_DEVICE_KEY.fullmatch(key) is None:
+        frame_log.debug("canonical_device_key: %r is not a device key", key)
+        return key
+    canonical = format_device_key(*parse_device_key(key))
+    frame_log.debug("canonical_device_key: %r -> %r", key, canonical)
+    return canonical
+
+
 @dataclass(frozen=True, slots=True)
 class DeviceInfo:
     """Live device, produced by Platform.scan_devices().

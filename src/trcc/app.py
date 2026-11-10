@@ -1498,6 +1498,15 @@ class App(CommandBus, ModuleServices):
         that fails — an unproven path can then only ever help.
         """
         log.info("attach: %04x:%04x quirk_transport=%s", vid, pid, quirk_transport)
+        if (key := format_device_key(vid, pid, unit)) in self.devices:
+            # Every caller releases first.  One that does not would open a
+            # second transport -- refused, the first still holds the claim --
+            # and overwrite the entry of the device that holds it, leaving the
+            # panel unreachable until a restart (#334).
+            log.warning("attach: %s is already attached -- refused, the "
+                        "attached one keeps it", key)
+            raise TransportError(f"{key} is already attached -- release it "
+                                 "before attaching it again")
         info = find_product(vid, pid)
         if info is None:
             raise DeviceNotFoundError(

@@ -20,13 +20,17 @@ import typer
 from ..._boot import trcc
 from ...app import App
 from ...core.commands import DeviceState
+from ...core.models import canonical_device_key
 from ...core.ports import CommandBus, Platform, Renderer
 
 log = logging.getLogger(__name__)
 
 #: A command's device-key argument -- the one wording every command and every
 #: module's CLI shows (it was typed out 46 times).
-DeviceKey = Annotated[str, typer.Argument(help="Device key, e.g. 0402:3922")]
+#: Held in its one spelling from the moment it is parsed, so the CLI's own
+#: comparisons (an event's key against the one typed) agree with the App's.
+DeviceKey = Annotated[str, typer.Argument(help="Device key, e.g. 0402:3922",
+                                          callback=canonical_device_key)]
 
 
 def dumps_json(payload: Any) -> str:

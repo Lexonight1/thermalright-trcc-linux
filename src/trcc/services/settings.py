@@ -56,6 +56,7 @@ from ..core.models import (
     TempUnit,
     ThemeBackground,
     background_choice_from_fields,
+    canonical_device_key,
 )
 from ..core.ports import Paths
 
@@ -1263,11 +1264,12 @@ class Settings:
             for field_name, value in app_data.items():
                 if hasattr(self._app, field_name):
                     setattr(self._app, field_name, value)
-            for key, data in raw.get("devices", {}).items():
+            for key, data in _by_canonical_key(raw.get("devices", {})).items():
                 self._devices[key] = _device_settings_from_dict(
                     _migrate_device(data, schema, key),
                 )
-            for key, data in raw.get("led_devices", {}).items():
+            for key, data in _by_canonical_key(
+                    raw.get("led_devices", {})).items():
                 self._led_devices[key] = _led_settings_from_dict(
                     _migrate_led(data, schema, key),
                 )
@@ -1364,6 +1366,34 @@ def _json_default(obj: Any) -> Any:
     if isinstance(obj, tuple):
         return list(obj)
     raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
+
+
+def _by_canonical_key(entries: dict[str, Any]) -> dict[str, Any]:
+    """Each device's saved entry under its one key spelling (#334).
+
+    Before Commands held keys canonical, ``87AD:70DB`` typed into the API got
+    an entry of its own beside ``87ad:70db`` -- settings nothing reads, so a
+    brightness set through it never reached the panel.  When both exist the
+    canonical one is what the panel has been using, so it wins; a lone
+    non-canonical entry is kept under the canonical key.
+    """
+    merged: dict[str, Any] = {}
+    for key, data in entries.items():
+        canonical = canonical_device_key(key)
+        if canonical == key:
+            merged[key] = data
+        elif canonical in entries:
+            log.warning("_by_canonical_key: dropped the settings saved under "
+                        "%r -- %r holds this device's", key, canonical)
+        elif canonical in merged:
+            log.warning("_by_canonical_key: dropped the settings saved under "
+                        "%r -- another spelling of %r came first", key,
+                        canonical)
+        else:
+            log.info("_by_canonical_key: settings saved under %r now live "
+                     "under %r", key, canonical)
+            merged[canonical] = data
+    return merged
 
 
 def _migrate_device(
