@@ -52,6 +52,7 @@ def _commands(key: str, tmp: Path) -> list[Command[Any]]:
         C.AddOverlayElement(key=key, element_id="e1"),
         C.UpdateOverlayElement(key=key, element_id="e1", x=5),
         C.DeleteOverlayElement(key=key, element_id="e1"),
+        C.PlaceModule(key=key, module="viz"),
         C.SetOverlayConfig(key=key),
         C.ApplyMask(key=key, path=tmp / "mask"),
         C.UploadCustomMask(key=key, source=img),

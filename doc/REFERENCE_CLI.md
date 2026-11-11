@@ -711,7 +711,7 @@ trcc display overlay-add [OPTIONS] KEY TYPE_
 | Argument | Description |
 |---|---|
 | `KEY` | Device key, e.g. 0402:3922 |
-| `TYPE_` | 'text' / 'metric' / 'clock' |
+| `TYPE_` | 'text' / 'metric' / 'clock' / 'module' |
 
 | Option | Description |
 |---|---|
@@ -727,6 +727,9 @@ trcc display overlay-add [OPTIONS] KEY TYPE_
 | `--bold` | -- |
 | `--italic` | -- |
 | `--show-unit` | Draw the metric's unit (°C/%/MHz/RPM) after the number, or the bare number when the unit is baked into the theme art |
+| `--ref` `REF` | What a module draws (type=module): <folder>/<id> |
+| `--width` `WIDTH` | The module picture's width (type=module) |
+| `--height` `HEIGHT` | Its height (type=module) |
 | `--id` `ELEMENT_ID` | Explicit element id (default: auto-generated UUID) |
 
 ### `trcc display overlay-background`
@@ -812,6 +815,9 @@ trcc display overlay-update [OPTIONS] KEY ELEMENT_ID
 | `--bold` | -- |
 | `--italic` | -- |
 | `--show-unit` | Draw the metric's unit (°C/%/MHz/RPM) after the number, or the bare number when the unit is baked into the theme art |
+| `--ref` `REF` | -- |
+| `--width` `WIDTH` | -- |
+| `--height` `HEIGHT` | -- |
 
 ### `trcc display pause-video`
 
@@ -825,6 +831,26 @@ trcc display pause-video KEY STATE
 |---|---|
 | `KEY` | Device key |
 | `STATE` | 'on' (pause) or 'off' (resume) |
+
+### `trcc display place-module`
+
+Put what a module draws on the panel now in a rectangle of its layout.
+
+```bash
+trcc display place-module [OPTIONS] KEY [MODULE]
+```
+
+| Argument | Description |
+|---|---|
+| `KEY` | Device key, e.g. 0402:3922 |
+| `MODULE` | The module whose picture the layout gets (default: the one drawing on the panel now) *(optional)* |
+
+| Option | Description |
+|---|---|
+| `--x` `X` | Left edge |
+| `--y` `Y` | Top edge |
+| `--width` `WIDTH` | Width (0: a third of the panel) |
+| `--height` `HEIGHT` | Height (0: a third of the panel) |
 
 ### `trcc display play`
 

@@ -20,13 +20,14 @@ Device.send.  Order mirrors the C# ground truth
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from ..core.geometry import (
     content_is_portrait,
+    element_rect,
     inset_rect,
     oriented_canvas,
     plan_orientation,
@@ -349,12 +350,13 @@ class DisplayService:
         # this cache from handing back the last frame; with none, () -- the
         # key is what it always was.
         insets = self._inset(info.key, s, visual_size)
+        placed = self._module_element(info.key, s, theme, visual_size)
         frame_key = (
             bg_key, overlay_key,
             s.brightness, s.orientation, s.split_mode,
             resolved_profile.rotate,
             id(resolved_profile),
-            tuple(layer.key() for layer in insets),
+            tuple(layer.key() for layer in (*placed, *insets)),
         )
         if (
             scene is not None
@@ -375,7 +377,8 @@ class DisplayService:
         # by (split_mode, rotation, SUB byte) as the C# does.  ``composite``
         # copies its base, so the cached bg+mask is never drawn into.
         layers = self._layers_over_background(
-            info, s, overlay_key, overlay_surface, visual_size, profile, insets)
+            info, s, overlay_key, overlay_surface, visual_size, profile, insets,
+            placed)
         surface = draw_all(bg_surface, layers, self._r)
 
         # Brightness dim (before rotation — matches C# order)
@@ -1561,34 +1564,63 @@ class DisplayService:
         if s.inset is None or (source := self._media.inset(key)) is None:
             frame_log.debug("_inset: %s none (chosen=%s)", key, s.inset is not None)
             return []
+        frame = self._latest(key, source, self._media.close_inset)
+        return [] if frame is None else [Inset(frame, inset_rect(visual_size, s.inset))]
+
+    def _module_element(self, key: str, s: DeviceSettings, theme: Theme,
+                        visual_size: tuple[int, int]) -> list[Layer]:
+        """The theme's module element (#328) -- a module's picture in the
+        rectangle the layout places, under the metrics -- or nothing: none
+        in the layout, the overlay switched off, its module not drawing, no
+        frame yet, or the rectangle off the panel."""
+        source = self._media.element(key)
+        if source is None or not s.overlay_enabled:
+            frame_log.debug("_module_element: %s none (open=%s overlay=%s)", key,
+                            source is not None, s.overlay_enabled)
+            return []
+        placed = next((e for e in resolve_overlay_elements(
+            theme.config, s.user_overlay_elements) if e.get("type") == "module"), None)
+        rect = None if placed is None else element_rect(
+            visual_size, int(placed.get("x", 0)), int(placed.get("y", 0)),
+            int(placed.get("width", 0)), int(placed.get("height", 0)))
+        if rect is None:
+            frame_log.debug("_module_element: %s nothing placed on the panel", key)
+            return []
+        frame = self._latest(key, source, self._media.close_element)
+        return [] if frame is None else [Inset(frame, rect)]
+
+    def _latest(self, key: str, source: Any,
+                close: Callable[[str], None]) -> RawFrame | None:
+        """*source*'s newest frame -- None when it has none this tick, or
+        when it is gone for good, which *close* ends (said once, not every
+        frame; the choice stays saved, so a resume opens it again)."""
         try:
-            frame = source.latest()
+            return source.latest()
         except (CaptureNotReady, CaptureFailed) as e:
-            frame_log.debug("_inset: %s no frame this tick: %s", key, e)
-            return []
+            frame_log.debug("_latest: %s no frame this tick: %s", key, e)
+            return None
         except OSError as e:
-            # Gone for good: closed, so this is said once, not every frame.
-            # The choice stays saved -- a resume opens it again.
-            log.warning("_inset: %s's boxed picture %s is gone (%s) -- closing it",
+            log.warning("_latest: %s's picture %s is gone (%s) -- closing it",
                         key, source.name, e)
-            self._media.close_inset(key)
-            return []
-        return [Inset(frame, inset_rect(visual_size, s.inset))]
+            close(key)
+            return None
 
     def _layers_over_background(
         self, info: ProductInfo, s: DeviceSettings, overlay_key: Any,
         overlay_surface: Any, visual_size: tuple[int, int],
         profile: DeviceProfile | None, insets: Sequence[Layer] = (),
+        placed: Sequence[Layer] = (),
     ) -> list[Layer]:
-        """What is drawn over the background, in order: the boxed picture
-        (*insets*), the overlay, then the Dynamic Island -- the box over the
-        overlay instead when the panel chose that (``over_metrics``, #335).
+        """What is drawn over the background, in order: the theme's module
+        element (*placed*, #328), the boxed picture (*insets*), the overlay,
+        then the Dynamic Island -- the box over the overlay instead when the
+        panel chose that (``over_metrics``, #335).
         The Island stays on top: the C# draws it over every picture.  The
         wire and the preview both draw these, so they cannot disagree."""
         overlay = Overlay(overlay_key, overlay_surface)
         over = s.inset is not None and s.inset.over_metrics
         middle: list[Layer] = [overlay, *insets] if over else [*insets, overlay]
-        layers = [*middle, *self._island(info, s, visual_size, profile)]
+        layers = [*placed, *middle, *self._island(info, s, visual_size, profile)]
         frame_log.debug("_layers_over_background: %s %d layer(s), box %s the metrics",
                         info.key, len(layers), "over" if over else "under")
         return layers

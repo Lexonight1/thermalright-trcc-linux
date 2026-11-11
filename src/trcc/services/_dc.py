@@ -250,7 +250,13 @@ class Writer:
         elements; the codec decides nothing.
         """
         log.info("serialize: %d element(s)", len(config.get("elements", [])))
-        elements: list[dict[str, Any]] = list(config.get("elements", []))
+        # A module element (#328) is TRCC's own: the C# has nothing to draw it
+        # with, and writing it as a mode-4 text left an empty one in its place.
+        elements: list[dict[str, Any]] = [
+            e for e in config.get("elements", []) if e.get("type") != "module"]
+        if dropped := len(config.get("elements", [])) - len(elements):
+            log.info("serialize: %d module element(s) left out -- the Windows "
+                     "app has no module pictures", dropped)
         w = _Writer()
         w.write_byte(_MAGIC_DD)
         # ``myXtxx`` — the overlay toggle.  Hardcoded ``True`` until

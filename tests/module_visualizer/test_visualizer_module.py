@@ -566,3 +566,47 @@ def test_an_app_gone_mid_ask_is_an_answer_the_page_reads(
     page._where.ask(_KEY)
     qtbot.wait(300)                                   # both answers land
     assert page.selected_item is None
+
+
+def test_module_picture_places_the_playing_visual_in_the_layout(
+        qtbot: Any, app: App) -> None:
+    """The gui's "Module Picture" (#328), driven in the real window with the
+    real Visualizer: what plays on the panel goes in a rectangle of its
+    layout -- the App saves it, the grid shows the cell, the element draws
+    it, and the background steps aside with its choice kept.  MUTATION
+    CHECK: drop ``module_requested`` from the add panel's MODULE arm."""
+    from PySide6.QtWidgets import QPushButton
+
+    from trcc.core.commands import ResolveOverlay
+    from trcc.core.models import OverlayMode, PanelSource
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    assert app.dispatch(PlayVisual(key=_KEY, visual="trcc-pipes")).ok
+    window = TRCCApp(app=app)
+    qtbot.addWidget(window)
+    window.replay_initial_devices()
+    window._activate_device(_KEY)
+    settings = window.uc_theme_setting
+    next(b for b in settings.add_panel.findChildren(QPushButton)
+         if b.property("trcc_overlay_mode") == OverlayMode.MODULE).click()
+    placed = [e for e in app.dispatch(ResolveOverlay(key=_KEY)).elements
+              if e.type == "module"]
+    assert len(placed) == 1, placed
+    saved = app.themes.background_config(placed[0].ref)
+    assert saved is not None and saved["visual"] == "trcc-pipes"
+    assert app.media.element(_KEY) is not None
+    assert app.media.live(_KEY, PanelSource.MODULE) is None
+    assert _choice(app)[0] == "visualizer"
+    qtbot.waitUntil(lambda: any(c.mode is OverlayMode.MODULE for c in
+                                settings.overlay_grid._model.all_configs()),
+                    timeout=5000)
+    # Its size, from the inline boxes the cell shows when selected.
+    index = next(i for i, c in enumerate(settings.overlay_grid._model.all_configs())
+                 if c.mode is OverlayMode.MODULE)
+    settings.overlay_grid._on_cell_clicked(index)
+    assert settings.data_table.width_spin.isVisibleTo(settings.data_table)
+    settings.data_table.width_spin.setValue(150)
+    settings.data_table.width_spin.editingFinished.emit()
+    resized = next(e for e in app.dispatch(ResolveOverlay(key=_KEY)).elements
+                   if e.type == "module")
+    assert (resized.width, resized.height) == (150, placed[0].height)

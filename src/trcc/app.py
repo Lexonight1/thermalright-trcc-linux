@@ -83,6 +83,7 @@ from .core.models import (
     WantedModule,
     Wire,
     format_device_key,
+    is_module_ref,
     oriented_resolution,
     parse_device_key,
     quirks_for,
@@ -397,6 +398,11 @@ class App(CommandBus, ModuleServices):
         # {01.png, config1.dc} unit (cloud masks are read-only — the helper
         # no-ops for them).  See _helpers.persist_user_mask_dc.
         self.events.subscribe(OverlayChanged, self._persist_user_mask_dc)
+        # A layout edit or a mask's layout can add, move or take away a
+        # theme's module element (#328).  A theme load calls sync_element
+        # itself: its ThemeLoaded comes before the new layout is adopted.
+        self.events.subscribe(OverlayChanged, self._on_layout_changed)
+        self.events.subscribe(MaskApplied, self._on_layout_changed)
         # Hotplug bridge: connect a device the moment it appears.  The monitor
         # only PUBLISHES DeviceAttached — without this subscriber the splash
         # discover is the only connect path, so a device plugged in after
@@ -478,6 +484,9 @@ class App(CommandBus, ModuleServices):
         #: Every background a module draws, by its theme ref prefix: the
         #: module, and how themes play, save and resume it.
         self._background_kinds: dict[str, tuple[str, BackgroundKind]] = {}
+        #: The ref each panel's module element (#328) plays now -- so a
+        #: layout that still names it does not restart it.
+        self._element_refs: dict[str, str] = {}
         #: Letting this user reach each module's USB devices -- one for the
         #: App: its tiles read it, installing and switching on ask it.
         self.module_devices = platform.module_devices()
@@ -636,6 +645,15 @@ class App(CommandBus, ModuleServices):
         """Panel *key*'s size, None until reported; raises when absent --
         the box's, upright, when *key* has *module* in a box."""
         profile = self.get(key).profile
+        if profile is not None and (placed := self._placed(key, module)) is not None:
+            from .core.geometry import element_rect, oriented_canvas
+            rect = element_rect(oriented_canvas(
+                profile, self.settings.for_device(key).orientation),
+                int(placed.get("x", 0)), int(placed.get("y", 0)),
+                int(placed.get("width", 0)), int(placed.get("height", 0)))
+            log.debug("panel_size: %s %s's element -> %s", key, module, rect)
+            if rect is not None:
+                return rect.width, rect.height
         if profile is not None and (inset := self._box(key, module)) is not None:
             from .core.geometry import inset_rect, oriented_canvas
             box = inset_rect(oriented_canvas(
@@ -655,6 +673,12 @@ class App(CommandBus, ModuleServices):
         from .core.commands import StopVideo
         from .core.commands.device import _publish_background
         from .services.source_driver import InsetDriver, SourceDriver
+        if self._placed(key, module) is not None:
+            log.info("show_source: %s's module element <- %s (%s, %g fps)", key,
+                     source.name, module, fps)
+            self.media.open_element(key, source)
+            self.add_task(InsetDriver(self, key, 1.0 / fps))
+            return
         if self._box(key, module) is not None:
             log.info("show_source: %s's box <- %s (%s, %g fps)", key,
                      source.name, module, fps)
@@ -677,12 +701,18 @@ class App(CommandBus, ModuleServices):
         has *module* in a box, the box closes instead -- and without
         *keep_choice* it is no longer chosen."""
         from .core.commands.device import _theme_background_returns
-        from .services.source_driver import inset_task_key, task_key
+        from .services.source_driver import task_key
+        if self._placed(key, module) is not None:
+            log.info("end_source: %s's module element (%s)", key, module)
+            self.media.close_element(key)
+            self._element_refs.pop(key, None)
+            self._end_picture_driver(key)
+            return
         if self._box(key, module) is not None:
             log.info("end_source: %s's box (%s) keep_choice=%s", key, module,
                      keep_choice)
             self.media.close_inset(key)
-            self.remove_task(inset_task_key(key))
+            self._end_picture_driver(key)
             if not keep_choice:
                 self.settings.set_inset(key, None)
             return
@@ -697,16 +727,114 @@ class App(CommandBus, ModuleServices):
         """The module source drawing panel *key* now, if any -- the box's,
         when *key* has *module* in a box."""
         frame_log.debug("App.source: %s %s", key, module)
+        if self._placed(key, module) is not None:
+            return self.media.element(key)
         if self._box(key, module) is not None:
             return self.media.inset(key)
         return self.media.live(key, PanelSource.MODULE)
 
     def draws(self, module: str, key: str) -> bool:
         """Whether *module* draws on panel *key*: its background, or its box."""
-        found = (self._box(key, module) is not None
+        found = (self._placed(key, module) is not None
+                 or self._box(key, module) is not None
                  or self.panel_source(key) == module)
         log.debug("draws: %s on %s -> %s", module, key, found)
         return found
+
+    def _placed(self, key: str, module: str | None) -> dict[str, Any] | None:
+        """Panel *key*'s module element (#328), when *module* draws it -- the
+        first in its layout whose ref a background kind of *module*'s owns.
+        Ahead of the box and the background: the theme placed it."""
+        if module is None:
+            return None
+        element = self._module_element(key)
+        ref = str(element.get("ref")) if element is not None else ""
+        owner = self._background_kinds.get(ref.split("/", 1)[0])
+        found = element if owner is not None and owner[0] == module else None
+        log.debug("_placed: %s %s -> %s", key, module, found is not None)
+        return found
+
+    def _module_element(self, key: str) -> dict[str, Any] | None:
+        """The first module element in panel *key*'s layout whose ref has
+        the one allowed shape -- a shared theme's trcc.json is outside data."""
+        from .core.commands._helpers import device_overlay_layout
+        found = next((e for e in device_overlay_layout(self, key)
+                      if e.get("type") == "module"
+                      and is_module_ref(str(e.get("ref", "")))), None)
+        log.debug("_module_element: %s -> %s", key, found and found.get("ref"))
+        return found
+
+    def _end_picture_driver(self, key: str) -> None:
+        """Stop panel *key*'s box driver once neither the box nor the module
+        element draws -- both are sent by the one ``InsetDriver``."""
+        from .services.source_driver import inset_task_key
+        if self.media.inset(key) is None and self.media.element(key) is None:
+            log.debug("_end_picture_driver: %s", key)
+            self.remove_task(inset_task_key(key))
+
+    def _on_layout_changed(self, event: OverlayChanged | MaskApplied) -> None:
+        log.debug("_on_layout_changed: %s", event)
+        self.sync_element(event.key)
+
+    def sync_element(self, key: str, module: str | None = None) -> None:
+        """Panel *key*'s module element as its layout says it (#328): played
+        when the layout has one and its module is on, played again when the
+        ref changed, ended when the layout has none.  The same module's box
+        or background steps aside while it draws -- its choice kept -- and
+        comes back when it goes.  *module* limits it to one module's."""
+        element = self._module_element(key)
+        ref = str(element["ref"]) if element is not None else None
+        owner = self._background_kinds.get(ref.split("/", 1)[0]) if ref else None
+        if module is not None and (owner is None or owner[0] != module):
+            log.debug("sync_element: %s has no element of %s", key, module)
+            return
+        if ref is not None and ref == self._element_refs.get(key) \
+                and self.media.element(key) is not None:
+            log.debug("sync_element: %s already draws %s", key, ref)
+            return
+        if self.media.element(key) is not None or key in self._element_refs:
+            self._end_element(key, back=ref is None)
+        if ref is None:
+            log.debug("sync_element: %s has no module element", key)
+            return
+        self._play_element(key, ref, owner)
+
+    def _end_element(self, key: str, *, back: bool) -> None:
+        """Close panel *key*'s module element -- and, *back*, let the box
+        and the background it held aside draw again."""
+        log.info("_end_element: %s ends %s (back=%s)", key,
+                 self._element_refs.get(key), back)
+        self.media.close_element(key)
+        self._element_refs.pop(key, None)
+        self._end_picture_driver(key)
+        if back:
+            self.resume_background(key)
+            self.resume_box(key)
+
+    def _play_element(self, key: str, ref: str,
+                      owner: tuple[str, BackgroundKind] | None) -> None:
+        """Play *ref* in panel *key*'s module element through its module's
+        kind -- the module's own box or background on this panel stepping
+        aside first -- or say why it waits."""
+        from .core.models import PanelSource
+        from .services.source_driver import task_key
+        payload = self.themes.background_config(ref)
+        if owner is None or payload is None:
+            log.info("_play_element: %s's element %s waits (module %s, settings %s)",
+                     key, ref, "on" if owner else "off or absent",
+                     "found" if payload is not None else "missing")
+            return
+        drawer, kind = owner
+        if self.panel_source(key) == drawer:
+            self.media.close_live(key, PanelSource.MODULE)
+            self.remove_task(task_key(key, PanelSource.MODULE))
+        if (inset := self.settings.for_device(key).inset) is not None \
+                and inset.module == drawer:
+            self.media.close_inset(key)
+        self._element_refs[key] = ref
+        played = kind.play(key, payload)
+        log.info("_play_element: %s plays %s (%s): ok=%s %s", key, ref, drawer,
+                 played.ok, played.message)
 
     def _box(self, key: str, module: str | None) -> InsetChoice | None:
         """Panel *key*'s box, when it holds *module* (and *module* is named)."""
@@ -842,6 +970,7 @@ class App(CommandBus, ModuleServices):
         for key in self.panel_keys():
             self.resume_background(key, module)
             self.resume_box(key, module)
+            self.sync_element(key, module)
 
     def resume_background(self, key: str, module: str | None = None) -> None:
         """Panel *key*'s module background, again -- a theme's that waited
@@ -850,6 +979,10 @@ class App(CommandBus, ModuleServices):
         s = self.settings.for_device(key)
         pending = s.pending_background
         prefix = pending.split("/", 1)[0] if pending else ""
+        if pending and self._placed(key, self.background_owner(prefix)) is not None:
+            log.info("resume_background: %s's theme background %s waits -- its "
+                     "module draws the theme's element", key, pending)
+            return
         if pending and (module is None or self.background_owner(prefix) == module):
             kind = self.background_kind(prefix)
             payload = self.themes.background_config(pending)
@@ -864,6 +997,10 @@ class App(CommandBus, ModuleServices):
             return
         if self.media.live(key, PanelSource.MODULE) is not None:
             log.debug("resume_background: %s already draws", key)
+            return
+        if self._placed(key, chosen) is not None:
+            log.info("resume_background: %s's %s background waits -- it draws "
+                     "the theme's element", key, chosen)
             return
         kind = self.background_kind_of(chosen)
         if kind is None:
@@ -892,6 +1029,10 @@ class App(CommandBus, ModuleServices):
             return
         if self.media.inset(key) is not None:
             log.debug("resume_box: %s's box already draws", key)
+            return
+        if self._placed(key, inset.module) is not None:
+            log.info("resume_box: %s's box waits -- %s draws the theme's element",
+                     key, inset.module)
             return
         if (live := self.media.live_kind(key)) is not None:
             log.info("resume_box: %s's box waits -- its %s covers the theme",
@@ -1981,6 +2122,7 @@ class App(CommandBus, ModuleServices):
         # saved: only the running parts stop.
         self.media.close_live(key)
         self.media.close_inset(key)
+        self.media.close_element(key)
 
     def send(self, key: str, payload: Any, *, wait: bool = True) -> bool:
         """Submit a frame to a device's send worker.

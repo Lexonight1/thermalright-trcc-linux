@@ -27,6 +27,7 @@ from trcc.core.commands import (
     LoadTheme,
     LoadVideo,
     PauseVideo,
+    PlaceModule,
     PlayVideo,
     ProbeVideoDuration,
     RenderDcStandalone,
@@ -806,6 +807,10 @@ def overlay_add(
         help="Draw the metric's unit (°C/%/MHz/RPM) after the number, or the "
              "bare number when the unit is baked into the theme art",
     ),
+    ref: str = typer.Option(
+        "", "--ref", help="What a module draws (type=module): <folder>/<id>"),
+    width: int = typer.Option(0, "--width", help="The module picture's width (type=module)"),
+    height: int = typer.Option(0, "--height", help="Its height (type=module)"),
     element_id: str = typer.Option(
         "", "--id", help="Explicit element id (default: auto-generated UUID)",
     ),
@@ -813,14 +818,38 @@ def overlay_add(
     """Add a user-edited overlay element to a device."""
     log.info(
         "cli display overlay-add: key=%s type=%s x=%s y=%s metric=%s "
-        "show_unit=%s element_id=%s",
-        key, type_, x, y, metric, show_unit, element_id,
+        "show_unit=%s ref=%s %sx%s element_id=%s",
+        key, type_, x, y, metric, show_unit, ref, width, height, element_id,
     )
     result = get_app().dispatch(AddOverlayElement(
         key=key, type=type_, x=x, y=y, text=text, metric=metric,
         format=fmt, source=source, color=color, size=size, font=font,
-        bold=bold, italic=italic, show_unit=show_unit, element_id=element_id,
+        bold=bold, italic=italic, show_unit=show_unit, ref=ref, width=width,
+        height=height, element_id=element_id,
     ))
+    typer.echo(result.message)
+    if result.ok and result.element is not None:
+        typer.echo(f"  id: {result.element.id}")
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("place-module")
+def place_module(
+    key: DeviceKey,
+    module: str = typer.Argument(
+        "", help="The module whose picture the layout gets (default: the one "
+                 "drawing on the panel now)"),
+    x: int = typer.Option(0, "--x", help="Left edge"),
+    y: int = typer.Option(0, "--y", help="Top edge"),
+    width: int = typer.Option(0, "--width", help="Width (0: a third of the panel)"),
+    height: int = typer.Option(0, "--height", help="Height (0: a third of the panel)"),
+) -> None:
+    """Put what a module draws on the panel now in a rectangle of its layout."""
+    log.info("cli display place-module: key=%s module=%s at %s,%s %sx%s",
+             key, module, x, y, width, height)
+    result = get_app().dispatch(PlaceModule(key=key, module=module, x=x, y=y,
+                                            width=width, height=height))
     typer.echo(result.message)
     if result.ok and result.element is not None:
         typer.echo(f"  id: {result.element.id}")
@@ -851,17 +880,21 @@ def overlay_update(
         help="Draw the metric's unit (°C/%/MHz/RPM) after the number, or the "
              "bare number when the unit is baked into the theme art",
     ),
+    ref: str | None = typer.Option(None, "--ref"),
+    width: int | None = typer.Option(None, "--width"),
+    height: int | None = typer.Option(None, "--height"),
 ) -> None:
     """Mutate fields on an existing user-edited overlay element."""
     log.info(
-        "cli display overlay-update: key=%s element_id=%s show_unit=%s",
-        key, element_id, show_unit,
+        "cli display overlay-update: key=%s element_id=%s show_unit=%s ref=%s "
+        "%sx%s", key, element_id, show_unit, ref, width, height,
     )
     result = get_app().dispatch(UpdateOverlayElement(
         key=key, element_id=element_id,
         x=x, y=y, color=color, size=size, font=font, text=text,
         metric=metric, format=fmt, source=source,
-        bold=bold, italic=italic, show_unit=show_unit,
+        bold=bold, italic=italic, show_unit=show_unit, ref=ref, width=width,
+        height=height,
     ))
     typer.echo(result.message)
     if not result.ok:

@@ -565,3 +565,258 @@ def test_the_cli_and_the_api_send_over_metrics(monkeypatch: pytest.MonkeyPatch,
                            json={"module": "viz", "size": "full", "over_metrics": True})
     assert resp.status_code == 200, resp.text
     assert [(c.size, c.over_metrics) for c in sent] == [("full", True)] * 2
+
+
+# ── A module's picture in the rectangle a THEME places (#328) ──────────────
+
+
+class _Solid:
+    """A module's source: one colour, every frame."""
+
+    def __init__(self, rgb: tuple[int, int, int]) -> None:
+        self.name, self.rgb, self.closed = f"solid{rgb}", rgb, 0
+
+    def latest(self) -> Any:
+        from trcc.core.models import RawFrame
+
+        return RawFrame(bytes(self.rgb) * (8 * 6), 8, 6)
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def _placing_module(tmp_path: Path) -> tuple[Any, Any, Any, str]:
+    """A 320x320 panel, a ``viz`` module whose background kind plays a solid
+    colour from its payload through the host -- as the Visualizer plays a
+    visual -- and a saved ref for green."""
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.models import ModuleManifest
+    from trcc.core.ports import BackgroundKind
+    from trcc.core.results import Result
+    from trcc.services.modules import ModuleScope
+
+    from .mock_platform import MockPlatform
+
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}], tmp_path),
+              renderer=QtRenderer())
+    app.discover_and_connect()
+    host = ModuleScope(app, ModuleManifest(key="viz", title="Viz", summary="s",
+                                           capabilities=("panels", "background")))
+
+    class Kind(BackgroundKind):
+        prefix = "viz"
+
+        def __init__(self) -> None:
+            self.played: list[Any] = []
+            self.resumed: list[str] = []
+
+        def play(self, key: str, payload: Any) -> Result:
+            self.played.append((key, dict(payload), host.panels.size(key)))
+            host.background.show(key, cast(Any, _Solid(tuple(payload["rgb"]))), 30)
+            return Result(ok=True, message="playing")
+
+        def resume(self, key: str) -> None:
+            self.resumed.append(key)
+            host.background.show(key, cast(Any, _Solid((255, 0, 0))), 30)
+
+        def snapshot(self, key: str) -> Any:
+            return {"rgb": [0, 0, 255]} if host.background.draws(key) else None
+
+    kind = Kind()
+    app.add_background_kind("viz", kind)
+    ref = app.themes.store_background_config("viz", {"rgb": [0, 255, 0]})
+    return app, host, kind, ref
+
+
+def _theme_with(root: Path, name: str, elements: list[dict[str, Any]]) -> Path:
+    """A renderable theme whose layout is *elements*."""
+    import json
+
+    from .conftest import renderable_theme
+
+    theme = renderable_theme(root, name)
+    (theme / "trcc.json").write_text(json.dumps(
+        {"name": name, "width": 320, "height": 320, "elements": elements}),
+        encoding="utf-8")
+    return theme
+
+
+def _module_element(ref: str) -> dict[str, Any]:
+    return {"id": "m1", "type": "module", "x": 40, "y": 40, "width": 100,
+            "height": 80, "ref": ref}
+
+
+def test_a_theme_places_a_module_picture_in_its_own_rectangle(tmp_path: Path) -> None:
+    """Loading a theme with a module element plays the element's ref through
+    the module's own kind, at the element's size; each frame draws the
+    module's picture in that rectangle with the theme around it.  A theme
+    without one ends it.  MUTATION CHECK: drop the element branch from
+    ``App.show_source``, or the ``sync_element`` call in ``LoadTheme``."""
+    from trcc.core.commands import LoadTheme
+
+    app, _, kind, ref = _placing_module(tmp_path)
+    key = "0402:3922"
+    placed = _theme_with(tmp_path / "themes", "Placed", [_module_element(ref)])
+    plain = _theme_with(tmp_path / "themes", "Plain", [])
+    assert app.dispatch(LoadTheme(key=key, path=placed)).ok
+    assert kind.played == [(key, {"rgb": [0, 255, 0]}, (100, 80))]
+    assert app.media.element(key) is not None
+    device = app.devices[key]
+    app.display.build_frame(info=device.info, theme=app.active_themes[key],
+                            sensors={}, profile=device.profile)
+    img = app.display.rendered_surface(key)
+    assert img.pixelColor(90, 80).getRgb()[:3] == (0, 255, 0)        # inside
+    assert img.pixelColor(20, 20).getRgb()[:3] == (0, 64, 128)       # the theme
+    assert img.pixelColor(200, 200).getRgb()[:3] == (0, 64, 128)
+    assert app.dispatch(LoadTheme(key=key, path=plain)).ok
+    assert app.media.element(key) is None and len(kind.played) == 1
+
+
+def test_the_same_modules_box_steps_aside_and_comes_back(tmp_path: Path) -> None:
+    """One module draws in one place per panel: the theme's element wins
+    while that theme is shown, the box choice stays saved, and the next
+    theme without an element brings the box back.  MUTATION CHECK: drop the
+    box step-aside from ``sync_element``, or its ``resume_box``."""
+    from trcc.core.commands import LoadTheme
+    from trcc.core.models import InsetChoice
+
+    app, host, kind, ref = _placing_module(tmp_path)
+    key = "0402:3922"
+    app.settings.set_inset(key, InsetChoice("viz"))
+    host.background.show(key, cast(Any, _Solid((255, 0, 0))), 30)
+    box = app.media.inset(key)
+    assert box is not None
+    assert app.dispatch(LoadTheme(key=key, path=_theme_with(
+        tmp_path / "themes", "Placed", [_module_element(ref)]))).ok
+    assert (app.media.inset(key), box.closed) == (None, 1)
+    assert app.settings.for_device(key).inset == InsetChoice("viz")
+    assert app.media.element(key) is not None
+    assert app.dispatch(LoadTheme(key=key, path=_theme_with(
+        tmp_path / "themes", "Plain", []))).ok
+    assert app.media.element(key) is None
+    assert kind.resumed == [key] and app.media.inset(key) is not None
+
+
+@pytest.mark.parametrize(("ref", "width", "says"), [
+    ("/etc/passwd", 100, "a module element's ref is <folder>/<id>"),
+    ("viz/../../etc", 100, "a module element's ref is <folder>/<id>"),
+    ("viz/abc", 0, "a module element needs a ref, a width and a height"),
+])
+def test_a_module_element_with_a_bad_ref_or_no_size_is_refused(
+        tmp_path: Path, ref: str, width: int, says: str) -> None:
+    """The store reads an ABSOLUTE ref as it is, so a ref from outside is
+    held to ``<folder>/<id>`` before anything reads it.  MUTATION CHECK:
+    drop ``_refused_module_fields`` from ``AddOverlayElement``."""
+    from trcc.core.commands import AddOverlayElement
+
+    app, _, _, _ = _placing_module(tmp_path)
+    result = app.dispatch(AddOverlayElement(key="0402:3922", type="module",
+                                            ref=ref, width=width, height=80))
+    assert not result.ok and result.message.startswith(says), result.message
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_a_shared_themes_ref_of_another_shape_is_never_read(
+        tmp_path: Path, nested: bool) -> None:
+    """A theme's trcc.json is outside data: a module element whose ref is not
+    ``<folder>/<id>`` plays nothing -- an absolute path (the store reads one
+    as it is), or a deeper path inside the data folder, which the module's
+    prefix and the store's own traversal check would both let through.
+    MUTATION CHECK: drop ``is_module_ref`` from ``App._module_element`` and
+    the nested ref plays."""
+    from trcc.core.commands import LoadTheme
+
+    app, _, kind, _ = _placing_module(tmp_path)
+    folder = (app.platform.paths().user_data_dir() / "viz" / "a" / "b" if nested
+              else tmp_path / "elsewhere")
+    folder.mkdir(parents=True)
+    (folder / "config.json").write_text('{"rgb": [1, 2, 3]}', encoding="utf-8")
+    ref = "viz/a/b" if nested else str(folder)
+    assert app.dispatch(LoadTheme(key="0402:3922", path=_theme_with(
+        tmp_path / "themes", "Bad", [_module_element(ref)]))).ok
+    assert kind.played == [] and app.media.element("0402:3922") is None
+
+
+def test_place_module_puts_what_the_module_draws_now_in_the_layout(
+        tmp_path: Path) -> None:
+    """``PlaceModule`` with no module named takes the one drawing on the
+    panel, saves what it draws as the element's ref -- nobody types one --
+    at a third of the panel by default, and the element plays it while the
+    module's box steps aside.  Nothing drawing, or a second element, is
+    refused.  MUTATION CHECK: drop the ``chosen_module``/``inset`` fallback,
+    or the one-per-layout refusal."""
+    from trcc.core.commands import LoadTheme, PlaceModule, ResolveOverlay
+    from trcc.core.models import InsetChoice
+
+    app, host, kind, _ = _placing_module(tmp_path)
+    key = "0402:3922"
+    assert app.dispatch(LoadTheme(key=key, path=_theme_with(
+        tmp_path / "themes", "Plain", []))).ok
+    nothing = app.dispatch(PlaceModule(key=key))
+    assert not nothing.ok and nothing.message.startswith("no module draws"), nothing.message
+    app.settings.set_inset(key, InsetChoice("viz"))
+    host.background.show(key, cast(Any, _Solid((255, 0, 0))), 30)
+    placed = app.dispatch(PlaceModule(key=key, x=10, y=20))
+    assert placed.ok, placed.message
+    element = placed.element
+    assert element is not None and element.type == "module"
+    assert (element.x, element.y, element.width, element.height) == (10, 20, 106, 106)
+    assert app.themes.background_config(element.ref) == {"rgb": [0, 0, 255]}
+    assert kind.played[-1] == (key, {"rgb": [0, 0, 255]}, (106, 106))
+    assert app.media.element(key) is not None and app.media.inset(key) is None
+    second = app.dispatch(PlaceModule(key=key, module="viz"))
+    assert not second.ok and "already has a module picture" in second.message
+    assert [e.type for e in app.dispatch(ResolveOverlay(key=key)).elements] == ["module"]
+
+
+def test_editing_another_element_keeps_the_module_element(tmp_path: Path) -> None:
+    """Sifrik's point 4 (#328): an edit must never drop it.  Every UI edits
+    one element by id; the gui's cell round-trip and the whole-layout PUT
+    carry its fields whole.  MUTATION CHECK: drop the MODULE arm from
+    ``config_fields`` or ``entries_to_configs``."""
+    from trcc.core.commands import (
+        AddOverlayElement,
+        LoadTheme,
+        ResolveOverlay,
+        SetOverlayConfig,
+        UpdateOverlayElement,
+    )
+    from trcc.ui.presentation.overlay_serialization import (
+        config_fields,
+        entries_to_configs,
+    )
+
+    app, _, _, ref = _placing_module(tmp_path)
+    key = "0402:3922"
+    assert app.dispatch(LoadTheme(key=key, path=_theme_with(
+        tmp_path / "themes", "Placed", [_module_element(ref)]))).ok
+    text = app.dispatch(AddOverlayElement(key=key, type="text", text="hi", element_id="t1"))
+    assert text.ok, text.message
+    assert app.dispatch(UpdateOverlayElement(key=key, element_id="t1", x=99)).ok
+    entries = app.dispatch(ResolveOverlay(key=key)).elements
+    module = next(e for e in entries if e.type == "module")
+    assert (module.ref, module.x, module.y, module.width, module.height) == (
+        ref, 40, 40, 100, 80)
+    cell = next(c for c in entries_to_configs(entries) if c.id == "m1")
+    assert config_fields(cell) == {"x": 40, "y": 40, "type": "module", "ref": ref,
+                                   "width": 100, "height": 80}
+    whole = [{**dataclasses.asdict(e)} for e in entries]
+    assert app.dispatch(SetOverlayConfig(key=key, elements=tuple(whole))).ok
+    again = app.dispatch(ResolveOverlay(key=key)).elements
+    assert [(e.type, e.ref, e.width) for e in again] == [
+        (e.type, e.ref, e.width) for e in entries]
+
+
+def test_the_windows_export_leaves_a_module_element_out() -> None:
+    """The C# has nothing to draw one with; written as a mode-4 text it left
+    an empty one in its place.  MUTATION CHECK: drop the filter in
+    ``DcCodec.serialize``."""
+    from trcc.services._dc import Writer
+
+    text = {"type": "text", "text": "hi", "x": 1, "y": 2}
+    module = {"type": "module", "ref": "viz/abc", "x": 0, "y": 0, "width": 9,
+              "height": 9}
+    # Byte for byte: the reader drops an empty text, so reading back hides it.
+    assert (Writer().serialize({"elements": [text, module]})
+            == Writer().serialize({"elements": [text]}))

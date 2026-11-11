@@ -150,9 +150,9 @@ def test_the_gui_carries_the_whole_vocabulary_through_config_fields() -> None:
     }
     assert {c.__name__ for c in _COMMANDS} <= sent_through, sent_through
 
+    # Every mode, derived: a mode added to the enum is measured on its own.
     cells = [OverlayElementConfig(mode=mode, main_count=0, sub_count=1)
-             for mode in (OverlayMode.CUSTOM, OverlayMode.TIME, OverlayMode.DATE,
-                          OverlayMode.WEEKDAY, OverlayMode.HARDWARE)]
+             for mode in OverlayMode]
     carried: set[str] = set()
     for cell in cells:
         fields = config_fields(cell)

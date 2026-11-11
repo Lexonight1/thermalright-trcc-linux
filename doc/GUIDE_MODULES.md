@@ -65,6 +65,7 @@ Click a tile and it plays on the selected panel; its sliders and the centre pict
 - **Off** — the visual plays nowhere: its box closes or its background ends, and the theme shows as it was.
 - **Background** — the visual fills the panel. Out of a box it moves to the whole panel; from Off it plays the panel's last visual.
 - **Box** — the visual sits in a corner over the theme, which keeps playing underneath with its mask and readings. Pick the corner and the size beside it — **Full panel** covers the whole screen — and light **Over the metrics** to draw it above the readings instead of under them.
+- **In a theme** — the overlay editor's **Module Picture** puts what the visual plays on the panel *now* in a rectangle of the theme's layout. It plays live there, under the readings; move it like any element and set its width and height in the boxes beside it. A theme saved from here keeps it, and loading that theme plays it again. While a theme shows its module picture, the same visual's Background or Box steps aside and comes back with the next theme. The Windows app has no module pictures, so exporting to its format leaves this one out. Command line: `trcc display place-module <key>` (with `--x`, `--y`, `--width`, `--height`); API: `POST /devices/{key}/display/place-module`.
 - **Command line:** `trcc display visuals` lists them; `trcc display visual <key> <name>` plays one, and `trcc display visual <key>` stops it. `visual-set`, `visual-picture`, `visual-center` and `visual-tile` do the rest. The box: `trcc display set-inset <key> visualizer` (with `--corner`, `--size` and `--over-metrics`) and `trcc display clear-inset <key>`.
 - **API:** `POST /devices/{key}/display/visual`, `GET /display/visuals`, and the other `/display/visual-*` routes; the box is `POST` / `DELETE /devices/{key}/display/inset`.
 
@@ -197,6 +198,8 @@ A module never gets the App itself. It gets a **host** that offers only what its
 | `lights` | shows colours another program sends on a cooler's LEDs, over the cooler's own effect, while they arrive |
 
 A `background` module's picture can also go in a **box** over the theme, which the user places — a corner, a size or the full panel, under the metrics or over them; the module draws exactly as it would for the background. A frame of `width*height*4` bytes is read as RGBA, and where it is transparent the theme shows through.
+
+A theme can also place it: a **module element** in the theme's layout names what the module draws (the same `<prefix>/<id>` a theme background uses) and a rectangle. TRCC hands that to the module's background kind (`play`), and the module draws as it always does — its `host.panels.size` is the rectangle's. Nothing to add to a module for it.
 
 `host.network.fetch(url)` fetches over https from the sites in `network_hosts` only — the default port, no user name in the URL, at most 2 MB, 20 seconds — and only when the site's name resolves to an address on the public internet, never this computer or the local network. A redirect is held to the same rule, so an allowed site cannot send the module anywhere else. A module that opens sockets or imports a network library itself is not listed.
 

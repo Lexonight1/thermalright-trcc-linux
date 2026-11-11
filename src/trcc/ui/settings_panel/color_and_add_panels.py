@@ -507,6 +507,8 @@ class AddElementPanel(QFrame):
 
     element_added = Signal(object)  # OverlayElementConfig
     hardware_requested = Signal()   # Show activity sidebar for hardware pick
+    #: Place the module drawing on this panel (#328) -- the App makes it.
+    module_requested = Signal()
 
     ELEMENT_TYPES = [
         ("Hardware Data", OverlayMode.HARDWARE),
@@ -514,6 +516,7 @@ class AddElementPanel(QFrame):
         ("Weekday", OverlayMode.WEEKDAY),
         ("Date", OverlayMode.DATE),
         ("Custom Text", OverlayMode.CUSTOM),
+        ("Module Picture", OverlayMode.MODULE),
     ]
 
     def __init__(self, parent=None, *, skin: SettingsSkin):
@@ -551,6 +554,11 @@ class AddElementPanel(QFrame):
             # Show activity sidebar for hardware sensor selection
             # (Windows: hardware metrics listed as separate section in add panel)
             self.hardware_requested.emit()
+            return
+        if mode == OverlayMode.MODULE:
+            # What it draws is the module's, on this panel now: PlaceModule
+            # saves it; no cell is made here, the grid refills from the App.
+            self.module_requested.emit()
             return
 
         cfg = OverlayElementConfig(mode=mode)

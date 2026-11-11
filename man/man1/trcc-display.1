@@ -457,7 +457,7 @@ Arguments:
 Device key, e.g. 0402:3922
 .TP
 \fBTYPE_\fR
-\&'text' / 'metric' / 'clock'
+\&'text' / 'metric' / 'clock' / 'module'
 .RE
 .PP
 Options:
@@ -498,6 +498,15 @@ Font family, e.g. 'Microsoft YaHei' (list them with trcc system list\-fonts); em
 .TP
 \fB\-\-show\-unit\fR
 Draw the metric's unit ( degC/%/MHz/RPM) after the number, or the bare number when the unit is baked into the theme art
+.TP
+\fB\-\-ref \fIREF\fR\fR
+What a module draws (type=module): <folder>/<id>
+.TP
+\fB\-\-width \fIWIDTH\fR\fR
+The module picture's width (type=module)
+.TP
+\fB\-\-height \fIHEIGHT\fR\fR
+Its height (type=module)
 .TP
 \fB\-\-id \fIELEMENT_ID\fR\fR
 Explicit element id (default: auto\-generated UUID)
@@ -651,6 +660,15 @@ Font family, e.g. 'Microsoft YaHei' (list them with trcc system list\-fonts); om
 \fB\-\-show\-unit\fR
 Draw the metric's unit ( degC/%/MHz/RPM) after the number, or the bare number when the unit is baked into the theme art
 .TP
+\fB\-\-ref \fIREF\fR\fR
+(no description)
+.TP
+\fB\-\-width \fIWIDTH\fR\fR
+(no description)
+.TP
+\fB\-\-height \fIHEIGHT\fR\fR
+(no description)
+.TP
 \fB\-\-help\fR
 Show this command's help and exit.
 .RE
@@ -672,6 +690,40 @@ Device key
 .PP
 Options:
 .RS 4
+.TP
+\fB\-\-help\fR
+Show this command's help and exit.
+.RE
+.SS place\-module
+.PP
+\fBtrcc display place\-module\fR \fIKEY\fR [\fIMODULE\fR] [\fIOPTIONS\fR]
+.PP
+Put what a module draws on the panel now in a rectangle of its layout.
+.PP
+Arguments:
+.RS 4
+.TP
+\fBKEY\fR
+Device key, e.g. 0402:3922
+.TP
+\fBMODULE\fR
+The module whose picture the layout gets (default: the one drawing on the panel now)
+.RE
+.PP
+Options:
+.RS 4
+.TP
+\fB\-\-x \fIX\fR\fR
+Left edge
+.TP
+\fB\-\-y \fIY\fR\fR
+Top edge
+.TP
+\fB\-\-width \fIWIDTH\fR\fR
+Width (0: a third of the panel)
+.TP
+\fB\-\-height \fIHEIGHT\fR\fR
+Height (0: a third of the panel)
 .TP
 \fB\-\-help\fR
 Show this command's help and exit.

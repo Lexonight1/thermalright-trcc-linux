@@ -44,6 +44,8 @@ from ....core.commands import (
     AddOverlayElement,
     DeleteOverlayElement,
     ListFonts,
+    ListModules,
+    PlaceModule,
     RecentColors,
     RememberColor,
     ResolveOverlay,
@@ -155,6 +157,8 @@ class OverlayEditorPanel(BasePanel):
             payload = repr(element.text)
         elif element.type == "metric":
             payload = element.metric or "(no metric)"
+        elif element.type == "module":
+            payload = f"{element.ref}  {element.width}x{element.height}"
         else:
             payload = element.source
         return f"{head}  {payload}   size={element.size}  {element.color}"
@@ -189,6 +193,16 @@ class OverlayEditorPanel(BasePanel):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         values = dialog.values()
+        if values["type"] == "module":
+            # What the module draws here now, saved for the layout -- a ref
+            # is the App's to make, never typed (#328).
+            result = self.dispatch(PlaceModule(
+                key=key, module=values["module"], x=values["x"], y=values["y"],
+                width=values["width"], height=values["height"]))
+            self._status.setText(result.message)
+            if result.ok:
+                self.refresh()
+            return
         result = self.dispatch(AddOverlayElement(
             key=key,
             type=values["type"],
@@ -204,6 +218,9 @@ class OverlayEditorPanel(BasePanel):
             format=values["format"],
             show_unit=values["show_unit"],
             source=values["source"],
+            ref=values["ref"],
+            width=values["width"],
+            height=values["height"],
         ))
         self._status.setText(result.message)
         if result.ok:
@@ -237,6 +254,9 @@ class OverlayEditorPanel(BasePanel):
         if changed.pop("type", None) is not None:
             log.warning("_on_edit: %s — an element's type cannot be changed "
                         "by an edit; the rest is applied", eid)
+        if changed.pop("module", None) is not None:
+            log.warning("_on_edit: %s — what a module element draws is placed "
+                        "anew, not edited; the rest is applied", eid)
         if not changed:
             log.info("_on_edit: %s — nothing changed, nothing sent", eid)
             self._status.setText("No change.")
@@ -251,6 +271,8 @@ class OverlayEditorPanel(BasePanel):
             italic=changed.get("italic"), text=changed.get("text"),
             metric=changed.get("metric"), format=changed.get("format"),
             show_unit=changed.get("show_unit"), source=changed.get("source"),
+            ref=changed.get("ref"), width=changed.get("width"),
+            height=changed.get("height"),
         ))
         self._status.setText(result.message)
         if result.ok:
@@ -371,6 +393,20 @@ class _ElementDialog(QDialog):
         self._source = QComboBox(self)
         for src in _CLOCK_SOURCES:
             self._source.addItem(src, userData=src)
+        # type == "module" (#328): which module, and its rectangle.  What it
+        # draws is what the module shows on the panel now (PlaceModule).
+        self._module = QComboBox(self)
+        for module in self._panel.app.dispatch(ListModules()).modules:
+            if module.draws_pictures:
+                self._module.addItem(module.title, userData=module.key)
+        self._width = QSpinBox(self)
+        self._width.setRange(1, 9999)
+        self._width.setValue(100)
+        self._height = QSpinBox(self)
+        self._height.setRange(1, 9999)
+        self._height.setValue(100)
+        #: The element's own ref, kept as it is -- only PlaceModule makes one.
+        self._ref = ""
 
         form = QFormLayout()
         form.addRow("Type:", self._type)
@@ -386,6 +422,9 @@ class _ElementDialog(QDialog):
         form.addRow("Format string:", self._format)
         form.addRow("", self._show_unit)
         form.addRow("Clock source:", self._source)
+        form.addRow("Module:", self._module)
+        form.addRow("Width (px):", self._width)
+        form.addRow("Height (px):", self._height)
 
         self._form = form
 
@@ -430,6 +469,10 @@ class _ElementDialog(QDialog):
         self._metric.setText(element.metric)
         self._format.setText(element.format)
         self._show_unit.setChecked(getattr(element, "show_unit", True))
+        self._ref = element.ref
+        self._width.setValue(max(1, element.width))
+        self._height.setValue(max(1, element.height))
+        self._module.setEnabled(False)          # placed anew, not edited
         try:
             self._source.setCurrentIndex(
                 _CLOCK_SOURCES.index(element.source),
@@ -446,6 +489,11 @@ class _ElementDialog(QDialog):
         self._set_row_visible(self._format, kind == "metric")
         self._set_row_visible(self._show_unit, kind == "metric")
         self._set_row_visible(self._source, kind == "clock")
+        module = kind == "module"
+        for widget in (self._module, self._width, self._height):
+            self._set_row_visible(widget, module)
+        for widget in (self._size, self._font, self._bold, self._italic):
+            self._set_row_visible(widget, not module)
 
     def _set_row_visible(self, widget, visible: bool) -> None:
         log.debug("_set_row_visible: widget=%s visible=%s", widget, visible)
@@ -540,4 +588,8 @@ class _ElementDialog(QDialog):
             "format":  self._format.text() or OVERLAY_DEFAULT_FORMAT,
             "show_unit": bool(self._show_unit.isChecked()),
             "source":  self._source.currentData(),
+            "module":  self._module.currentData() or "",
+            "ref":     self._ref,
+            "width":   int(self._width.value()) if self._type.currentData() == "module" else 0,
+            "height":  int(self._height.value()) if self._type.currentData() == "module" else 0,
         }

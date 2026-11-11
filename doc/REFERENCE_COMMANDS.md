@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**177 total: 127 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**178 total: 128 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -51,6 +51,9 @@ Add a user-edited element to a device's overlay layer.
 | `format` | `str` | no |
 | `show_unit` | `bool` | no |
 | `source` | `str` | no |
+| `ref` | `str` | no |
+| `width` | `int` | no |
+| `height` | `int` | no |
 | `element_id` | `str` | no |
 
 ### `ApplyMask`
@@ -234,6 +237,21 @@ Toggle the per-device video playback pause flag.
 |---|---|---|
 | `key` | `str` | yes |
 | `paused` | `bool` | yes |
+
+### `PlaceModule`
+
+Put *module*'s picture in panel *key*'s layout (#328): a module element at *x*, *y*, *width* x *height* -- a third of the panel when the size is left 0.  What it draws is what the module draws on this panel now (its kind's ``snapshot``), saved so the theme carries it: a ref no one has to type.  The element then draws it, live, and a theme saved from here keeps it.
+
+*Command* → `OverlayElementResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `module` | `str` | no |
+| `x` | `int` | no |
+| `y` | `int` | no |
+| `width` | `int` | no |
+| `height` | `int` | no |
 
 ### `PlayVideo`
 
@@ -660,6 +678,9 @@ Mutate fields on an existing user-edited overlay element.
 | `format` | `str | None` | no |
 | `show_unit` | `bool | None` | no |
 | `source` | `str | None` | no |
+| `ref` | `str | None` | no |
+| `width` | `int | None` | no |
+| `height` | `int | None` | no |
 
 ### `UploadBootAnimation`
 

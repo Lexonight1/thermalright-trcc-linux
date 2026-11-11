@@ -1191,7 +1191,8 @@ RENDER_CACHE_MAX_BYTES = 128 * 1024 * 1024
 # =========================================================================
 
 
-OverlayElementType = Literal["text", "metric", "clock"]
+#: ``module``: a module's live picture in a rectangle the theme places (#328).
+OverlayElementType = Literal["text", "metric", "clock", "module"]
 ClockSource = Literal["time", "weekday", "date"]
 
 # The element field vocabulary is restated wherever an overlay element
@@ -1207,6 +1208,19 @@ OVERLAY_DEFAULT_COLOR = "#ffffff"
 OVERLAY_DEFAULT_SIZE = 16
 OVERLAY_DEFAULT_FORMAT = "{value}"
 OVERLAY_DEFAULT_CLOCK_SOURCE: ClockSource = "time"
+
+#: A module element's ``ref``: ``<folder>/<id>``, the shape the theme store
+#: mints (``store_background_config``) -- one name, one id, nothing else.  The
+#: store also honours an ABSOLUTE path (legacy masks), so a ref from outside
+#: (the API, a shared theme's trcc.json) is held to this before it is read.
+MODULE_REF = re.compile(r"[A-Za-z0-9_-]{1,64}/[A-Za-z0-9_-]{1,128}")
+
+
+def is_module_ref(ref: str) -> bool:
+    """Whether *ref* has the one shape a module element may name."""
+    ok = MODULE_REF.fullmatch(ref) is not None
+    log.debug("is_module_ref: %r -> %s", ref, ok)
+    return ok
 
 
 #: How ``OverlayElement.from_dict`` converts a field by its declared type;
@@ -1310,6 +1324,12 @@ class OverlayElement:
     show_unit: bool = True
     # type == "clock"
     source: ClockSource = OVERLAY_DEFAULT_CLOCK_SOURCE
+    # type == "module" -- a module's live picture (#328): ``ref`` names what
+    # it draws as a theme names a module background (``<prefix>/<id>``, its
+    # settings folder), in the rectangle at x, y of ``width`` x ``height``.
+    ref: str = ""
+    width: int = 0
+    height: int = 0
 
     def to_dict(self) -> dict:
         """Flat dict — the shape ``OverlayService.render`` consumes."""
@@ -1335,6 +1355,10 @@ class OverlayElement:
             # "%m/%d"); render honours it.  The metric default "{value}"
             # is meaningless for a clock and ignored by the renderer.
             out["format"] = self.format
+        elif self.type == "module":
+            out["ref"] = self.ref
+            out["width"] = self.width
+            out["height"] = self.height
         return out
 
     @classmethod
@@ -1403,6 +1427,10 @@ class OverlayMode(int, Enum):
     WEEKDAY = 2
     DATE = 3
     CUSTOM = 4
+    #: TRCC's own, past the C#'s last mode: a module's picture in a rectangle
+    #: of the layout (#328).  Never written to a DC -- the writer leaves
+    #: module elements out (the Windows app has nothing to draw them with).
+    MODULE = 5
 
 
 class DisplaySource(int, Enum):
@@ -2523,6 +2551,10 @@ class OverlayElementConfig:
     #: The sensor a HARDWARE cell shows, when the DC pair table cannot name it
     #: (a board probe, a voltage, one DIMM) -- the pair is then (0, 0).
     metric: str = ""
+    #: A MODULE cell's element (#328): what it draws, and its rectangle.
+    ref: str = ""
+    width: int = 0
+    height: int = 0
 
 
 #: The dashboard's FAN panel, and the slot each of its four rows fills -- the

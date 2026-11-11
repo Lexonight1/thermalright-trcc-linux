@@ -75,6 +75,9 @@ def entries_to_configs(
                 cfg.mode_sub = format_index(DATE_FORMATS, e.format)
             case "clock", "weekday":
                 cfg.mode = OverlayMode.WEEKDAY
+            case "module", _:
+                cfg.mode, cfg.ref = OverlayMode.MODULE, e.ref
+                cfg.width, cfg.height = e.width, e.height
             case "metric", _ if e.metric:
                 cfg.mode = OverlayMode.HARDWARE
                 if (hw := Dc.metric_to_hardware(e.metric)) is not None:
@@ -115,6 +118,9 @@ def config_fields(cfg: OverlayElementConfig) -> dict[str, Any] | None:
                       "format": DATE_FORMATS.get(cfg.mode_sub, DATE_FORMATS[0])}
         case OverlayMode.WEEKDAY:
             fields = {**base, "type": "clock", "source": "weekday"}
+        case OverlayMode.MODULE:
+            fields = {"x": cfg.x, "y": cfg.y, "type": "module", "ref": cfg.ref,
+                      "width": cfg.width, "height": cfg.height}
         case OverlayMode.HARDWARE if cfg.metric:
             fields = {**base, "type": "metric", "metric": cfg.metric,
                       "format": default_metric_format(cfg.metric),

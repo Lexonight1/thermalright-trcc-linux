@@ -138,8 +138,9 @@ def cadence_owner(app: App, key: str) -> str | None:
       per 40 ``SensorsUpdated``, on top of the tick's own.
 
     * **box** -- a module's picture in a box over the theme
-      (``DeviceSettings.inset``): :class:`InsetDriver` sends the theme
-      frame, box included, at the module's rate.  LAST, because every
+      (``DeviceSettings.inset``), or in the rectangle a theme's module
+      element places (#328): :class:`InsetDriver` sends the theme frame,
+      both included, at the module's rate.  LAST, because every
       owner above already draws the box into its own frames -- or, for
       a live picture, covers the theme it would sit on.
 
@@ -168,7 +169,7 @@ def cadence_owner(app: App, key: str) -> str | None:
     playback = app.media.playback(key)
     if playback is not None and playback.advancing:
         return "video"
-    if app.media.inset(key) is not None:
+    if app.media.inset(key) is not None or app.media.element(key) is not None:
         return BOX_OWNER
     frame_log.debug("cadence_owner: %s — nothing else owns this panel", key)
     return None

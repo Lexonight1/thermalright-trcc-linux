@@ -4,7 +4,7 @@
 
 A REST interface to the same command bus every other UI uses. Each endpoint builds a Command, dispatches it, and returns the Result as JSON — so anything here is also reachable from the CLI, the GUI, or your own client. The Commands themselves are documented in [`REFERENCE_COMMANDS.md`](REFERENCE_COMMANDS.md).
 
-**162 endpoints.**
+**163 endpoints.**
 
 ## Running it
 
@@ -64,6 +64,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `DELETE /devices/{key}/display/overlay-elements/{element_id}` | `OverlayElementDeleteResult` | Remove an overlay element by id. |
 | `PATCH /devices/{key}/display/overlay-elements/{element_id}` | `OverlayElementResult` | Mutate fields on an existing user-edited overlay element. |
 | `POST /devices/{key}/display/pause-video` | `PauseVideoResult` | Pause / resume video playback. |
+| `POST /devices/{key}/display/place-module` | `OverlayElementResult` | Put what a module draws on the panel now in a rectangle of its layout. |
 | `POST /devices/{key}/display/play-video` | `VideoResult` | Start a video playback override on the device. |
 | `GET /devices/{key}/display/preview` | — | Return the device's current rendered frame as a PNG image. |
 | `WS /devices/{key}/display/preview/stream` | — | Stream JPEG-encoded preview frames over a WebSocket at ~5 fps. |

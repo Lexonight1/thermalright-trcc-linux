@@ -277,6 +277,12 @@ class OverlayElementWidget(QWidget):
                 # Windows: label1+label3 hidden, label2.Text = myText
                 painter.setPen(QColor(color_str))
                 self._draw_value(painter, self.config.text)
+            elif mode == OverlayMode.MODULE:
+                # TRCC's own (#328): a module's picture -- named, and its size.
+                painter.setPen(QColor(color_str))
+                painter.drawText(*CELL_NAME_ROW, Qt.AlignmentFlag.AlignCenter, "Module")
+                painter.drawText(*CELL_VALUE_ROW, Qt.AlignmentFlag.AlignCenter,
+                                 f"{self.config.width}x{self.config.height}")
 
             # Selection overlay (Windows: OnPaint draws imageSelect)
             if self._selected and not self._select_pixmap.isNull():

@@ -15,6 +15,7 @@ from ...core.models import (
     MAX_REFRESH_INTERVAL_S,
     MIN_REFRESH_INTERVAL_S,
     MODULE_KEY,
+    MODULE_REF,
     OVERLAY_DEFAULT_CLOCK_SOURCE,
     OVERLAY_DEFAULT_COLOR,
     OVERLAY_DEFAULT_FORMAT,
@@ -316,10 +317,13 @@ class OverlayElementSchema(BaseModel):
     format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
     source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
+    ref: str = Field("", pattern=f"^({MODULE_REF.pattern})?$")
+    width: int = Field(0, ge=0)
+    height: int = Field(0, ge=0)
 
 
 class OverlayElementAddRequest(BaseModel):
-    type: str = Field(..., pattern="^(text|metric|clock)$")
+    type: str = Field(..., pattern="^(text|metric|clock|module)$")
     x: int = 0
     y: int = 0
     color: str = OVERLAY_DEFAULT_COLOR
@@ -333,6 +337,9 @@ class OverlayElementAddRequest(BaseModel):
     format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
     source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
+    ref: str = Field("", pattern=f"^({MODULE_REF.pattern})?$")
+    width: int = Field(0, ge=0)
+    height: int = Field(0, ge=0)
     element_id: str = ""
 
 
@@ -350,6 +357,9 @@ class OverlayElementUpdateRequest(BaseModel):
     format: str | None = None
     show_unit: bool | None = None
     source: str | None = None
+    ref: str | None = Field(None, pattern=f"^{MODULE_REF.pattern}$")
+    width: int | None = Field(None, ge=0)
+    height: int | None = Field(None, ge=0)
 
 
 class OverlayConfigRequest(BaseModel):
@@ -438,6 +448,16 @@ class ColorRequest(BaseModel):
 
 class FitModeRequest(BaseModel):
     mode: str = Field(..., pattern="^(width|height|stretch)$")
+
+
+class PlaceModuleRequest(BaseModel):
+    """What a module draws on the panel now, in a rectangle of its layout
+    (``PlaceModule``)."""
+    module: str = Field("", pattern=f"^({MODULE_KEY.pattern})?$")
+    x: int = 0
+    y: int = 0
+    width: int = Field(0, ge=0)
+    height: int = Field(0, ge=0)
 
 
 class InsetRequest(BaseModel):

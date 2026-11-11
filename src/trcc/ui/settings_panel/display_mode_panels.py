@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QWidget,
 )
 
@@ -161,12 +162,15 @@ class DataTablePanel(QFrame):
     - Weekday (mode 2): no controls
     - Date    (mode 3): the Y/M/D | D/M/Y | M/D | D/M switch
     - Custom  (mode 4): textBox1 — custom text input
+    - Module  (TRCC's mode 5, #328): its picture's width and height
     """
 
     format_changed = Signal(int, int)  # mode, mode_sub
     text_changed = Signal(str)
     #: "C" or "F": the temperature unit, picked on a temperature element.
     temp_unit_changed = Signal(str)
+    #: A module picture's width and height, once an edit of either ends.
+    size_changed = Signal(int, int)
 
     def __init__(self, parent=None, *, skin: SettingsSkin):
         super().__init__(parent)
@@ -222,10 +226,45 @@ class DataTablePanel(QFrame):
         self.text_input.editingFinished.connect(self._on_text_committed)
         self.text_input.setVisible(False)
 
+        # A module picture's width | height (#328), where the text box sits.
+        x, y, w, h = TEXT_INPUT
+        self.width_spin, self.height_spin = (self._size_spin(tip, x + i * (w // 2 + 5),
+                                                             y, w // 2 - 5, h)
+                                             for i, tip in enumerate(("Width", "Height")))
+
         self._current_mode = -1
         self._mode_sub = 0
 
+    def _size_spin(self, tip: str, x: int, y: int, w: int, h: int) -> QSpinBox:
+        """One of a module picture's two size boxes, as the X/Y boxes look."""
+        log.debug("_size_spin: %s at %d,%d", tip, x, y)
+        spin = QSpinBox(self)
+        spin.setGeometry(x, y, w, h)
+        spin.setRange(1, 9999)
+        spin.setStyleSheet(self._skin.input_field)
+        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        spin.setPrefix(f"{tip[0]} ")
+        say_tip(spin, tip)
+        spin.editingFinished.connect(self._on_size_committed)
+        spin.setVisible(False)
+        return spin
+
+    def _on_size_committed(self) -> None:
+        log.info("_on_size_committed: %dx%d", self.width_spin.value(),
+                 self.height_spin.value())
+        self.size_changed.emit(self.width_spin.value(), self.height_spin.value())
+
+    def show_size(self, width: int, height: int) -> None:
+        """A module picture's size, as the App holds it; sends nothing."""
+        log.debug("show_size: %dx%d", width, height)
+        for spin, value in ((self.width_spin, width), (self.height_spin, height)):
+            spin.blockSignals(True)
+            spin.setValue(max(1, value))
+            spin.blockSignals(False)
+
     def _hide_all(self):
+        self.width_spin.setVisible(False)
+        self.height_spin.setVisible(False)
         self.unit_switch.setVisible(False)
         self.temp_switch.setVisible(False)
         self.time_switch.setVisible(False)
@@ -274,6 +313,9 @@ class DataTablePanel(QFrame):
                 self.date_switch.setVisible(True)
             case OverlayMode.CUSTOM:
                 self.text_input.setVisible(True)
+            case OverlayMode.MODULE:
+                self.width_spin.setVisible(True)
+                self.height_spin.setVisible(True)
 
     def _on_unit_picked(self, side: int) -> None:
         """The bare number (mode_sub 0) or number + unit (1): this element's."""

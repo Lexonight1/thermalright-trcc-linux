@@ -68,6 +68,7 @@ from ..models import (
     VideoBackground,
     Wire,
     element_fields,
+    is_module_ref,
     new_overlay_id,
     oriented_resolution,
     parse_device_key,
@@ -2017,6 +2018,7 @@ def _theme_background_returns(app: App, key: str) -> None:
     if video is not None:
         PlayVideo(key=key, path=video).play(app)   # the theme's own: no choice
     app.resume_box(key)                            # the box over it, if one waited
+    app.sync_element(key)                          # and the theme's module element
     _publish_background(app, key)
 
 
@@ -3243,6 +3245,25 @@ class RecentColors(Query[RecentColorsResult]):
                                   message=f"{len(colors)} recent colours")
 
 
+def _refused_module_fields(key: str, kind: str | None, ref: str | None,
+                           width: int | None, height: int | None,
+                           ) -> OverlayElementResult | None:
+    """Why a module element's fields cannot be taken -- a ref of any other
+    shape than ``<folder>/<id>`` (``is_module_ref``), a negative size, or a
+    module element added with nothing to draw -- else None."""
+    if ref and not is_module_ref(ref):
+        why = f"a module element's ref is <folder>/<id>, not {ref!r}"
+    elif (width is not None and width < 0) or (height is not None and height < 0):
+        why = f"a module element cannot be {width}x{height}"
+    elif kind == "module" and not (ref and width and height):
+        why = "a module element needs a ref, a width and a height"
+    else:
+        log.debug("_refused_module_fields: %s ok", key)
+        return None
+    log.warning("overlay element: %s refused -- %s", key, why)
+    return OverlayElementResult(ok=False, key=key, element=None, message=why)
+
+
 @dataclass(frozen=True, slots=True)
 class AddOverlayElement(Command[OverlayElementResult]):
     """Add a user-edited element to a device's overlay layer.
@@ -3267,10 +3288,17 @@ class AddOverlayElement(Command[OverlayElementResult]):
     format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
     source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
+    #: type == "module" (#328): what the module draws, and its rectangle.
+    ref: str = ""
+    width: int = 0
+    height: int = 0
     element_id: str = ""
 
     def execute(self, app: App) -> OverlayElementResult:
         log.debug("execute: app=%s", app)
+        if (refused := _refused_module_fields(self.key, self.type, self.ref,
+                                              self.width, self.height)) is not None:
+            return refused
         if not _is_element_type(self.type):
             return OverlayElementResult(
                 ok=False, key=self.key, element=None,
@@ -3310,6 +3338,65 @@ class AddOverlayElement(Command[OverlayElementResult]):
         )
 
 @dataclass(frozen=True, slots=True)
+class PlaceModule(Command[OverlayElementResult]):
+    """Put *module*'s picture in panel *key*'s layout (#328): a module
+    element at *x*, *y*, *width* x *height* -- a third of the panel when the
+    size is left 0.  What it draws is what the module draws on this panel
+    now (its kind's ``snapshot``), saved so the theme carries it: a ref no
+    one has to type.  The element then draws it, live, and a theme saved
+    from here keeps it.
+
+    One per layout: a second is refused -- move or resize the one there.
+    *module* "" is the one drawing on the panel now, its background or its
+    box: the App's to answer, so no UI has to guess it.
+    """
+    REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
+    key: str
+    module: str = ""
+    x: int = 0
+    y: int = 0
+    width: int = 0
+    height: int = 0
+
+    def execute(self, app: App) -> OverlayElementResult:
+        from ..geometry import oriented_canvas
+        from ._helpers import device_overlay_layout
+        s = app.settings.for_device(self.key)
+        module = self.module or s.chosen_module or (s.inset.module if s.inset else "")
+        log.info("PlaceModule: %s <- %s (asked %r) at %d,%d %dx%d", self.key, module,
+                 self.module, self.x, self.y, self.width, self.height)
+        title = _module_title(app, module)
+        device = app.devices.get(self.key)
+        kind = app.background_kind_of(module) if module else None
+        payload = kind.snapshot(self.key) if kind is not None else None
+        placed = next((e for e in device_overlay_layout(app, self.key)
+                       if e.get("type") == "module"), None)
+        if device is None or device.profile is None:
+            why = f"{self.key} is not connected"
+        elif not module:
+            why = (f"no module draws on {self.key} -- show one there first "
+                   "(Background or Box), then place it")
+        elif kind is None:
+            why = f"{title or module} is off or not installed -- turn it on in Modules"
+        elif payload is None:
+            why = (f"{title} draws nothing on {self.key} -- show it there first "
+                   "(Background or Box), then place it")
+        elif placed is not None:
+            why = (f"this layout already has a module picture ({placed.get('id')}) "
+                   "-- move or resize that one")
+        else:
+            canvas = oriented_canvas(device.profile, s.orientation)
+            ref = app.themes.store_background_config(kind.prefix, payload)
+            log.info("PlaceModule: %s draws %s as %s", self.key, payload, ref)
+            return app.dispatch(AddOverlayElement(
+                key=self.key, type="module", x=self.x, y=self.y, ref=ref,
+                width=self.width or canvas[0] // 3,
+                height=self.height or canvas[1] // 3))
+        log.warning("PlaceModule: %s refused -- %s", self.key, why)
+        return OverlayElementResult(ok=False, key=self.key, element=None, message=why)
+
+
+@dataclass(frozen=True, slots=True)
 class UpdateOverlayElement(Command[OverlayElementResult]):
     """Mutate fields on an existing user-edited overlay element."""
     REQUIRES: ClassVar[Capability | None] = Capability.OVERLAY
@@ -3327,9 +3414,15 @@ class UpdateOverlayElement(Command[OverlayElementResult]):
     format: str | None = None
     show_unit: bool | None = None
     source: str | None = None
+    ref: str | None = None
+    width: int | None = None
+    height: int | None = None
 
     def execute(self, app: App) -> OverlayElementResult:
         log.debug("execute: app=%s", app)
+        if (refused := _refused_module_fields(self.key, None, self.ref, self.width,
+                                              self.height)) is not None:
+            return refused
         if self.source is not None and not _is_clock_source(self.source):
             log.warning("UpdateOverlayElement: %s refused clock source %r",
                         self.key, self.source)
@@ -3610,6 +3703,11 @@ class SetOverlayConfig(Command[OverlayConfigResult]):
                     ok=False, key=self.key, elements=[],
                     message=f"Invalid element type {element.type!r}",
                 )
+            if (refused := _refused_module_fields(
+                    self.key, element.type, element.ref, element.width,
+                    element.height)) is not None:
+                return OverlayConfigResult(ok=False, key=self.key, elements=[],
+                                           message=refused.message)
             parsed.append(element)
         app.settings.set_user_overlay_elements(self.key, parsed)
         _invalidate_scene(app, self.key)

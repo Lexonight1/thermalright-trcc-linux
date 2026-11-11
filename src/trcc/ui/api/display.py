@@ -37,6 +37,7 @@ from trcc.core.commands import (
     LoadTheme,
     LoadVideo,
     PauseVideo,
+    PlaceModule,
     PlayVideo,
     ProbeVideoDuration,
     RenderDcStandalone,
@@ -141,6 +142,7 @@ from .schemas import (
     OverlayElementUpdateRequest,
     OverlayRequest,
     PauseVideoRequest,
+    PlaceModuleRequest,
     PlayVideoRequest,
     RenderDcRequest,
     ScreencastRegionRequest,
@@ -1118,8 +1120,8 @@ def overlay_add(key: str, body: OverlayElementAddRequest,
     """Add a user-edited overlay element."""
     log.info(
         "api POST /devices/{key}/display/overlay-elements: key=%s type=%s "
-        "metric=%s element_id=%s",
-        key, body.type, body.metric, body.element_id,
+        "metric=%s ref=%s element_id=%s",
+        key, body.type, body.metric, body.ref, body.element_id,
     )
     result = request.app.state.trcc.dispatch(AddOverlayElement(
         key=key, type=body.type, x=body.x, y=body.y,
@@ -1127,8 +1129,23 @@ def overlay_add(key: str, body: OverlayElementAddRequest,
         bold=body.bold, italic=body.italic,
         text=body.text, metric=body.metric, format=body.format,
         show_unit=body.show_unit, source=body.source,
+        ref=body.ref, width=body.width, height=body.height,
         element_id=body.element_id,
     ))
+    http_error_if_failed(result)
+    return result
+
+
+@router.post("/place-module")
+def place_module(key: str, body: PlaceModuleRequest,
+                 request: Request) -> OverlayElementResult:
+    """Put what a module draws on the panel now in a rectangle of its layout."""
+    log.info("api POST /devices/{key}/display/place-module: key=%s module=%s "
+             "at %s,%s %sx%s", key, body.module, body.x, body.y, body.width,
+             body.height)
+    result = request.app.state.trcc.dispatch(PlaceModule(
+        key=key, module=body.module, x=body.x, y=body.y, width=body.width,
+        height=body.height))
     http_error_if_failed(result)
     return result
 
@@ -1149,6 +1166,7 @@ def overlay_update(key: str, element_id: str,
         font=body.font, bold=body.bold, italic=body.italic,
         text=body.text, metric=body.metric, format=body.format,
         show_unit=body.show_unit, source=body.source,
+        ref=body.ref, width=body.width, height=body.height,
     ))
     http_error_if_failed(result)
     return result

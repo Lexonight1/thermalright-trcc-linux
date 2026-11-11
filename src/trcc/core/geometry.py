@@ -327,6 +327,20 @@ def inset_rect(canvas: tuple[int, int], choice: InsetChoice) -> FitRect:
     return rect
 
 
+def element_rect(canvas: tuple[int, int], x: int, y: int, width: int,
+                 height: int) -> FitRect | None:
+    """Where a theme's module element (#328) draws on an upright *canvas*:
+    its own rectangle, cut to the canvas -- None when nothing of it is on
+    the panel."""
+    cw, ch = canvas
+    left, top = max(0, x), max(0, y)
+    w, h = min(x + width, cw) - left, min(y + height, ch) - top
+    rect = FitRect(w, h, left, top) if w > 0 and h > 0 else None
+    frame_log.debug("element_rect: %d,%d %dx%d on %dx%d -> %s", x, y, width,
+                    height, cw, ch, rect)
+    return rect
+
+
 def largest_fit_size(source: tuple[int, int], panel: tuple[int, int]) -> tuple[int, int]:
     """The smallest size of *source* that loses nothing any fit mode shows on *panel*.
 

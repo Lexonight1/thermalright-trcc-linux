@@ -410,6 +410,11 @@ class OverlayService:
             )
         elif kind == "clock":
             self._draw_clock(surface, element, clock, source=source)
+        elif kind == "module":
+            # A live picture: drawn every frame by DisplayService, never into
+            # this cached layer, which would keep its first frame (#328).
+            frame_log.debug("draw_element %s: module %s drawn live, not here",
+                            source, element.get("ref"))
         else:
             log.warning("draw_element %s: unknown type %r — skipping (element=%r)",
                         source, kind, element)

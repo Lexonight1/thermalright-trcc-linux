@@ -136,7 +136,7 @@ def test_qtgui_remembers_a_colour_chosen_in_the_element_dialog(qtbot) -> None:
 
         def dispatch(self, cmd):
             sent.append(cmd)
-            return SimpleNamespace(ok=True, colors=(), fonts=[])
+            return SimpleNamespace(ok=True, colors=(), fonts=[], modules=())
 
     panel = _Panel()
     qtbot.addWidget(panel)

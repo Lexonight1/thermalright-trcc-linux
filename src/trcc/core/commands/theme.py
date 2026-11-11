@@ -260,6 +260,9 @@ class LoadTheme(Command[ThemeResult]):
         that is off: the theme shows its mask and readings, and its
         background plays the moment that module is on."""
         result = self._load(app)
+        # Its module element (#328), after ``_load`` adopted the layout --
+        # ThemeLoaded is published before that, so it cannot be the hook.
+        app.sync_element(self.key)
         needs = waiting_module(app, self.key)
         if not needs or not result.theme_name:
             return result

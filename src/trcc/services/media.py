@@ -327,6 +327,9 @@ class MediaService:
         #: Each panel's boxed picture over its theme (``InsetChoice``) --
         #: beside the live picture, never instead of it.
         self._insets: dict[str, FrameSource] = {}
+        #: Each panel's module element -- a module's picture in the rectangle
+        #: its THEME places (#328) -- beside the box, never instead of it.
+        self._elements: dict[str, FrameSource] = {}
         #: The decodes still filling a playback, by device (#264).
         self._decodes: dict[str, VideoDecode] = {}
 
@@ -456,10 +459,12 @@ class MediaService:
         it had, of whatever kind, is closed."""
         log.info("open_live: %s <- %s %s", device_key, kind.value, source.name)
         self.close_live(device_key)
-        # A live picture covers the theme the box sits on: its module stops
-        # drawing what nothing shows.  The choice stays -- the theme's
-        # background returning brings it back (``App.resume_box``).
+        # A live picture covers the theme the box and the module element sit
+        # on: their modules stop drawing what nothing shows.  The choices stay
+        # -- the theme's background returning brings them back
+        # (``App.resume_box``, ``App.sync_element``).
         self.close_inset(device_key)
+        self.close_element(device_key)
         self._live[device_key] = (kind, source)
 
     def live(self, device_key: str,
@@ -510,6 +515,26 @@ class MediaService:
             frame_log.debug("close_inset: %s has none", device_key)
             return
         log.info("close_inset: %s (%s)", device_key, source.name)
+        source.close()
+
+    def open_element(self, device_key: str, source: FrameSource) -> None:
+        """*source* draws *device_key*'s module element now; the last is closed."""
+        log.info("open_element: %s <- %s", device_key, source.name)
+        self.close_element(device_key)
+        self._elements[device_key] = source
+
+    def element(self, device_key: str) -> FrameSource | None:
+        """What draws *device_key*'s module element, if one is open."""
+        found = self._elements.get(device_key)
+        frame_log.debug("element: %s -> %s", device_key, found and found.name)
+        return found
+
+    def close_element(self, device_key: str) -> None:
+        """Stop *device_key*'s module element (idempotent)."""
+        if (source := self._elements.pop(device_key, None)) is None:
+            frame_log.debug("close_element: %s has none", device_key)
+            return
+        log.info("close_element: %s (%s)", device_key, source.name)
         source.close()
 
     def unload(self, device_key: str) -> None:

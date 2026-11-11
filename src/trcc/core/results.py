@@ -1214,6 +1214,9 @@ class OverlayElementEntry:
     format: str = OVERLAY_DEFAULT_FORMAT
     show_unit: bool = True
     source: str = OVERLAY_DEFAULT_CLOCK_SOURCE
+    ref: str = ""
+    width: int = 0
+    height: int = 0
 
 
 @dataclass(frozen=True, slots=True)

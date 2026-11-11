@@ -32,6 +32,7 @@ from ...core.commands import (
     AddOverlayElement,
     Command,
     DeleteOverlayElement,
+    PlaceModule,
     UpdateOverlayElement,
 )
 from ...core.i18n import (
@@ -166,6 +167,7 @@ class UCThemeSetting(BasePanel):
 
         self.add_panel = AddElementPanel(skin=self._skin)
         self.add_panel.element_added.connect(self._on_element_added)
+        self.add_panel.module_requested.connect(self._on_module_requested)
         self.right_stack.addWidget(self.add_panel)
 
         self.right_stack.setCurrentWidget(self.color_panel)
@@ -175,6 +177,7 @@ class UCThemeSetting(BasePanel):
         self.data_table.move(*DATA_TABLE)
         self.data_table.format_changed.connect(self._on_format_changed)
         self.data_table.text_changed.connect(self._on_text_changed)
+        self.data_table.size_changed.connect(self._on_size_changed)
         self.data_table.temp_unit_changed.connect(self.temp_unit_changed)
 
         # Display mode panels
@@ -230,6 +233,8 @@ class UCThemeSetting(BasePanel):
                                  temperature=unit == "°C", unit=unit)
         if config.mode == OverlayMode.CUSTOM:
             self.data_table.text_input.setText(config.text)
+        if config.mode == OverlayMode.MODULE:
+            self.data_table.show_size(config.width, config.height)
 
     def show_temp_unit(self, unit: str) -> None:
         """The App's temperature unit, from any UI -- shown on the °C | °F
@@ -337,6 +342,17 @@ class UCThemeSetting(BasePanel):
     def _on_text_changed(self, text):
         log.info("_on_text_changed: text=%s", text)
         self._update_selected(require_mode=OverlayMode.CUSTOM, text=text)
+
+    def _on_size_changed(self, width: int, height: int) -> None:
+        log.info("_on_size_changed: %dx%d", width, height)
+        self._update_selected(require_mode=OverlayMode.MODULE, width=width,
+                              height=height)
+
+    def _on_module_requested(self) -> None:
+        """Place the module drawing on this panel now (#328): the App saves
+        what it draws and adds the element; the grid refills from it."""
+        log.info("_on_module_requested")
+        self._send_edit(PlaceModule)
 
     # --- Display mode panels ---
 
