@@ -84,7 +84,9 @@ _CORNERS = {InsetCorner.TOP_LEFT: "Top left", InsetCorner.TOP_RIGHT: "Top right"
             InsetCorner.BOTTOM_LEFT: "Bottom left",
             InsetCorner.BOTTOM_RIGHT: "Bottom right"}
 _SIZES = {InsetSize.SMALL: "Small", InsetSize.MEDIUM: "Medium",
-          InsetSize.LARGE: "Large"}
+          InsetSize.LARGE: "Large", InsetSize.FULL: "Full panel"}
+#: The box's layer toggle, lit when it is drawn over the metrics (#335).
+_OVER = "Over the metrics"
 #: Where the visual plays, and how each is said -- in the row's order.
 _OFF, _BACKGROUND, _BOX = "off", "background", "box"
 _WHERE = {_OFF: "Off", _BACKGROUND: "Background", _BOX: "Box"}
@@ -113,7 +115,9 @@ def _no_snapshot(message: str) -> LcdSnapshotResult:
 class PlacementRow(QWidget):
     """Where the visual plays -- Off, Background (the whole panel) or Box (a
     corner of it, over the theme, which plays on under it) -- one of three,
-    lit; the box's corner and size, picked while it is the box.  Says what the
+    lit; the box's corner, size and layer, picked while it is the box -- no
+    corner at full panel, and lit "Over the metrics" draws it above them
+    (#335).  Says what the
     App holds (:meth:`light`); a choice the USER makes emits :attr:`chosen`.
 
     Three, not a switch: he asked for "box or background or off" (2026-11-10)
@@ -139,10 +143,15 @@ class PlacementRow(QWidget):
         self.buttons.buttonClicked.connect(self._on_changed)
         self.box_corner = self._combo(tuple((word, c.value) for c, word in _CORNERS.items()))
         self.box_size = self._combo(tuple((word, z.value) for z, word in _SIZES.items()))
+        self.box_over = QPushButton(_OVER, self)
+        self.box_over.setCheckable(True)
+        self.box_over.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.box_over.clicked.connect(self._on_changed)
         row.addWidget(self.box_corner)
         row.addWidget(self.box_size)
+        row.addWidget(self.box_over)
         row.addStretch(1)
-        self.light(_OFF, InsetCorner.BOTTOM_RIGHT.value, InsetSize.MEDIUM.value)
+        self.light(_OFF, InsetCorner.BOTTOM_RIGHT.value, InsetSize.MEDIUM.value, False)
 
     def _combo(self, items: tuple[tuple[str, str], ...]) -> QComboBox:
         """A pick of ``(English, value)`` items -- ``activated`` is the
@@ -161,11 +170,14 @@ class PlacementRow(QWidget):
         self.chosen.emit()
 
     def _enable(self) -> None:
-        """A corner and a size only for the box."""
+        """A corner, a size and a layer only for the box -- and no corner
+        when the box is the whole panel."""
         boxed = self.where() == _BOX
-        log.debug("PlacementRow._enable: boxed=%s", boxed)
-        self.box_corner.setEnabled(boxed)
+        full = self.box_size.currentData() == InsetSize.FULL.value
+        log.debug("PlacementRow._enable: boxed=%s full=%s", boxed, full)
+        self.box_corner.setEnabled(boxed and not full)
         self.box_size.setEnabled(boxed)
+        self.box_over.setEnabled(boxed)
 
     def where(self) -> str:
         """The lit one -- ``off``, ``background`` or ``box``."""
@@ -174,20 +186,21 @@ class PlacementRow(QWidget):
         log.debug("PlacementRow.where: %s", found)
         return found
 
-    def light(self, where: str, corner: str, size: str) -> None:
+    def light(self, where: str, corner: str, size: str, over: bool) -> None:
         """What the App holds: *where* the visual plays, the box at *corner*
-        and *size*."""
-        log.debug("PlacementRow.light: %s %s %s", where, corner, size)
+        and *size*, *over* the metrics or under them."""
+        log.debug("PlacementRow.light: %s %s %s over=%s", where, corner, size, over)
         for button in self.buttons.buttons():
             button.setChecked(button.property(_WHERE_PROPERTY) == where)
         self.box_corner.setCurrentIndex(max(0, self.box_corner.findData(corner)))
         self.box_size.setCurrentIndex(max(0, self.box_size.findData(size)))
+        self.box_over.setChecked(over)
         self._enable()
 
-    def choice(self) -> tuple[str, str, str]:
-        """(where, the box's corner, its size) as set."""
+    def choice(self) -> tuple[str, str, str, bool]:
+        """(where, the box's corner, its size, over the metrics) as set."""
         found = (self.where(), str(self.box_corner.currentData()),
-                 str(self.box_size.currentData()))
+                 str(self.box_size.currentData()), self.box_over.isChecked())
         log.debug("PlacementRow.choice: %s", found)
         return found
 
@@ -196,6 +209,7 @@ class PlacementRow(QWidget):
         log.debug("PlacementRow.set_translate")
         for button in self.buttons.buttons():
             button.setText(translate(_WHERE[str(button.property(_WHERE_PROPERTY))]))
+        self.box_over.setText(translate(_OVER))
         for combo in (self.box_corner, self.box_size):
             for i in range(combo.count()):
                 combo.setItemText(i, translate(combo.itemData(i, _ENGLISH)))
@@ -214,8 +228,8 @@ class Placement(QObject):
         log.debug("Placement.__init__")
         self._app, self._row = app, row
         #: What the App last said: the visual draws on the LCD; it is in a
-        #: box, at this corner and size.
-        self._playing = self._boxed = False
+        #: box, at this corner and size, over the metrics or under them.
+        self._playing = self._boxed = self._over = False
         self._corner, self._size = InsetCorner.BOTTOM_RIGHT.value, InsetSize.MEDIUM.value
 
     def ask(self, key: str) -> None:
@@ -232,11 +246,12 @@ class Placement(QObject):
         if not snap.ok:
             log.debug("Placement._on_read: %s", snap.message)
             return
-        log.debug("Placement._on_read: %r %s %s", snap.inset_module,
-                  snap.inset_corner, snap.inset_size)
+        log.debug("Placement._on_read: %r %s %s over=%s", snap.inset_module,
+                  snap.inset_corner, snap.inset_size, snap.inset_over_metrics)
         self._boxed = snap.inset_module == _MODULE
         self._corner = snap.inset_corner or InsetCorner.BOTTOM_RIGHT.value
         self._size = snap.inset_size or InsetSize.MEDIUM.value
+        self._over = snap.inset_over_metrics
         self._light()
 
     def playing(self, drawing: bool) -> None:
@@ -248,21 +263,22 @@ class Placement(QObject):
     def _light(self) -> None:
         where = _BOX if self._boxed else _BACKGROUND if self._playing else _OFF
         log.debug("Placement._light: %s", where)
-        self._row.light(where, self._corner, self._size)
+        self._row.light(where, self._corner, self._size, self._over)
 
     def send(self, key: str, translate: Callable[[str], str]) -> Result:
         """The row's pick for LCD *key*: Off -- the box closes, or the
         background ends, and the theme shows as it was; Background -- out of
         its box, the panel's visual (its last, if none draws) fills it; Box --
         in a corner over the theme, moved there or waiting for a tile."""
-        where, corner, size = self._row.choice()
+        where, corner, size, over = self._row.choice()
         boxed = self._app.dispatch(LcdSnapshot(key=key)).inset_module == _MODULE
-        log.info("Placement.send: %s %s %s %s (boxed=%s)", key, where, corner, size,
-                 boxed)
+        log.info("Placement.send: %s %s %s %s over=%s (boxed=%s)", key, where, corner,
+                 size, over, boxed)
         match where:
             case "box":
                 return self._app.dispatch(SetInset(key=key, module=_MODULE,
-                                                   corner=corner, size=size))
+                                                   corner=corner, size=size,
+                                                   over_metrics=over))
             case "background":
                 return self._to_background(key, boxed, translate)
             case _:

@@ -95,6 +95,8 @@ class _SmokeRenderer(Renderer):
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _SmokeRenderer._Surface()
 
+    from_raw_rgba = from_raw_rgb24
+
     def decode_image(self, data: bytes) -> Any:
         return _SmokeRenderer._Surface()
 

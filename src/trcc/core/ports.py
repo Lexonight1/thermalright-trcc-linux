@@ -2432,6 +2432,11 @@ class Renderer(ABC):
     def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
 
     @abstractmethod
+    def from_raw_rgba(self, frame: RawFrame) -> Any:
+        """A surface for an RGBA *frame* (``RawFrame.has_alpha``) that keeps
+        its alpha, so compositing it lets what is under it show through."""
+
+    @abstractmethod
     def surface_nbytes(self, surface: Any) -> int:
         """How many bytes of pixel data *surface* occupies.
 

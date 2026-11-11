@@ -450,6 +450,7 @@ def gui_module_look() -> ModuleLook:
                   f"QComboBox {{ background-color: rgba(0, 0, 0, 70); color: {Colors.TEXT}; "
                   f"border: 1px solid #555; border-radius: 3px; padding: 2px 8px; }}"
                   "QComboBox:disabled { color: #666; }"
+                  "QPushButton:disabled { color: #666; }"
                   "QComboBox QAbstractItemView { background-color: #2b2b2b; color: white; "
                   "selection-background-color: #4a4a4a; }"
                   + Styles.SLIDER

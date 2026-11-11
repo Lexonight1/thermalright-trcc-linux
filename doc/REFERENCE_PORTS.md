@@ -101,7 +101,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`RgbSkin`](#rgbskin) | 9 | 0 | 2 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 13 | 1 |
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
-| [`Renderer`](#renderer) | 13 | 9 | 1 |
+| [`Renderer`](#renderer) | 14 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 11 | 8 |
 | [`ContentStore`](#contentstore) | 33 | 0 | 1 |
 | [`ModuleServices`](#moduleservices) | 39 | 0 | 1 |
@@ -1654,7 +1654,7 @@ setup(dry_run: 'bool' = False) -> int
 
 Rendering backend.  Concrete: QtRenderer (adapters/render/qt.py).
 
-**You implement (13):**
+**You implement (14):**
 
 ```python
 apply_brightness(surface: 'Any', percent: 'int') -> Any
@@ -1665,6 +1665,7 @@ draw_text(surface: 'Any', x: 'int', y: 'int', text: 'str', color: 'str', size: '
 encode_jpeg(surface: 'Any', quality: 'int' = 95, max_size: 'int' = 0) -> bytes
 encode_rgb565(surface: 'Any', byte_order: 'str' = '>') -> bytes
 from_raw_rgb24(frame: 'RawFrame') -> Any
+from_raw_rgba(frame: 'RawFrame') -> Any
 open_image(path: 'Path') -> Any
 resize(surface: 'Any', width: 'int', height: 'int') -> Any
 rotate(surface: 'Any', degrees: 'int') -> Any

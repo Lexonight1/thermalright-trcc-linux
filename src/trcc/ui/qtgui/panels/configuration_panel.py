@@ -24,7 +24,7 @@ from collections.abc import Callable, Sequence
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -69,6 +69,7 @@ from ....core.models import (
     MIN_REFRESH_INTERVAL_S,
     InsetCorner,
     InsetSize,
+    ModuleInfo,
 )
 from ....core.results import LcdSnapshotResult, Result
 from ..base import BasePanel
@@ -88,6 +89,75 @@ def _combo(parent: Any, items: Sequence[tuple[Any, str]]) -> QComboBox:
     for value, label in items:
         combo.addItem(label, userData=value)
     return combo
+
+
+class InsetGroup(QGroupBox):
+    """A module's picture in a box over the theme (#328, #335): which module,
+    its corner, its size and whether it sits over the metrics.  Shows what a
+    snapshot says (:meth:`show`); a pick the USER makes emits :attr:`chosen`,
+    and :meth:`command` is that pick as the one Command."""
+
+    chosen = Signal()
+
+    def __init__(self, parent: Any) -> None:
+        super().__init__("Module picture in a box", parent)
+        log.debug("InsetGroup.__init__")
+        form = QFormLayout(self)
+        self.module_pick = QComboBox(self)                  # filled from the App
+        self.corner_pick = _combo(self, tuple(
+            (c.value, c.value.replace("-", " ").capitalize()) for c in InsetCorner))
+        self.size_pick = _combo(self, tuple((z.value, z.value.capitalize()) for z in InsetSize))
+        self.layer_pick = _combo(self, ((False, "Under the metrics"), (True, "Over the metrics")))
+        for label, combo in (("Module:", self.module_pick), ("Corner:", self.corner_pick),
+                             ("Size:", self.size_pick), ("Layer:", self.layer_pick)):
+            form.addRow(label, combo)
+            combo.activated.connect(self._on_activated)
+
+    def _on_activated(self, _index: int) -> None:
+        log.info("InsetGroup._on_activated: module=%r corner=%s size=%s over=%s",
+                 self.module_pick.currentData(), self.corner_pick.currentData(),
+                 self.size_pick.currentData(), self.layer_pick.currentData())
+        self._grey_corner()
+        self.chosen.emit()
+
+    def _grey_corner(self) -> None:
+        """A full-panel box has no corner to choose."""
+        full = self.size_pick.currentData() == InsetSize.FULL.value
+        log.debug("InsetGroup._grey_corner: full=%s", full)
+        self.corner_pick.setEnabled(not full)
+
+    def show_choice(self, snap: LcdSnapshotResult,
+                    modules: Sequence[ModuleInfo]) -> None:
+        """Off, then every module that draws pictures -- and the chosen one
+        even if it is no longer here, so the group never lies."""
+        self.module_pick.clear()                            # emits no ``activated``
+        self.module_pick.addItem("Off", userData="")
+        for module in modules:
+            if module.draws_pictures:
+                self.module_pick.addItem(module.title, userData=module.key)
+        if snap.inset_module and self.module_pick.findData(snap.inset_module) < 0:
+            self.module_pick.addItem(snap.inset_title or snap.inset_module,
+                                userData=snap.inset_module)
+        log.debug("InsetGroup.show_choice: %r %s %s over=%s of %d choice(s)",
+                  snap.inset_module, snap.inset_corner, snap.inset_size,
+                  snap.inset_over_metrics, self.module_pick.count())
+        ConfigurationPanel._select_combo_by_data(self.module_pick, snap.inset_module)
+        if snap.inset_module:
+            for combo, value in ((self.corner_pick, snap.inset_corner),
+                                 (self.size_pick, snap.inset_size),
+                                 (self.layer_pick, snap.inset_over_metrics)):
+                ConfigurationPanel._select_combo_by_data(combo, value)
+        self._grey_corner()
+
+    def command(self, key: str) -> Command:
+        """The pick for panel *key*: the box as set -- or none, for Off."""
+        module = self.module_pick.currentData()
+        log.debug("InsetGroup.command: %s module=%r", key, module)
+        if not module:
+            return ClearInset(key=key)
+        return SetInset(key=key, module=module, corner=self.corner_pick.currentData(),
+                        size=self.size_pick.currentData(),
+                        over_metrics=bool(self.layer_pick.currentData()))
 
 
 class ConfigurationPanel(BasePanel):
@@ -153,16 +223,7 @@ class ConfigurationPanel(BasePanel):
         bg_form.addRow("Color (when mode = Solid):", bg_color_row)
 
         # ── A module's picture in a box over the theme (#328) ──
-        inset_box = QGroupBox("Module picture in a box", self)
-        inset_form = QFormLayout(inset_box)
-        self._inset_module = QComboBox(inset_box)      # filled from the App
-        self._inset_corner = _combo(inset_box, tuple(
-            (c.value, c.value.replace("-", " ").capitalize()) for c in InsetCorner))
-        self._inset_size = _combo(inset_box, tuple(
-            (z.value, z.value.capitalize()) for z in InsetSize))
-        inset_form.addRow("Module:", self._inset_module)
-        inset_form.addRow("Corner:", self._inset_corner)
-        inset_form.addRow("Size:", self._inset_size)
+        self._inset = InsetGroup(self)
 
         # ── Slideshow group ──
         sl_box = QGroupBox("Slideshow", self)
@@ -223,7 +284,7 @@ class ConfigurationPanel(BasePanel):
         root.addLayout(key_form)
         root.addWidget(display_box)
         root.addWidget(bg_box)
-        root.addWidget(inset_box)
+        root.addWidget(self._inset)
         root.addWidget(sl_box, stretch=1)
         root.addWidget(game_box)
         root.addWidget(app_box)
@@ -260,8 +321,7 @@ class ConfigurationPanel(BasePanel):
         self._language.activated.connect(self._send_language)
         self._refresh.valueChanged.connect(self._send_refresh)
         self._game.activated.connect(self._send_game_enabled)
-        for combo in (self._inset_module, self._inset_corner, self._inset_size):
-            combo.activated.connect(self._send_inset)
+        self._inset.chosen.connect(self._send_inset)
         self._game_threshold.valueChanged.connect(self._send_game_threshold)
         self._date.activated.connect(self._send_date)
         if (line_edit := self._date.lineEdit()) is not None:
@@ -275,17 +335,12 @@ class ConfigurationPanel(BasePanel):
         if key is not None:
             self._send(command(key=key, **{field: combo.currentData()}))
 
-    def _send_inset(self, _index: int) -> None:
-        """The box as the three combos now say -- or none, for Off."""
-        key, module = self._key(), self._inset_module.currentData()
-        log.info("_send_inset: %s module=%r corner=%s size=%s", key, module,
-                 self._inset_corner.currentData(), self._inset_size.currentData())
-        if key is None:
-            return
-        self._send(SetInset(key=key, module=module,
-                            corner=self._inset_corner.currentData(),
-                            size=self._inset_size.currentData())
-                   if module else ClearInset(key=key))
+    def _send_inset(self) -> None:
+        """The box group's pick, for the selected LCD."""
+        key = self._key()
+        log.info("_send_inset: %s", key)
+        if key is not None:
+            self._send(self._inset.command(key))
 
     def _send_temp_unit(self, _index: int) -> None:
         log.info("_send_temp_unit: %s", self._temp_unit.currentData())
@@ -424,23 +479,9 @@ class ConfigurationPanel(BasePanel):
         self._game_threshold.blockSignals(False)
 
     def _show_inset(self, snap: LcdSnapshotResult) -> None:
-        """The box row: Off, then every module that draws pictures -- and the
-        chosen one even if it is no longer here, so the row never lies."""
-        modules = self.dispatch(ListModules())
-        self._inset_module.clear()                 # emits no ``activated``
-        self._inset_module.addItem("Off", userData="")
-        for module in modules.modules:
-            if module.draws_pictures:
-                self._inset_module.addItem(module.title, userData=module.key)
-        if snap.inset_module and self._inset_module.findData(snap.inset_module) < 0:
-            self._inset_module.addItem(snap.inset_title or snap.inset_module,
-                                       userData=snap.inset_module)
-        log.debug("_show_inset: %r %s %s of %d choice(s)", snap.inset_module,
-                  snap.inset_corner, snap.inset_size, self._inset_module.count())
-        self._select_combo_by_data(self._inset_module, snap.inset_module)
-        if snap.inset_module:
-            self._select_combo_by_data(self._inset_corner, snap.inset_corner)
-            self._select_combo_by_data(self._inset_size, snap.inset_size)
+        """The box group, as *snap* says, among the installed modules."""
+        log.debug("_show_inset: %r", snap.inset_module)
+        self._inset.show_choice(snap, self.dispatch(ListModules()).modules)
 
     def _show_slideshow(self, enabled: bool, interval_s: float,
                         themes: Sequence[str]) -> None:

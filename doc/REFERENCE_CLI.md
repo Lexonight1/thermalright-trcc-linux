@@ -991,7 +991,8 @@ trcc display set-inset [OPTIONS] KEY MODULE
 | Option | Description |
 |---|---|
 | `--corner` `CORNER` | Corner: top-left, top-right, bottom-left, bottom-right |
-| `--size` `SIZE` | Size: small, medium, large |
+| `--size` `SIZE` | Size: small, medium, large, full |
+| `--over-metrics` | Draw the box over the metrics instead of under them |
 
 ### `trcc display set-orientation`
 

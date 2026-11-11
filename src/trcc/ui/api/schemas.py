@@ -447,6 +447,7 @@ class InsetRequest(BaseModel):
                         pattern="^(" + "|".join(c.value for c in InsetCorner) + ")$")
     size: str = Field(InsetSize.MEDIUM.value,
                       pattern="^(" + "|".join(z.value for z in InsetSize) + ")$")
+    over_metrics: bool = False
 
 
 class OverlayRequest(BaseModel):

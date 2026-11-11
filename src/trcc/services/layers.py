@@ -140,8 +140,10 @@ class LivePicture(BackgroundLayer):
         return self
 
     def canvas(self, size: tuple[int, int], renderer: Renderer) -> Any:
-        """The frame itself is the canvas -- no black one made under it."""
-        surface = renderer.from_raw_rgb24(self.frame)
+        """The frame itself is the canvas -- no black one made under it.
+        An RGBA frame keeps its alpha (``RawFrame.has_alpha``)."""
+        surface = (renderer.from_raw_rgba(self.frame) if self.frame.has_alpha
+                   else renderer.from_raw_rgb24(self.frame))
         if renderer.surface_size(surface) != size:
             frame_log.debug("LivePicture.canvas: %dx%d stretched to %dx%d",
                             self.frame.width, self.frame.height, *size)

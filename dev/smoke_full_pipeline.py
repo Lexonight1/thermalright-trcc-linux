@@ -110,6 +110,8 @@ def _smoke_renderer() -> Any:
         def from_raw_rgb24(self, f: Any) -> Any:
             return _Surface()
 
+        from_raw_rgba = from_raw_rgb24
+
     return _R()
 
 

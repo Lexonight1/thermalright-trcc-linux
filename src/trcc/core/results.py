@@ -863,6 +863,8 @@ class LcdSnapshotResult(Result):
     inset_title: str = ""
     inset_corner: str = ""
     inset_size: str = ""
+    #: Whether the box is drawn over the metrics (``SetInset.over_metrics``).
+    inset_over_metrics: bool = False
     #: The picture or video the user chose to fill the panel (a cloud
     #: background is one), or None -- the theme's own, the media player and a
     #: module are not a file.  Every UI's background browser lights it.

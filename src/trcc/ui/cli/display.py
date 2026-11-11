@@ -177,12 +177,15 @@ def set_inset(
     size: str = typer.Option(
         InsetSize.MEDIUM.value,
         help="Size: " + ", ".join(z.value for z in InsetSize)),
+    over_metrics: bool = typer.Option(
+        False, "--over-metrics/--under-metrics",
+        help="Draw the box over the metrics instead of under them"),
 ) -> None:
     """Put a module's picture in a box over the panel's theme."""
-    log.info("cli display set-inset: key=%s module=%s corner=%s size=%s",
-             key, module, corner, size)
+    log.info("cli display set-inset: key=%s module=%s corner=%s size=%s "
+             "over_metrics=%s", key, module, corner, size, over_metrics)
     dispatch_echo(SetInset(key=key, module=module, corner=corner.lower(),
-                           size=size.lower()))
+                           size=size.lower(), over_metrics=over_metrics))
 
 
 @app.command("clear-inset")

@@ -580,6 +580,10 @@ class _RecordingRenderer(Renderer):
         self._record("from_raw_rgb24", frame)
         return _Surface(frame.width, frame.height)
 
+    def from_raw_rgba(self, frame: Any) -> Any:
+        self._record("from_raw_rgba", frame)
+        return _Surface(frame.width, frame.height)
+
     def decode_image(self, data: bytes) -> Any:
         self._record("decode_image", data)
         return _Surface(100, 100)

@@ -486,6 +486,16 @@ class QtRenderer(Renderer):
             QImage.Format.Format_RGB888,
         ).convertToFormat(QImage.Format.Format_ARGB32)
 
+    def from_raw_rgba(self, frame: RawFrame) -> Any:
+        """RGBA8888 bytes as ARGB32, alpha kept: ``composite`` blends it
+        source-over.  From Alex Shutov's overlay mode (#335)."""
+        frame_log.debug("from_raw_rgba: %dx%d", frame.width, frame.height)
+        return QImage(
+            frame.data, frame.width, frame.height,
+            frame.width * 4,
+            QImage.Format.Format_RGBA8888,
+        ).convertToFormat(QImage.Format.Format_ARGB32)
+
     # ── Fonts ─────────────────────────────────────────────────────────
 
     def list_fonts(self) -> list[str]:

@@ -374,8 +374,8 @@ class DisplayService:
         # overlay (Dynamic Island) -- 1600x720 widescreen only, an asset picked
         # by (split_mode, rotation, SUB byte) as the C# does.  ``composite``
         # copies its base, so the cached bg+mask is never drawn into.
-        layers = [*insets, *self._layers_over_background(
-            info, s, overlay_key, overlay_surface, visual_size, profile)]
+        layers = self._layers_over_background(
+            info, s, overlay_key, overlay_surface, visual_size, profile, insets)
         surface = draw_all(bg_surface, layers, self._r)
 
         # Brightness dim (before rotation — matches C# order)
@@ -1554,7 +1554,7 @@ class DisplayService:
     def _inset(self, key: str, s: DeviceSettings,
                visual_size: tuple[int, int]) -> list[Layer]:
         """The panel's boxed picture over its background (``InsetChoice``),
-        drawn under the metrics -- or nothing: no box chosen, its source not
+        under the metrics or over them -- or nothing: no box chosen, its source not
         open, or no frame yet.  Only ``build_frame``: the box is the panel's,
         not the theme's, so a theme's own still (``build_preview_surface``)
         never carries it."""
@@ -1578,15 +1578,19 @@ class DisplayService:
     def _layers_over_background(
         self, info: ProductInfo, s: DeviceSettings, overlay_key: Any,
         overlay_surface: Any, visual_size: tuple[int, int],
-        profile: DeviceProfile | None,
+        profile: DeviceProfile | None, insets: Sequence[Layer] = (),
     ) -> list[Layer]:
-        """What is drawn over the background, in order: the overlay, then the
-        Dynamic Island.  The wire and the preview both draw these, so they
-        cannot disagree."""
-        layers: list[Layer] = [Overlay(overlay_key, overlay_surface),
-                               *self._island(info, s, visual_size, profile)]
-        frame_log.debug("_layers_over_background: %s %d layer(s)", info.key,
-                        len(layers))
+        """What is drawn over the background, in order: the boxed picture
+        (*insets*), the overlay, then the Dynamic Island -- the box over the
+        overlay instead when the panel chose that (``over_metrics``, #335).
+        The Island stays on top: the C# draws it over every picture.  The
+        wire and the preview both draw these, so they cannot disagree."""
+        overlay = Overlay(overlay_key, overlay_surface)
+        over = s.inset is not None and s.inset.over_metrics
+        middle: list[Layer] = [overlay, *insets] if over else [*insets, overlay]
+        layers = [*middle, *self._island(info, s, visual_size, profile)]
+        frame_log.debug("_layers_over_background: %s %d layer(s), box %s the metrics",
+                        info.key, len(layers), "over" if over else "under")
         return layers
 
     def _island(self, info: ProductInfo, s: DeviceSettings,

@@ -427,3 +427,141 @@ class _Modules:
 
     def close(self) -> None:
         """``App.close`` ends the module runner."""
+
+
+# ── Full panel, over the metrics, transparency (#335, Alex Shutov) ─────────
+
+
+class _SeeThrough:
+    """A module's RGBA source: left half opaque green, right half fully
+    transparent -- what a dashboard drawn over a playing theme hands over."""
+    name = "see-through"
+
+    def latest(self) -> Any:
+        from trcc.core.models import RawFrame
+
+        w, h = 8, 6
+        row = bytes((0, 255, 0, 255)) * (w // 2) + bytes((0, 0, 0, 0)) * (w // 2)
+        return RawFrame(row * h, w, h)
+
+    def close(self) -> None:
+        pass
+
+
+def test_a_full_panel_rgba_box_lets_the_theme_show_through(tmp_path: Path) -> None:
+    """Full size covers the panel; where the module's frame is transparent
+    the theme under it is what the panel shows, where it is opaque the
+    module.  MUTATION CHECK: read every frame as RGB24 in ``LivePicture``
+    (the right half turns black), or drop FULL from ``INSET_SHARES``."""
+    from trcc.core.models import InsetChoice, InsetSize
+
+    app, device, theme = _boxed(tmp_path, cast(Any, _SeeThrough()))
+    key = device.info.key
+    app.settings.for_device(key).inset = InsetChoice("viz", size=InsetSize.FULL,
+                                                     over_metrics=True)
+    app.display.build_frame(info=device.info, theme=theme, sensors={},
+                            profile=device.profile)
+    img = app.display.rendered_surface(key)
+    assert img.pixelColor(40, 160).getRgb()[:3] == (0, 255, 0)       # the module
+    assert img.pixelColor(280, 160).getRgb()[:3] == (0, 64, 128)     # the theme
+
+
+@pytest.mark.parametrize(("over", "order"), [
+    (False, ["Inset", "Overlay"]),
+    (True, ["Overlay", "Inset"]),
+])
+def test_the_box_goes_over_the_metrics_only_when_chosen(
+        tmp_path: Path, over: bool, order: list[str]) -> None:
+    """Under the metrics by default, as the box always was; over them when
+    the panel chose it -- and the Dynamic Island stays on top either way.
+    MUTATION CHECK: ignore ``over_metrics`` in ``_layers_over_background``."""
+    from trcc.core.models import InsetChoice
+    from trcc.services.layers import Inset
+
+    app, device, _ = _boxed(tmp_path, _Alternates())
+    s = app.settings.for_device(device.info.key)
+    s.inset = InsetChoice("viz", over_metrics=over)
+    box = Inset(_Alternates().latest(), cast(Any, None))
+    layers = app.display._layers_over_background(
+        device.info, s, None, object(), (320, 320), device.profile, [box])
+    assert [type(layer).__name__ for layer in layers] == order
+
+
+def test_full_is_the_whole_panel_at_any_corner() -> None:
+    from trcc.core.geometry import inset_rect
+    from trcc.core.models import InsetChoice, InsetCorner, InsetSize
+
+    for corner in InsetCorner:
+        rect = inset_rect((854, 480), InsetChoice("viz", corner, InsetSize.FULL))
+        assert (rect.x, rect.y, rect.width, rect.height) == (0, 0, 854, 480)
+
+
+def test_a_box_saved_before_over_metrics_sits_under_them() -> None:
+    """A trcc.json from before #335 has no ``over_metrics``: the box loads
+    where it was.  A box over them survives the round-trip."""
+    import json
+
+    from trcc.core.models import DeviceSettings, InsetChoice, InsetSize
+    from trcc.services.settings import _device_json, _device_settings_from_dict
+
+    old = _device_settings_from_dict(
+        {"inset": {"module": "viz", "corner": "top-left", "size": "small"}}).inset
+    assert old is not None and old.over_metrics is False
+    choice = InsetChoice("viz", size=InsetSize.FULL, over_metrics=True)
+    saved = json.loads(json.dumps(_device_json(DeviceSettings(inset=choice))))
+    assert _device_settings_from_dict(saved).inset == choice
+
+
+def test_set_inset_over_the_metrics_reaches_every_ui(tmp_path: Path) -> None:
+    """The Command saves it, the snapshot every UI reads reports it, and the
+    answer says where the module went."""
+    from trcc.core.commands import LcdSnapshot, SetInset
+
+    app, device, _ = _boxed(tmp_path, _Alternates())
+    key = device.info.key
+    app.modules = cast(Any, _Modules())
+    result = app.dispatch(SetInset(key=key, module="viz", size="full",
+                                   over_metrics=True))
+    assert result.ok, result.message
+    snap = app.dispatch(LcdSnapshot(key=key))
+    assert (snap.inset_size, snap.inset_over_metrics) == ("full", True)
+
+
+def test_the_cli_and_the_api_send_over_metrics(monkeypatch: pytest.MonkeyPatch,
+                                               cli_runner: Any,
+                                               fake_platform: Any) -> None:
+    """``--over-metrics`` and the API's ``over_metrics`` both reach the one
+    Command.  MUTATION CHECK: drop either pass-through."""
+    import functools
+
+    from trcc.app import App
+    from trcc.core.commands import SetInset
+    from trcc.core.results import Result
+    from trcc.ui.api.main import build_app
+    from trcc.ui.cli import _ctx
+    from trcc.ui.cli.main import app as cli
+
+    from .conftest import loopback_client
+    from .test_api_routes import _SmokeRenderer
+
+    sent: list[SetInset] = []
+    bus = App(platform=fake_platform, renderer=_SmokeRenderer())
+    real = bus.dispatch
+
+    def record(command: Any) -> Any:
+        """A box is recorded and answered; everything else is the App's."""
+        if not isinstance(command, SetInset):
+            return real(command)
+        sent.append(command)
+        return Result(ok=True, message="ok")
+
+    monkeypatch.setattr(bus, "dispatch", record)
+    monkeypatch.setattr(_ctx, "get_app", functools.lru_cache(maxsize=1)(lambda: bus))
+    run = cli_runner.invoke(cli, ["display", "set-inset", "0402:3922", "viz",
+                                  "--size", "full", "--over-metrics"])
+    assert run.exit_code == 0, run.output
+    with loopback_client(build_app(trcc=bus)) as client:
+        resp = client.post("/devices/0402:3922/display/inset",
+                           json={"module": "viz", "size": "full", "over_metrics": True})
+    assert resp.status_code == 200, resp.text
+    assert [(c.size, c.over_metrics) for c in sent] == [("full", True)] * 2

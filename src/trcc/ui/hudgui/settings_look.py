@@ -170,6 +170,7 @@ def hud_module_look() -> ModuleLook:
                   "border: 1px solid rgba(255, 255, 255, 40); border-radius: 3px; "
                   "padding: 2px 8px; }"
                   "QComboBox:disabled { color: rgba(223, 229, 234, 90); }"
+                  "QPushButton:disabled { color: rgba(223, 229, 234, 90); }"
                   f"QComboBox QAbstractItemView {{ background-color: #10202b; color: {TEXT}; "
                   "selection-background-color: rgba(127, 212, 255, 70); }"
                   "QSlider::groove:horizontal { background: rgba(255, 255, 255, 30); "

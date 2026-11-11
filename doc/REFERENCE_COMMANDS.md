@@ -446,7 +446,7 @@ Switch game mode and/or set its CPU threshold -- the C#'s ``buttonGame`` / ``tex
 
 ### `SetInset`
 
-Put *module*'s picture in a box over panel *key*'s theme (#328): the theme stays -- its background, mask and metrics -- and the box sits in *corner* at *size* (``InsetCorner`` / ``InsetSize`` values).
+Put *module*'s picture in a box over panel *key*'s theme (#328): the theme stays -- its background, mask and metrics -- and the box sits in *corner* at *size* (``InsetCorner`` / ``InsetSize`` values), under the metrics, or over them with *over_metrics* (#335).  At ``full`` the box is the whole panel; an RGBA module frame lets the theme show through.
 
 *Command* → `Result`
 
@@ -456,6 +456,7 @@ Put *module*'s picture in a box over panel *key*'s theme (#328): the theme stays
 | `module` | `str` | yes |
 | `corner` | `str` | no |
 | `size` | `str` | no |
+| `over_metrics` | `bool` | no |
 
 ### `SetMaskPosition`
 

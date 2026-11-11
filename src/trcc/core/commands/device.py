@@ -2104,7 +2104,9 @@ class ClearModuleSource(Command[Result]):
 class SetInset(Command[Result]):
     """Put *module*'s picture in a box over panel *key*'s theme (#328): the
     theme stays -- its background, mask and metrics -- and the box sits in
-    *corner* at *size* (``InsetCorner`` / ``InsetSize`` values).
+    *corner* at *size* (``InsetCorner`` / ``InsetSize`` values), under the
+    metrics, or over them with *over_metrics* (#335).  At ``full`` the box
+    is the whole panel; an RGBA module frame lets the theme show through.
 
     The module draws what it would draw as the background, unchanged: the
     App answers its host calls for the box.  Already the panel's background,
@@ -2118,13 +2120,14 @@ class SetInset(Command[Result]):
     module: str
     corner: str = InsetCorner.BOTTOM_RIGHT.value
     size: str = InsetSize.MEDIUM.value
+    over_metrics: bool = False
 
     def execute(self, app: App) -> Result:
-        log.info("SetInset: %s <- %s %s %s", self.key, self.module, self.corner,
-                 self.size)
+        log.info("SetInset: %s <- %s %s %s over_metrics=%s", self.key, self.module,
+                 self.corner, self.size, self.over_metrics)
         try:
             choice = InsetChoice(self.module, InsetCorner(self.corner),
-                                 InsetSize(self.size))
+                                 InsetSize(self.size), self.over_metrics)
         except ValueError:
             return Result(ok=False, message=(
                 f"a box goes in a corner ({', '.join(c.value for c in InsetCorner)}) "
@@ -2148,7 +2151,10 @@ class SetInset(Command[Result]):
         _publish_background(app, self.key)
         title = _module_title(app, self.module)
         if app.media.inset(self.key) is not None:
-            message = f"{title} in a {choice.size.value} box, {choice.corner.value}"
+            where = ("over the whole panel" if choice.size is InsetSize.FULL
+                     else f"in a {choice.size.value} box, {choice.corner.value}")
+            layer = "over" if choice.over_metrics else "under"
+            message = f"{title} {where}, {layer} the metrics"
         elif app.background_kind_of(self.module) is None:
             message = f"{title} is off -- it draws in the box when switched on"
         else:
@@ -3783,6 +3789,7 @@ class LcdSnapshot(Query[LcdSnapshotResult]):
             inset_title=_module_title(app, s.inset.module if s.inset else None),
             inset_corner=s.inset.corner.value if s.inset else "",
             inset_size=s.inset.size.value if s.inset else "",
+            inset_over_metrics=s.inset.over_metrics if s.inset else False,
             background_file=s.chosen_file,
             media_player_uri=s.chosen_media,
             screencast_rect=screencast_box(app, self.key),

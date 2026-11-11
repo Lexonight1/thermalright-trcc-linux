@@ -263,9 +263,11 @@ def set_fit_mode(key: str, body: FitModeRequest,
 def set_inset(key: str, body: InsetRequest, request: Request) -> Result:
     """Put a module's picture in a box over the panel's theme."""
     log.info("api POST /devices/{key}/display/inset: key=%s module=%s corner=%s "
-             "size=%s", key, body.module, body.corner, body.size)
+             "size=%s over_metrics=%s", key, body.module, body.corner, body.size,
+             body.over_metrics)
     result = request.app.state.trcc.dispatch(
-        SetInset(key=key, module=body.module, corner=body.corner, size=body.size))
+        SetInset(key=key, module=body.module, corner=body.corner, size=body.size,
+                 over_metrics=body.over_metrics))
     http_error_if_failed(result)
     return result
 

@@ -606,13 +606,23 @@ class LedHandshakeResult:
 
 @dataclass(frozen=True, slots=True)
 class RawFrame:
-    """Decoded video frame — RGB24 bytes.  Handed to Renderer."""
+    """Decoded video frame — RGB24 bytes, or RGBA when a module's picture
+    carries transparency (``width*height*4``).  Handed to Renderer."""
     #: Out of the repr — a decoded RGB24 frame is megabytes.  ``bytearray`` is
     #: admitted because a capture may hand over a buffer it reuses; the
     #: renderer copies it (test_a_grab_becomes_a_surface_that_owns_its_pixels).
     data: bytes | bytearray = field(repr=False)
     width: int
     height: int
+
+    @property
+    def has_alpha(self) -> bool:
+        """Whether the bytes are RGBA -- four per pixel, not three.  A
+        module's boxed picture over the metrics lets the theme show through
+        where it is transparent (#335, Alex Shutov's overlay mode)."""
+        alpha = len(self.data) == self.width * self.height * 4
+        frame_log.debug("RawFrame.has_alpha: %dx%d -> %s", self.width, self.height, alpha)
+        return alpha
 
 
 @dataclass(frozen=True, slots=True)
@@ -948,23 +958,28 @@ class InsetSize(str, Enum):
     SMALL = "small"
     MEDIUM = "medium"
     LARGE = "large"
+    #: The whole panel: the corner does not matter.
+    FULL = "full"
 
 
 #: Each box size's share of the panel's width and of its height -- the box
 #: keeps the panel's shape, so a module draws the same picture, smaller.
 INSET_SHARES: Mapping[InsetSize, float] = {
-    InsetSize.SMALL: 1 / 4, InsetSize.MEDIUM: 1 / 3, InsetSize.LARGE: 1 / 2}
+    InsetSize.SMALL: 1 / 4, InsetSize.MEDIUM: 1 / 3, InsetSize.LARGE: 1 / 2,
+    InsetSize.FULL: 1.0}
 
 
 @dataclass(frozen=True)
 class InsetChoice:
     """A module's picture in a box over the panel's theme (#328) -- the
     theme stays: its background, mask and metrics, with the box between the
-    background and the metrics.  The panel's own, not a theme's: a theme
-    load keeps it."""
+    background and the metrics, or over the metrics when *over_metrics*
+    (#335: a module drawn on top of a playing theme -- transparent where its
+    frame is RGBA).  The panel's own, not a theme's: a theme load keeps it."""
     module: str
     corner: InsetCorner = InsetCorner.BOTTOM_RIGHT
     size: InsetSize = InsetSize.MEDIUM
+    over_metrics: bool = False
 
 
 @dataclass

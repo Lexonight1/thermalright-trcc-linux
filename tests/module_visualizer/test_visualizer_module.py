@@ -526,9 +526,16 @@ def test_off_background_and_box_put_the_visual_where_he_picks(
     assert (_choice(app)[0], box()[0]) == (None, "")
     app.dispatch(SetInset(key=_KEY, module="visualizer", corner="bottom-left",
                           size="large"))
-    qtbot.waitUntil(lambda: row.choice() == ("box", "bottom-left", "large"),
+    qtbot.waitUntil(lambda: row.choice() == ("box", "bottom-left", "large", False),
                     timeout=5000)
     assert row.box_size.isEnabled()
+    # Full panel: no corner to pick; then over the metrics (#335).
+    row.box_size.setCurrentIndex(row.box_size.findData("full"))
+    row.box_size.activated.emit(row.box_size.currentIndex())
+    assert box() == ("visualizer", "bottom-left", "full")
+    assert not row.box_corner.isEnabled() and row.box_over.isEnabled()
+    row.box_over.click()
+    assert app.dispatch(LcdSnapshot(key=_KEY)).inset_over_metrics is True
     # Every tile in before the App closes: a tile still asked for would be
     # answered "off" into the next test's log.
     qtbot.waitUntil(lambda: not page._tiles._waiting, timeout=60000)

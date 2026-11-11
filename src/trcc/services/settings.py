@@ -1684,15 +1684,17 @@ def _screencast_region(value: Any) -> Any:
 
 
 def _inset(value: Any) -> Any:
-    """``{"module", "corner", "size"}`` -> ``InsetChoice``; anything
-    unreadable is no box, never a failed load."""
+    """``{"module", "corner", "size", "over_metrics"}`` -> ``InsetChoice``;
+    a box saved before ``over_metrics`` existed sits under the metrics, as it
+    did.  Anything unreadable is no box, never a failed load."""
     log.debug("_inset: %r", value)
     if value is None:
         return None
     try:
         return InsetChoice(module=str(value["module"]),
                            corner=InsetCorner(value["corner"]),
-                           size=InsetSize(value["size"]))
+                           size=InsetSize(value["size"]),
+                           over_metrics=bool(value.get("over_metrics", False)))
     except (KeyError, TypeError, ValueError) as e:
         log.warning("_inset: %r unreadable (%s) -- no box", value, e)
         return _DROP

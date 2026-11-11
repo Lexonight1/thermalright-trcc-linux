@@ -95,6 +95,8 @@ class _TestRenderer(Renderer):
     def from_raw_rgb24(self, frame: Any) -> Any:
         return _TestRenderer._Surface(100, 100)
 
+    from_raw_rgba = from_raw_rgb24
+
     def decode_image(self, data: bytes) -> Any:
         return _TestRenderer._Surface(100, 100)
 
