@@ -29,6 +29,10 @@ class VisualsResult(Result):
     #: ("" for none), that visual's preset and its slider values.
     playing: str = ""
     preset: str = ""
+    #: The visual that panel chose last and its preset -- kept while it
+    #: draws nothing, so a page can put it back ("" when never chosen).
+    saved: str = ""
+    saved_preset: str = ""
     sliders: dict[str, float] = field(default_factory=dict)
     #: Whether that panel's visual hears any sound right now.
     hearing: bool = False

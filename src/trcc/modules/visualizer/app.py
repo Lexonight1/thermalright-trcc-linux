@@ -192,6 +192,13 @@ class VisualizerModule(BaseModule, key="visualizer"):
             return None
         return _choice(self.host.settings.panel(key), key)
 
+    def saved(self, key: str) -> Choice | None:
+        """What panel *key* chose last -- drawn now or not; None when it
+        never chose one, or the saved choice is unreadable."""
+        found = _choice(self.host.settings.panel(key), key)
+        log.debug("visualizer.saved: %s -> %s", key, found)
+        return found
+
     def picture(self) -> tuple[Path | None, bool, float]:
         """The centre picture: its file, whether it is shown, its fire (none
         while hidden)."""

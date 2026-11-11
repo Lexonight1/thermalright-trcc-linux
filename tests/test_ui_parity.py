@@ -240,12 +240,6 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "for every UI and undid disconnects (removed 2026-09-29); App.close "
         "blanks on shutdown"
     )),
-    "ClearModuleSource": (frozenset({"cli", "api"}), (
-        "gap: neither window has a stop for a module's background (the Audio "
-        "Visualizer's) -- picking any other background ends it; the CLI's "
-        "`display visual KEY` and the API's visual '' send it, and work with "
-        "the module off (2026-10-21)"
-    )),
     "ResetDevice": (frozenset({"cli", "api"}), (
         "gap: power-cycle + restore. It sat in exactly this blind spot, which is "
         "why nobody noticed it was DisconnectDevice byte-for-byte for the "

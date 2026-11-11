@@ -27,15 +27,22 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon, QImage, QPixmap
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtWidgets import (
+    QButtonGroup,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QWidget,
+)
 
-from trcc.core.commands import ClearInset, LcdSnapshot, SetInset
+from trcc.core.commands import ClearInset, ClearModuleSource, LcdSnapshot, SetInset
 from trcc.core.events import BackgroundChanged
 from trcc.core.i18n import tr
 from trcc.core.models import InsetCorner, InsetSize
-from trcc.core.results import LcdSnapshotResult
+from trcc.core.results import LcdSnapshotResult, Result
 from trcc.ui.module_page import ModuleLook, ModulePage
 from trcc.ui.qt_background import dispatch_in_background
 from trcc.ui.tile_grid import BROWSER_W, TILE_IMAGE, BaseThemeBrowser, BaseThumbnail
@@ -78,8 +85,13 @@ _CORNERS = {InsetCorner.TOP_LEFT: "Top left", InsetCorner.TOP_RIGHT: "Top right"
             InsetCorner.BOTTOM_RIGHT: "Bottom right"}
 _SIZES = {InsetSize.SMALL: "Small", InsetSize.MEDIUM: "Medium",
           InsetSize.LARGE: "Large"}
-#: A switch's size -- the Settings panel's switches'.
-_SWITCH = (36, 18)
+#: Where the visual plays, and how each is said -- in the row's order.
+_OFF, _BACKGROUND, _BOX = "off", "background", "box"
+_WHERE = {_OFF: "Off", _BACKGROUND: "Background", _BOX: "Box"}
+#: The property a where-button carries: which it is.
+_WHERE_PROPERTY = "visualizer_where"
+#: The line that says no visual was ever picked -- the page's own hint.
+_PICK_ONE = "Pick an audio visual above -- its sliders show here."
 #: Where a pick keeps its English, to say again in another language.
 _ENGLISH = Qt.ItemDataRole.UserRole + 1
 
@@ -99,52 +111,42 @@ def _no_snapshot(message: str) -> LcdSnapshotResult:
 
 
 class PlacementRow(QWidget):
-    """The visual in a box: a switch -- off, it fills the panel; on, it sits
-    in a box over the theme, which plays on under it -- and the box's corner
-    and size, picked while it is on.  Says what the App holds
-    (:meth:`show_box`); a change the USER makes emits :attr:`chosen`."""
+    """Where the visual plays -- Off, Background (the whole panel) or Box (a
+    corner of it, over the theme, which plays on under it) -- one of three,
+    lit; the box's corner and size, picked while it is the box.  Says what the
+    App holds (:meth:`light`); a choice the USER makes emits :attr:`chosen`.
+
+    Three, not a switch: he asked for "box or background or off" (2026-11-10)
+    once a box switch's off put the visual back over the background."""
 
     chosen = Signal()
 
-    def __init__(self, look: ModuleLook, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         log.debug("PlacementRow.__init__")
-        self.switch = self._switch(look)
-        self.label = QLabel(self)
-        self.box_corner = self._combo(tuple((word, c.value) for c, word in _CORNERS.items()))
-        self.box_size = self._combo(tuple((word, z.value) for z, word in _SIZES.items()))
+        self.buttons = QButtonGroup(self)
+        self.buttons.setExclusive(True)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
-        for widget in (self.switch, self.label, self.box_corner, self.box_size):
-            row.addWidget(widget)
+        for where, english in _WHERE.items():
+            button = QPushButton(english, self)
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setProperty(_WHERE_PROPERTY, where)
+            self.buttons.addButton(button)
+            row.addWidget(button)
+        self.buttons.buttonClicked.connect(self._on_changed)
+        self.box_corner = self._combo(tuple((word, c.value) for c, word in _CORNERS.items()))
+        self.box_size = self._combo(tuple((word, z.value) for z, word in _SIZES.items()))
+        row.addWidget(self.box_corner)
+        row.addWidget(self.box_size)
         row.addStretch(1)
-        self._tr: Callable[[str], str] = str
-        self.set_translate(str)
-        self.show_box(InsetCorner.BOTTOM_RIGHT.value, InsetSize.MEDIUM.value, False)
-
-    def _switch(self, look: ModuleLook) -> QPushButton:
-        """The GUI's own switch -- its images, else On / Off in words."""
-        log.debug("PlacementRow._switch: %r / %r", look.switch_on, look.switch_off)
-        button = QPushButton(self)
-        button.setCheckable(True)
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        on = look.pixmap(look.switch_on, *_SWITCH)
-        off = look.pixmap(look.switch_off, *_SWITCH)
-        if not on.isNull() and not off.isNull():
-            icon = QIcon()
-            icon.addPixmap(on, QIcon.Mode.Normal, QIcon.State.On)
-            icon.addPixmap(off, QIcon.Mode.Normal, QIcon.State.Off)
-            button.setIcon(icon)
-            button.setFixedSize(*_SWITCH)
-            button.setIconSize(button.size())
-            button.setStyleSheet(look.flat_button)
-        button.clicked.connect(self._on_changed)
-        return button
+        self.light(_OFF, InsetCorner.BOTTOM_RIGHT.value, InsetSize.MEDIUM.value)
 
     def _combo(self, items: tuple[tuple[str, str], ...]) -> QComboBox:
         """A pick of ``(English, value)`` items -- ``activated`` is the
-        user's alone, never a :meth:`show_box`."""
+        user's alone, never a :meth:`light`."""
         log.debug("PlacementRow._combo: %d item(s)", len(items))
         combo = QComboBox(self)
         for english, value in items:
@@ -155,31 +157,36 @@ class PlacementRow(QWidget):
 
     def _on_changed(self, *_qt_args: object) -> None:
         log.info("PlacementRow._on_changed: %s", self.choice())
-        self._show_switch()
+        self._enable()
         self.chosen.emit()
 
-    def _show_switch(self) -> None:
-        """A corner and a size only for a box; a switch without images says
-        which it is."""
-        boxed = self.switch.isChecked()
-        log.debug("PlacementRow._show_switch: boxed=%s", boxed)
+    def _enable(self) -> None:
+        """A corner and a size only for the box."""
+        boxed = self.where() == _BOX
+        log.debug("PlacementRow._enable: boxed=%s", boxed)
         self.box_corner.setEnabled(boxed)
         self.box_size.setEnabled(boxed)
-        if self.switch.icon().isNull():
-            self.switch.setText(self._tr("On" if boxed else "Off"))
 
-    def show_box(self, corner: str, size: str, boxed: bool) -> None:
-        """What the App holds: *boxed* -- this module in a box -- at *corner*
+    def where(self) -> str:
+        """The lit one -- ``off``, ``background`` or ``box``."""
+        button = self.buttons.checkedButton()
+        found = str(button.property(_WHERE_PROPERTY)) if button is not None else _OFF
+        log.debug("PlacementRow.where: %s", found)
+        return found
+
+    def light(self, where: str, corner: str, size: str) -> None:
+        """What the App holds: *where* the visual plays, the box at *corner*
         and *size*."""
-        log.debug("PlacementRow.show_box: boxed=%s %s %s", boxed, corner, size)
-        self.switch.setChecked(boxed)
+        log.debug("PlacementRow.light: %s %s %s", where, corner, size)
+        for button in self.buttons.buttons():
+            button.setChecked(button.property(_WHERE_PROPERTY) == where)
         self.box_corner.setCurrentIndex(max(0, self.box_corner.findData(corner)))
         self.box_size.setCurrentIndex(max(0, self.box_size.findData(size)))
-        self._show_switch()
+        self._enable()
 
-    def choice(self) -> tuple[bool, str, str]:
-        """(in a box, its corner, its size) as set."""
-        found = (self.switch.isChecked(), str(self.box_corner.currentData()),
+    def choice(self) -> tuple[str, str, str]:
+        """(where, the box's corner, its size) as set."""
+        found = (self.where(), str(self.box_corner.currentData()),
                  str(self.box_size.currentData()))
         log.debug("PlacementRow.choice: %s", found)
         return found
@@ -187,12 +194,96 @@ class PlacementRow(QWidget):
     def set_translate(self, translate: Callable[[str], str]) -> None:
         """Its words, through *translate*."""
         log.debug("PlacementRow.set_translate")
-        self._tr = translate
-        self.label.setText(translate("Box"))
+        for button in self.buttons.buttons():
+            button.setText(translate(_WHERE[str(button.property(_WHERE_PROPERTY))]))
         for combo in (self.box_corner, self.box_size):
             for i in range(combo.count()):
                 combo.setItemText(i, translate(combo.itemData(i, _ENGLISH)))
-        self._show_switch()
+
+
+class Placement(QObject):
+    """Where an LCD's visual plays, between the row and the App: what the App
+    says lights the row -- its box, else the whole panel while the visual
+    draws, else off -- and the user's pick is sent.  A QObject the page owns,
+    so an answer that arrives after the page is gone is dropped
+    (``qt_background``)."""
+
+    def __init__(self, app: CommandBus, row: PlacementRow,
+                 parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        log.debug("Placement.__init__")
+        self._app, self._row = app, row
+        #: What the App last said: the visual draws on the LCD; it is in a
+        #: box, at this corner and size.
+        self._playing = self._boxed = False
+        self._corner, self._size = InsetCorner.BOTTOM_RIGHT.value, InsetSize.MEDIUM.value
+
+    def ask(self, key: str) -> None:
+        """Where LCD *key*'s visual is boxed -- the App's box, whichever UI
+        set it."""
+        if not key:
+            log.debug("Placement.ask: no LCD")
+            return
+        log.debug("Placement.ask: %s", key)
+        dispatch_in_background(self._app, LcdSnapshot(key=key), self._on_read,
+                               failed=_no_snapshot)
+
+    def _on_read(self, snap: LcdSnapshotResult) -> None:
+        if not snap.ok:
+            log.debug("Placement._on_read: %s", snap.message)
+            return
+        log.debug("Placement._on_read: %r %s %s", snap.inset_module,
+                  snap.inset_corner, snap.inset_size)
+        self._boxed = snap.inset_module == _MODULE
+        self._corner = snap.inset_corner or InsetCorner.BOTTOM_RIGHT.value
+        self._size = snap.inset_size or InsetSize.MEDIUM.value
+        self._light()
+
+    def playing(self, drawing: bool) -> None:
+        """Whether the visual draws on the LCD now (``ListVisuals.playing``)."""
+        log.debug("Placement.playing: %s", drawing)
+        self._playing = drawing
+        self._light()
+
+    def _light(self) -> None:
+        where = _BOX if self._boxed else _BACKGROUND if self._playing else _OFF
+        log.debug("Placement._light: %s", where)
+        self._row.light(where, self._corner, self._size)
+
+    def send(self, key: str, translate: Callable[[str], str]) -> Result:
+        """The row's pick for LCD *key*: Off -- the box closes, or the
+        background ends, and the theme shows as it was; Background -- out of
+        its box, the panel's visual (its last, if none draws) fills it; Box --
+        in a corner over the theme, moved there or waiting for a tile."""
+        where, corner, size = self._row.choice()
+        boxed = self._app.dispatch(LcdSnapshot(key=key)).inset_module == _MODULE
+        log.info("Placement.send: %s %s %s %s (boxed=%s)", key, where, corner, size,
+                 boxed)
+        match where:
+            case "box":
+                return self._app.dispatch(SetInset(key=key, module=_MODULE,
+                                                   corner=corner, size=size))
+            case "background":
+                return self._to_background(key, boxed, translate)
+            case _:
+                return self._app.dispatch(ClearInset(key=key) if boxed
+                                          else ClearModuleSource(key=key, module=_MODULE))
+
+    def _to_background(self, key: str, boxed: bool,
+                       translate: Callable[[str], str]) -> Result:
+        """The visual on the whole panel: out of its box, or -- drawing
+        nowhere -- the one the panel chose last.  Never chosen: say so."""
+        listed = self._app.dispatch(ListVisuals(key=key))
+        visual, preset = ((listed.playing, listed.preset) if listed.playing
+                          else (listed.saved, listed.saved_preset))
+        log.info("Placement._to_background: %s %r (boxed=%s)", visual, preset, boxed)
+        if not visual:
+            return Result(ok=False, message=translate(_PICK_ONE))
+        if listed.playing and not boxed:
+            return listed                               # already the background
+        if boxed and not (cleared := self._app.dispatch(ClearInset(key=key))).ok:
+            return cleared
+        return self._app.dispatch(PlayVisual(key=key, visual=visual, preset=preset))
 
 
 class VisualThumbnail(BaseThumbnail):
@@ -250,9 +341,6 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
         self._tr: Callable[[str], str] = str
         self._key = ""
         self._listed = False
-        #: What the LCD's visual is -- (visual, preset) -- to play again on
-        #: the whole panel when its box closes.
-        self._chosen: tuple[str, str] | None = None
         self._tiles = VisualTiles(app, self._tile_query, self._show_tile)
         super().__init__(parent, skin=look.tiles)
 
@@ -265,9 +353,10 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
                                         self._center_command,
                                         self._picture_command, self)
         self._controls.setStyleSheet(self._look.controls)
-        self._placement = PlacementRow(self._look, self)
+        self._placement = PlacementRow(self)
         self._placement.setStyleSheet(self._look.controls)
         self._placement.chosen.connect(self._on_placement)
+        self._where = Placement(self._app, self._placement, self)
         self._status = QLabel(self)
         self._status.setGeometry(*_STATUS)
         self._status.setAlignment(Qt.AlignmentFlag.AlignRight
@@ -317,7 +406,7 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
         self._say("")
         if self._listed:
             self._ask_playing()
-        self._ask_placement()
+        self._where.ask(key)
 
     def on_settings_changed(self, event: object) -> None:
         """Another UI -- or this one -- changed the LCD's background, or its
@@ -326,7 +415,7 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
                 and event.key == self._key and self._listed):
             log.debug("VisualsPage.on_settings_changed: %s", event.key)
             self._ask_playing()
-            self._ask_placement()
+            self._where.ask(self._key)
 
     def _create_thumbnail(self, item_info: VisualItem) -> VisualThumbnail:
         log.debug("VisualsPage._create_thumbnail: %s", item_info.name)
@@ -368,8 +457,6 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
     def _on_playing(self, listed: VisualsResult) -> None:
         """Its tile selected -- none when nothing plays -- its controls shown."""
         log.debug("VisualsPage._on_playing: %s %r", listed.playing, listed.preset)
-        if listed.playing:
-            self._chosen = (listed.playing, listed.preset)
         playing = next((w.item_info for w in self.item_widgets
                         if isinstance(w, VisualThumbnail)
                         and (w.item_info.visual, w.item_info.preset)
@@ -377,49 +464,22 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
         self._select_item(playing)
         self._controls.show_for(listed)
         self._fit_controls()
-
-    def _ask_placement(self) -> None:
-        """Where the LCD's visual plays -- the App's box, whichever UI set it."""
-        if not self._key:
-            log.debug("VisualsPage._ask_placement: no LCD")
-            return
-        log.debug("VisualsPage._ask_placement: %s", self._key)
-        dispatch_in_background(self._app, LcdSnapshot(key=self._key),
-                               self._on_placement_read, failed=_no_snapshot)
-
-    def _on_placement_read(self, snap: LcdSnapshotResult) -> None:
-        if not snap.ok:
-            log.debug("VisualsPage._on_placement_read: %s", snap.message)
-            return
-        log.debug("VisualsPage._on_placement_read: %r %s %s", snap.inset_module,
-                  snap.inset_corner, snap.inset_size)
-        self._placement.show_box(snap.inset_corner or InsetCorner.BOTTOM_RIGHT.value,
-                                 snap.inset_size or InsetSize.MEDIUM.value,
-                                 snap.inset_module == _MODULE)
+        if listed.ok:
+            self._where.playing(bool(listed.playing))
 
     def _on_placement(self) -> None:
-        """The user set the box: on -- the visual moves into it, or waits
-        there for a tile; a new corner or size moves it -- or off, and the
-        visual the box held plays on the whole panel."""
-        boxed, corner, size = self._placement.choice()
-        log.info("VisualsPage._on_placement: %s boxed=%s %s %s", self._key, boxed,
-                 corner, size)
+        """The user picked where the visual plays (``Placement.send``): what
+        went wrong shows here, and the row and the tiles show the App again."""
+        log.info("VisualsPage._on_placement: %s", self._key)
         if not self._key:
             self._say(self._tr("Pick an LCD first"))
             return
-        if boxed:
-            result = self._app.dispatch(SetInset(key=self._key, module=_MODULE,
-                                                 corner=corner, size=size))
-        else:
-            result = self._app.dispatch(ClearInset(key=self._key))
-            if result.ok and self._chosen is not None:
-                visual, preset = self._chosen
-                result = self._app.dispatch(PlayVisual(key=self._key, visual=visual,
-                                                       preset=preset))
+        result = self._where.send(self._key, self._tr)
         if not result.ok:
             log.warning("VisualsPage._on_placement: %s", result.message)
         self._say("" if result.ok else result.message)
-        self._ask_placement()
+        self._where.ask(self._key)
+        self._ask_playing()
 
     def _fit_controls(self) -> None:
         """The settings at the height they need, at the bottom; the

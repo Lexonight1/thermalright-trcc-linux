@@ -475,17 +475,17 @@ def test_a_media_player_started_while_a_visual_waits_is_what_a_restore_resumes(
     assert app.media.live_kind(_KEY) is PanelSource.MEDIA
 
 
-def test_the_box_switch_moves_the_visual_into_a_box_and_back(
+def test_off_background_and_box_put_the_visual_where_he_picks(
         qtbot: Any, app: App) -> None:
-    """The Box switch: on puts the visual in a box at the corner and size
-    picked (``SetInset``), a new corner moves it; off closes the box and the
-    visual plays on the whole panel again; and the switch follows a box
-    another UI set.  It replaced
-    a button and a window on the Background panel, where the visual could not
-    be picked (his ask, 2026-11-10).  MUTATION CHECK: drop the ``PlayVisual``
-    after ``ClearInset`` in ``_on_placement`` and the visual stays off; drop
-    ``_ask_placement`` from ``on_settings_changed`` and the row misses the
-    other UI's box."""
+    """Where the visual plays is one of three -- his words, 2026-11-10: "box
+    or background or off" -- lit where the App says, whichever UI set it.
+    Box puts it in a corner over the theme (a new corner moves it); Off ends
+    it, box or background, and the theme shows as it was -- nothing takes
+    over; Background fills the panel, out of its box, or with the panel's
+    last visual when none draws.  MUTATION CHECK (``Placement``): Off plays
+    the visual again (what he saw) and the background is taken; Background
+    ignores the saved visual and asks for a pick; drop ``_where.ask`` from
+    ``VisualsPage.on_settings_changed`` and another UI's box is never lit."""
     from trcc.core.commands import LcdSnapshot, SetInset
     from trcc.modules.visualizer.ui.presentation.visual_gallery import VisualItem
     from trcc.ui.gui.trcc_app import TRCCApp
@@ -496,26 +496,39 @@ def test_the_box_switch_moves_the_visual_into_a_box_and_back(
     window._activate_device(_KEY)
     page: Any = window._module_pages["visualizer"]
     page.refresh()
-    page._on_play(VisualItem(visual="trcc-pipes", preset="", name="Pipes"))
-    qtbot.waitUntil(lambda: page._chosen == ("trcc-pipes", ""), timeout=5000)
     row = page._placement
 
     def box() -> tuple[str, str, str]:
         snap = app.dispatch(LcdSnapshot(key=_KEY))
         return snap.inset_module, snap.inset_corner, snap.inset_size
 
-    assert not row.box_corner.isEnabled()              # nothing to place while off
-    row.switch.click()
+    def pick(where: str) -> None:
+        next(b for b in row.buttons.buttons()
+             if b.property("visualizer_where") == where).click()
+
+    page._on_play(VisualItem(visual="trcc-pipes", preset="", name="Pipes"))
+    qtbot.waitUntil(lambda: row.where() == "background", timeout=5000)
+    assert not row.box_corner.isEnabled()              # nothing to place
+    pick("box")
     assert box() == ("visualizer", "bottom-right", "medium")
     row.box_corner.setCurrentIndex(row.box_corner.findData("top-left"))
     row.box_corner.activated.emit(row.box_corner.currentIndex())
     assert box() == ("visualizer", "top-left", "medium")
-    row.switch.click()
-    assert (box()[0], _choice(app)[0]) == ("", "visualizer")
+    pick("off")                                        # from the box
+    assert (box()[0], _choice(app)[0]) == ("", None)   # the theme, nothing taken
+    qtbot.waitUntil(lambda: row.where() == "off", timeout=5000)
+    pick("background")                                 # its last visual, back
+    assert (_choice(app)[0], box()[0]) == ("visualizer", "")
+    pick("box")
+    pick("background")                                 # out of the box
+    assert (_choice(app)[0], box()[0]) == ("visualizer", "")
+    pick("off")                                        # from the background
+    assert (_choice(app)[0], box()[0]) == (None, "")
     app.dispatch(SetInset(key=_KEY, module="visualizer", corner="bottom-left",
                           size="large"))
-    qtbot.waitUntil(lambda: row.choice() == (True, "bottom-left", "large"), timeout=5000)
-    assert row.switch.isChecked() and row.box_size.isEnabled()
+    qtbot.waitUntil(lambda: row.choice() == ("box", "bottom-left", "large"),
+                    timeout=5000)
+    assert row.box_size.isEnabled()
     # Every tile in before the App closes: a tile still asked for would be
     # answered "off" into the next test's log.
     qtbot.waitUntil(lambda: not page._tiles._waiting, timeout=60000)
@@ -543,6 +556,6 @@ def test_an_app_gone_mid_ask_is_an_answer_the_page_reads(
     monkeypatch.setattr(app, "dispatch", gone)
     page._listed = True
     page._ask_playing()
-    page._ask_placement()
+    page._where.ask(_KEY)
     qtbot.wait(300)                                   # both answers land
     assert page.selected_item is None

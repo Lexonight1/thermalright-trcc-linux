@@ -15,11 +15,8 @@ written once, and a new GUI shows every module's page by building a look.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar
-
-from PySide6.QtGui import QPixmap
 
 from .tile_grid import TileSkin
 
@@ -32,20 +29,13 @@ class ModuleLook:
     is the GUI's own; none has a default, so a GUI says all of it."""
     #: A gallery's tiles.
     tiles: TileSkin
-    #: The controls under a gallery -- labels, buttons, sliders (a style sheet).
+    #: The controls under a gallery -- labels, buttons (a lit one: ``:checked``),
+    #: picks, sliders (a style sheet).
     controls: str
     #: The name of a tile that cannot be used here (a colour).
     dimmed: str
     #: The line a page says what went wrong on (a style sheet).
     status: str
-    #: A switch: the GUI's own images, on and off, as its Background and
-    #: Mask switches -- loaded at a size by *pixmap* (a null picture: the
-    #: GUI has none, and the switch says On / Off in words) -- on a button
-    #: styled *flat_button*.
-    pixmap: Callable[[str, int, int], QPixmap]
-    switch_on: str
-    switch_off: str
-    flat_button: str
 
 
 class ModulePage:

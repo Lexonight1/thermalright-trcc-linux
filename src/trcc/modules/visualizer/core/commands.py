@@ -47,17 +47,20 @@ class ListVisuals(ModuleQuery[VisualsResult, "VisualizerModule"]):
             for v in module.catalog() for cls in (module.visual(v.kind),))
         center, shown, _fire = module.picture()
         chosen = module.choice(self.key) if self.key else None
+        saved = module.saved(self.key) if self.key else None
         reader = module.reader(self.key) if self.key else None
         log.info("ListVisuals: %s, presets %s, centre %s, %s plays %s",
                  [v.kind for v in visuals],
                  {v.kind: len(v.presets) for v in visuals if v.uses_presets},
                  center, self.key or "-", chosen)
         kind, preset, sliders = chosen or ("", "", {})
+        saved_kind, saved_preset, _ = saved or ("", "", {})
         return VisualsResult(ok=True, visuals=visuals,
                              center=str(center or ""), center_shown=shown,
                              center_fire=float(module.host.settings.app().get(
                                  "center_fire", 0.0) or 0.0),
                              playing=kind, preset=preset, sliders=dict(sliders),
+                             saved=saved_kind, saved_preset=saved_preset,
                              hearing=reader is not None and reader.hearing)
 
 
