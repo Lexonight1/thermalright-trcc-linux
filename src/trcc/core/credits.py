@@ -161,6 +161,9 @@ BUILT_FROM: tuple[Credit, ...] = (
            "video trimming, decoding and thumbnails"),
     Credit("7-Zip", "Igor Pavlov", "LGPL-2.1, with the unRAR restriction",
            "unpacking the theme archives"),
+    Credit("libjpeg-turbo", "D. R. Commander and the libjpeg-turbo Project; "
+           "the Independent JPEG Group", "IJG, BSD-3-Clause and Zlib",
+           "full-colour JPEG frames for the panels"),
     Credit("Qt for Python (PySide6)", "The Qt Company", "LGPL-3.0",
            "both windows and the frame renderer"),
     Credit("pyqtgraph", "Luke Campagnola", "MIT",

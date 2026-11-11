@@ -78,6 +78,22 @@ jobs:
             throw "PawnIO_setup 2.2.0 hash mismatch: $hash"
           }
 
+      # libjpeg-turbo's TurboJPEG library: JPEG panel frames at full colour
+      # (#336; Qt's own writer drops to 4:2:0 below quality 91).  The official
+      # build, pinned by SHA-256 (GitHub's asset digest).  turbojpeg.dll
+      # imports only KERNEL32 -- no VC runtime.  Its licence ships with it.
+      - name: Download libjpeg-turbo
+        run: |
+          $url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.1/libjpeg-turbo-3.2.1-vc-x64.exe"
+          Invoke-WebRequest -Uri $url -OutFile libjpeg-turbo.exe
+          $hash = (Get-FileHash libjpeg-turbo.exe -Algorithm SHA256).Hash
+          if ($hash -ne "1F05BC3ED1585E6B12A8B0C24C8C5F07B1F6D90D01B4B709B331BEDC9D6E5838") {
+            throw "libjpeg-turbo 3.2.1 hash mismatch: $hash"
+          }
+          & "C:\Program Files\7-Zip\7z.exe" x -olibjpeg-turbo libjpeg-turbo.exe bin/turbojpeg.dll doc/LICENSE.md
+          if ($LASTEXITCODE -ne 0) { throw "could not extract turbojpeg.dll" }
+          Copy-Item libjpeg-turbo/bin/turbojpeg.dll -Destination turbojpeg.dll -Force
+
       # Build CLI exe (with console) and GUI exe (without console)
       - name: Build CLI with PyInstaller
         run: |
@@ -89,6 +105,8 @@ jobs:
             --add-data "src/trcc/assets;trcc/assets" `
             --add-data "src/trcc/ui/gui/assets;trcc/ui/gui/assets" `
             --add-data "src/trcc/modules/rgb;trcc/modules/rgb" `
+            --add-binary "turbojpeg.dll;." `
+            --add-data "libjpeg-turbo/doc/LICENSE.md;licenses/libjpeg-turbo" `
             --exclude-module trcc.modules.visualizer `
             --hidden-import PySide6.QtSvg `
             --hidden-import pynvml `
@@ -98,6 +116,8 @@ jobs:
             --noconfirm `
             src/trcc/__main__.py
 
+      # Only its exe is kept: it runs on the CLI build's _internal folder,
+      # which carries turbojpeg.dll.
       - name: Build GUI with PyInstaller
         run: |
           pyinstaller `
@@ -162,6 +182,8 @@ jobs:
           if (-not (Test-Path "dist/trcc/ffmpeg.exe")) { $missing += "ffmpeg.exe" }
           $libusb = Get-ChildItem "dist/trcc/libusb*" -ErrorAction SilentlyContinue
           if (-not $libusb) { $missing += "libusb-1.0.dll" }
+          if (-not (Test-Path "dist/trcc/_internal/turbojpeg.dll")) { $missing += "_internal/turbojpeg.dll" }
+          if (-not (Test-Path "dist/trcc/_internal/licenses/libjpeg-turbo/LICENSE.md")) { $missing += "libjpeg-turbo LICENSE.md" }
           foreach ($f in "IntelMSR.bin", "AMDFamily17.bin", "LpcIO.bin", "COPYING") {
             if (-not (Test-Path "dist/trcc/pawnio/$f")) { $missing += "pawnio/$f" }
           }
@@ -170,7 +192,7 @@ jobs:
             Write-Error "FAILED — Missing: $($missing -join ', ')"
             exit 1
           }
-          Write-Host "PASSED — trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb, PawnIO OK"
+          Write-Host "PASSED — trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb, turbojpeg, PawnIO OK"
 
       - name: Smoke-run the frozen CLI
         # The checks above prove files exist, not that the frozen program
@@ -186,6 +208,22 @@ jobs:
             exit 1
           }
           Write-Host "PASSED — the frozen trcc.exe runs"
+
+      - name: Smoke the frozen app's JPEG encoder
+        # The file being there proves nothing: the frozen app must LOAD it.
+        # The doctor's jpeg-encoder line comes from turbojpeg.load() itself.
+        # In-process (TRCC_DAEMON=0); its exit code is the other checks'.
+        timeout-minutes: 5
+        env:
+          TRCC_DAEMON: "0"
+        run: |
+          $out = & dist\trcc\trcc.exe system doctor 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch "jpeg-encoder\s+libturbojpeg -- JPEG panel frames keep full colour \(4:4:4\)") {
+            Write-Error "FAILED — the frozen trcc.exe does not load its turbojpeg.dll"
+            exit 1
+          }
+          Write-Host "PASSED — the frozen trcc.exe encodes JPEG at 4:4:4"
 
       - name: Smoke the Visualizer as an add-on, then draw TRCC Pipes from it
         # The Visualizer is an add-on: the frozen app must NOT carry it

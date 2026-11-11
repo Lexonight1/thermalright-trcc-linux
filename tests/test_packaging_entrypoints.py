@@ -546,3 +546,23 @@ def test_every_linux_package_brings_libturbojpeg() -> None:
         line.rstrip().endswith("libturbojpeg0 | libturbojpeg") for line in debs), debs
     assert re.search(r"^\s*Requires:\s+turbojpeg$", text, re.M)
     assert "libjpeg-turbo" in _arch_depends()
+
+
+@pytest.mark.parametrize("workflow", ["windows.yml", "macos.yml"])
+def test_the_installers_ship_libturbojpeg_and_prove_it_loads(workflow: str) -> None:
+    """The Windows and macOS installers carry libturbojpeg in PyInstaller's
+    bundle folder, where turbojpeg._library() looks, with its licence --
+    and each build fails unless the FROZEN app's doctor says 4:4:4, so a
+    copy that is shipped but never loaded cannot pass.  The Windows download
+    is pinned by SHA-256.  MUTATION CHECK: drop the --add-binary, the smoke
+    or the hash and this fails."""
+    text = (_ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8")
+
+    assert re.search(r'--add-binary "[^"]*turbojpeg[^"]*[:;]\."', text), \
+        "no --add-binary for libturbojpeg into the bundle folder"
+    assert "LICENSE.md" in text and "licenses/libjpeg-turbo" in text
+    assert "system doctor" in text
+    assert "keep full colour \\(4:4:4\\)" in text
+    if workflow == "windows.yml":
+        assert "1F05BC3ED1585E6B12A8B0C24C8C5F07B1F6D90D01B4B709B331BEDC9D6E5838" in text
+        assert "libjpeg-turbo 3.2.1 hash mismatch" in text

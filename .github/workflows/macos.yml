@@ -44,7 +44,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          brew install libusb create-dmg sevenzip ffmpeg dylibbundler openssl@3
+          brew install libusb create-dmg sevenzip ffmpeg dylibbundler openssl@3 jpeg-turbo
 
       - name: Install Python dependencies
         # cryptography ships no Intel Mac wheel since 49.0.0, so on x86_64 pip
@@ -81,6 +81,9 @@ jobs:
           done
           iconutil -c icns "$ICONSET" -o src/trcc/assets/icons/app.icns
 
+      # libturbojpeg rides in Contents/Frameworks (sys._MEIPASS), where the
+      # app looks for it: JPEG panel frames at full colour (#336; Qt's own
+      # writer drops to 4:2:0 below quality 91).  Its licence ships with it.
       - name: Build app with PyInstaller
         run: |
           pyinstaller \
@@ -91,6 +94,8 @@ jobs:
             --add-data "src/trcc/assets:trcc/assets" \
             --add-data "src/trcc/ui/gui/assets:trcc/ui/gui/assets" \
             --add-data "src/trcc/modules/rgb:trcc/modules/rgb" \
+            --add-binary "$(brew --prefix jpeg-turbo)/lib/libturbojpeg.0.dylib:." \
+            --add-data "$(brew --prefix jpeg-turbo)/LICENSE.md:licenses/libjpeg-turbo" \
             --exclude-module trcc.modules.visualizer \
             --hidden-import PySide6.QtSvg \
             --hidden-import pynvml \
@@ -193,6 +198,11 @@ jobs:
           else
             missing+=("libusb")
           fi
+          if find -L dist/TRCC.app/Contents/Frameworks -maxdepth 1 -name "libturbojpeg*" -type f 2>/dev/null | grep -q .; then
+            echo "  libturbojpeg: OK"
+          else
+            missing+=("libturbojpeg")
+          fi
           echo ""
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::FAILED — Missing: ${missing[*]}"
@@ -222,7 +232,8 @@ jobs:
           # reaching back into Homebrew fails the same way, one load later.
           fail=0
           for bin in dist/TRCC.app/Contents/MacOS/7zz dist/TRCC.app/Contents/MacOS/ffmpeg \
-                     dist/TRCC.app/Contents/Frameworks/ffmpeg/*.dylib; do
+                     dist/TRCC.app/Contents/Frameworks/ffmpeg/*.dylib \
+                     dist/TRCC.app/Contents/Frameworks/libturbojpeg*.dylib; do
             deps="$(otool -L "$bin" | tail -n +2)"
             echo "== $bin"; echo "$deps"
             if echo "$deps" | grep -qE '/opt/homebrew|/usr/local/(Cellar|opt|lib)'; then
@@ -233,7 +244,7 @@ jobs:
           [ "$fail" = 0 ] || exit 1
           # Then RUN them with Homebrew's copies gone -- otool reads the load
           # commands; only a launch proves the loader and signatures accept it.
-          brew uninstall --ignore-dependencies ffmpeg sevenzip
+          brew uninstall --ignore-dependencies ffmpeg sevenzip jpeg-turbo
           dist/TRCC.app/Contents/MacOS/7zz i > /dev/null && echo "7zz runs"
           dist/TRCC.app/Contents/MacOS/ffmpeg -hide_banner -version > /dev/null && echo "ffmpeg runs"
 
@@ -249,6 +260,21 @@ jobs:
           echo "$out" | grep -qE 'trcc [0-9]+\.[0-9]+\.[0-9]+' || {
             echo "::error::the frozen TRCC did not print its version"; exit 1; }
           echo "PASSED — the frozen TRCC runs"
+
+      - name: Smoke the frozen app's JPEG encoder
+        # The file being there proves nothing: the app must LOAD it -- and
+        # Homebrew's copy is uninstalled above, so this is the bundled one.
+        # The doctor's jpeg-encoder line comes from turbojpeg.load() itself.
+        # In-process (TRCC_DAEMON=0); its exit code is the other checks'.
+        timeout-minutes: 5
+        env:
+          TRCC_DAEMON: "0"
+        run: |
+          out="$(dist/TRCC.app/Contents/MacOS/TRCC system doctor 2>&1)" || true
+          echo "$out"
+          echo "$out" | grep -qE 'jpeg-encoder +libturbojpeg -- JPEG panel frames keep full colour \(4:4:4\)' || {
+            echo "::error::the frozen TRCC does not load its libturbojpeg"; exit 1; }
+          echo "PASSED — the frozen TRCC encodes JPEG at 4:4:4"
 
       - name: Smoke a user module in the frozen app
         # A module the user installs lands in ~/Library/Application Support/

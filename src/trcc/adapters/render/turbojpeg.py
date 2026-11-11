@@ -10,9 +10,10 @@ fringed on the panel.  Found and measured by Alex Shutov (#336).
 TurboJPEG is libjpeg-turbo's own small C API: one call compresses at a chosen
 quality AND sampling.  It is the same engine Pillow wraps (same bytes, same
 ~2 ms on a 1920x462 frame), reached through ``ctypes`` instead of a Python
-package -- "less is more".  Where the library is missing (pip on a bare
-system, Windows and macOS installers today) :func:`load` answers None and the
-caller keeps Qt's encoder.
+package -- "less is more".  The Linux packages depend on the library, the
+Windows and macOS installers ship a copy, and NixOS is handed its store path.
+Where it is still missing (pip on a bare system) :func:`load` answers None and
+the caller keeps Qt's encoder.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ import logging
 import sys
 import threading
 from functools import cache
+from pathlib import Path
 from typing import Any
 
 from ...core.logs import per_frame
@@ -94,13 +96,33 @@ class TurboJpeg:
         return data
 
 
+def _library() -> str | None:
+    """Where this system's TurboJPEG is: the path a package wrote in, else
+    the copy a frozen app ships, else what ``find_library`` answers.
+
+    The Windows and macOS installers put their copy in PyInstaller's bundle
+    folder (``sys._MEIPASS``), which ``find_library`` never searches on macOS
+    -- so a frozen app looks there itself, and before the system, so the
+    library it was tested with is the one it loads."""
+    if LIBRARY:
+        log.info("turbojpeg: packaged path %s", LIBRARY)
+        return LIBRARY
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle is not None:
+        shipped = sorted(Path(bundle).glob("*turbojpeg*"))
+        log.info("turbojpeg: frozen app, bundled copies %s", [p.name for p in shipped])
+        if shipped:
+            return str(shipped[0])
+    name = ctypes.util.find_library("turbojpeg")
+    log.info("turbojpeg: find_library answered %s", name)
+    return name
+
+
 @cache
 def load() -> TurboJpeg | None:
     """This system's TurboJPEG, made once -- None when there is none, and
     JPEG frames stay on Qt's encoder (said once, in the log)."""
-    name = LIBRARY or ctypes.util.find_library("turbojpeg")
-    log.info("turbojpeg: %s", f"packaged path {LIBRARY}" if LIBRARY
-             else f"find_library answered {name}")
+    name = _library()
     if name is None:
         log.info("turbojpeg: no libturbojpeg on this system -- JPEG frames use "
                  "Qt's encoder (4:2:0 below quality 91)")

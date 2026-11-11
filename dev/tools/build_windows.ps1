@@ -120,6 +120,21 @@ if (-not (Test-Path "installer\pawnio\PawnIO_setup.exe")) {
 Log "PawnIO OK"
 
 # -----------------------------------------------------------------------
+# libjpeg-turbo: turbojpeg.dll, JPEG panel frames at full colour (#336) --
+# pinned by SHA-256, the same value as windows.yml.
+# -----------------------------------------------------------------------
+Log "--- Downloading libjpeg-turbo ---"
+if (-not (Test-Path "turbojpeg.dll")) {
+  Invoke-WebRequest -Uri "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.1/libjpeg-turbo-3.2.1-vc-x64.exe" -OutFile "libjpeg-turbo.exe" -UseBasicParsing
+  $hash = (Get-FileHash "libjpeg-turbo.exe" -Algorithm SHA256).Hash
+  if ($hash -ne "1F05BC3ED1585E6B12A8B0C24C8C5F07B1F6D90D01B4B709B331BEDC9D6E5838") { Die "libjpeg-turbo 3.2.1 hash mismatch: $hash" }
+  & "$sevenZip\7z.exe" x -olibjpeg-turbo libjpeg-turbo.exe bin/turbojpeg.dll doc/LICENSE.md | Out-Null
+  if ($LASTEXITCODE -ne 0) { Die "could not extract turbojpeg.dll" }
+  Copy-Item "libjpeg-turbo\bin\turbojpeg.dll" "turbojpeg.dll" -Force
+}
+Log "libjpeg-turbo OK"
+
+# -----------------------------------------------------------------------
 # Get libusb path (optional - pyusb dependency)
 # -----------------------------------------------------------------------
 $libusbPath = python -c "import libusb_package; print(libusb_package.get_library_path())" 2>$null
@@ -137,6 +152,8 @@ python -m PyInstaller `
   --add-data "src\trcc\assets;trcc\assets" `
   --add-data "src\trcc\ui\gui\assets;trcc\ui\gui\assets" `
   --add-data "src\trcc\modules\rgb;trcc\modules\rgb" `
+  --add-binary "turbojpeg.dll;." `
+  --add-data "libjpeg-turbo\doc\LICENSE.md;licenses\libjpeg-turbo" `
   --exclude-module trcc.modules.visualizer `
   --hidden-import PySide6.QtSvg `
   --hidden-import pynvml `

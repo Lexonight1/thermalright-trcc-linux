@@ -35,6 +35,8 @@ JPEG-path rule and an RGB565 panel should not notice it moving.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from trcc.core.protocol import FBL_PROFILES, DeviceProfile, get_profile
@@ -172,7 +174,7 @@ def test_every_quality_the_loop_reaches_keeps_full_colour() -> None:
 
 def test_without_turbojpeg_the_frame_is_still_sent_by_qt(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    """No libturbojpeg (pip on a bare system, Windows and macOS today): Qt's
+    """No libturbojpeg (pip on a bare system): Qt's
     writer, exactly as before -- 4:2:0 below quality 91, never no frame.
     MUTATION CHECK: drop the Qt branch and a missing library raises."""
     from PySide6.QtCore import Qt
@@ -229,3 +231,35 @@ def test_a_premultiplied_frame_gets_the_colours_the_rgb565_panels_get() -> None:
     rgb32 = QColor(surface.convertToFormat(QImage.Format.Format_RGB32).pixel(32, 32))
     assert max(abs(ours.red() - rgb32.red()), abs(ours.green() - rgb32.green()),
                abs(ours.blue() - rgb32.blue())) <= 3, (ours.getRgb(), rgb32.getRgb())
+
+
+@pytest.mark.parametrize(("packaged", "bundled", "found", "expected"), [
+    ("/nix/store/x/libturbojpeg.so.0", "turbojpeg.dll", "libturbojpeg.so.0",
+     "/nix/store/x/libturbojpeg.so.0"),
+    (None, "libturbojpeg.0.dylib", "libturbojpeg.so.0", "<bundle>/libturbojpeg.0.dylib"),
+    (None, None, "libturbojpeg.so.0", "libturbojpeg.so.0"),
+    (None, None, None, None),
+])
+def test_the_library_is_looked_for_packaged_then_bundled_then_system(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path, packaged: str | None,
+        bundled: str | None, found: str | None, expected: str | None) -> None:
+    """The path a package wrote in (NixOS) wins; then the copy a frozen app
+    ships in PyInstaller's bundle folder (Windows and macOS installers --
+    find_library never searches it on macOS); then find_library.
+    MUTATION CHECK: drop the bundle look-up and the installers' row fails;
+    ask find_library first and the bundle row fails."""
+    import ctypes.util
+    import sys
+
+    from trcc.adapters.render import turbojpeg
+
+    monkeypatch.setattr(turbojpeg, "LIBRARY", packaged)
+    monkeypatch.setattr(ctypes.util, "find_library", {"turbojpeg": found}.get)
+    if bundled is not None:
+        (tmp_path / bundled).write_bytes(b"")
+        monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    else:
+        monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+
+    answer = turbojpeg._library()
+    assert answer == (expected.replace("<bundle>", str(tmp_path)) if expected else None)
