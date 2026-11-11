@@ -53,6 +53,17 @@
             pkgs.ffmpeg
           ];
 
+          # JPEG panel frames at full colour (#336).  find_library finds
+          # nothing on NixOS (no ldconfig, gcc or ld), so the TurboJPEG adapter
+          # is handed the store path -- which alone puts the library in the
+          # closure (propagating it would add its -bin and -dev too).
+          # --replace-fail stops this build if that line is ever renamed.
+          postPatch = ''
+            substituteInPlace src/trcc/adapters/render/turbojpeg.py \
+              --replace-fail 'LIBRARY: str | None = None' \
+                             'LIBRARY: str | None = "${pkgs.lib.getLib pkgs.libjpeg_turbo}/lib/libturbojpeg.so.0"'
+          '';
+
           # Skip tests during build (they need USB devices)
           doCheck = false;
 

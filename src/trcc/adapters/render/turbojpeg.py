@@ -35,6 +35,11 @@ SAMP_444, SAMP_420 = 0, 2
 #: 0xffRRGGBB word, so B,G,R,X bytes on a little-endian machine
 #: (``TJPF_BGRX``) and X,R,G,B on a big-endian one (``TJPF_XRGB``).
 _PIXEL_FORMAT = 3 if sys.byteorder == "little" else 5
+#: The library's full path, for a package that knows it.  NixOS has no
+#: ldconfig, gcc or ld for ``find_library`` to ask, so it answers None there
+#: even with LD_LIBRARY_PATH set; flake.nix rewrites this line to the store
+#: path at build time (``--replace-fail``: renaming it breaks that build).
+LIBRARY: str | None = None
 
 
 class TurboJpeg:
@@ -93,7 +98,9 @@ class TurboJpeg:
 def load() -> TurboJpeg | None:
     """This system's TurboJPEG, made once -- None when there is none, and
     JPEG frames stay on Qt's encoder (said once, in the log)."""
-    name = ctypes.util.find_library("turbojpeg")
+    name = LIBRARY or ctypes.util.find_library("turbojpeg")
+    log.info("turbojpeg: %s", f"packaged path {LIBRARY}" if LIBRARY
+             else f"find_library answered {name}")
     if name is None:
         log.info("turbojpeg: no libturbojpeg on this system -- JPEG frames use "
                  "Qt's encoder (4:2:0 below quality 91)")

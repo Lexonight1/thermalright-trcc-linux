@@ -365,6 +365,21 @@ def test_the_nix_flake_carries_every_linux_dependency() -> None:
     assert linux - listed == set(), f"missing from flake.nix: {sorted(linux - listed)}"
 
 
+def test_the_nix_flake_hands_turbojpeg_its_library_path() -> None:
+    """find_library answers None on NixOS (no ldconfig, gcc or ld -- measured
+    in a nixos-25.11 container, LD_LIBRARY_PATH or not), so the flake rewrites
+    the adapter's LIBRARY line to the store path.  The line it replaces must
+    exist word for word, or NixOS builds fail -- caught here, not there."""
+    flake = (_ROOT / "flake.nix").read_text(encoding="utf-8")
+    source = (_ROOT / "src/trcc/adapters/render/turbojpeg.py").read_text(encoding="utf-8")
+    replaced = flake.split("--replace-fail '", 1)[1].split("'", 1)[0]
+
+    assert "substituteInPlace src/trcc/adapters/render/turbojpeg.py" in flake
+    assert replaced == "LIBRARY: str | None = None"
+    assert f"\n{replaced}\n" in source
+    assert "${pkgs.lib.getLib pkgs.libjpeg_turbo}/lib/libturbojpeg.so.0" in flake
+
+
 # ── Packages that install, measured in containers (2026-10-09, v9.10.8) ──
 
 def _step(name: str) -> str:
