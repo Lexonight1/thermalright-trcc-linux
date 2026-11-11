@@ -84,6 +84,20 @@ _SWITCH = (36, 18)
 _ENGLISH = Qt.ItemDataRole.UserRole + 1
 
 
+def _no_visuals(message: str) -> VisualsResult:
+    """The answer when the App could not be asked -- a ``VisualsResult``, so
+    the page reads it like any other (a plain ``Result`` has no ``playing``:
+    an App closed mid-ask raised AttributeError on the GUI thread, 2026-11-10)."""
+    log.debug("_no_visuals: %s", message)
+    return VisualsResult(ok=False, message=message)
+
+
+def _no_snapshot(message: str) -> LcdSnapshotResult:
+    """The App could not be asked where the box is: a snapshot that says so."""
+    log.debug("_no_snapshot: %s", message)
+    return LcdSnapshotResult(ok=False, message=message)
+
+
 class PlacementRow(QWidget):
     """The visual in a box: a switch -- off, it fills the panel; on, it sits
     in a box over the theme, which plays on under it -- and the box's corner
@@ -334,7 +348,7 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
         log.info("VisualsPage.refresh")
         self._listed = True
         dispatch_in_background(self._app, ListVisuals(key=self._key),
-                               self._on_listed)
+                               self._on_listed, failed=_no_visuals)
 
     def _on_listed(self, listed: VisualsResult) -> None:
         log.info("VisualsPage._on_listed: ok=%s %s", listed.ok, listed.message)
@@ -349,7 +363,7 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
         """What the LCD plays -- for the controls and the tile."""
         log.debug("VisualsPage._ask_playing: %s", self._key)
         dispatch_in_background(self._app, ListVisuals(key=self._key),
-                               self._on_playing)
+                               self._on_playing, failed=_no_visuals)
 
     def _on_playing(self, listed: VisualsResult) -> None:
         """Its tile selected -- none when nothing plays -- its controls shown."""
@@ -371,9 +385,12 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
             return
         log.debug("VisualsPage._ask_placement: %s", self._key)
         dispatch_in_background(self._app, LcdSnapshot(key=self._key),
-                               self._on_placement_read)
+                               self._on_placement_read, failed=_no_snapshot)
 
     def _on_placement_read(self, snap: LcdSnapshotResult) -> None:
+        if not snap.ok:
+            log.debug("VisualsPage._on_placement_read: %s", snap.message)
+            return
         log.debug("VisualsPage._on_placement_read: %r %s %s", snap.inset_module,
                   snap.inset_corner, snap.inset_size)
         self._placement.show_box(snap.inset_corner or InsetCorner.BOTTOM_RIGHT.value,

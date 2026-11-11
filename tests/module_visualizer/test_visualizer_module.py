@@ -519,3 +519,30 @@ def test_the_box_switch_moves_the_visual_into_a_box_and_back(
     # Every tile in before the App closes: a tile still asked for would be
     # answered "off" into the next test's log.
     qtbot.waitUntil(lambda: not page._tiles._waiting, timeout=60000)
+
+
+def test_an_app_gone_mid_ask_is_an_answer_the_page_reads(
+        qtbot: Any, app: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The App closing while the page waits on a background ask (a window
+    closing, a test ending) is an answer too -- a ``VisualsResult`` /
+    ``LcdSnapshotResult`` that says so, never a plain ``Result``: that one has
+    no ``playing``, and the page raised AttributeError on the GUI thread
+    (2026-11-10, intermittent at teardown).  MUTATION CHECK: drop
+    ``failed=_no_visuals`` from ``_ask_playing`` and pytest-qt reports the
+    AttributeError."""
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    window = TRCCApp(app=app)
+    qtbot.addWidget(window)
+    window._activate_device(_KEY)
+    page: Any = window._module_pages["visualizer"]
+
+    def gone(_command: Any) -> Any:
+        raise ConnectionError("socket closed")
+
+    monkeypatch.setattr(app, "dispatch", gone)
+    page._listed = True
+    page._ask_playing()
+    page._ask_placement()
+    qtbot.wait(300)                                   # both answers land
+    assert page.selected_item is None
