@@ -35,7 +35,6 @@ from ...core.commands import (
     UpdateOverlayElement,
 )
 from ...core.i18n import (
-    BACKGROUND_BOX_POS,
     BACKGROUND_LOAD_IMG_POS,
     BACKGROUND_LOAD_VIDEO_POS,
     MASK_DESC_POS,
@@ -119,7 +118,6 @@ class UCThemeSetting(BasePanel):
     CMD_VIDEO_URL = 11     # ours: a web source for the media player
     CMD_OVERLAY_CHANGED = 128
     CMD_COLOR_REMEMBER = 130   # info = (r, g, b) an edit ended on
-    CMD_INSET = 140        # ours: a module's picture in a box over the theme
     CMD_EYEDROPPER = 112  # Matches Windows cmd for FormGetColor
 
     overlay_changed = Signal(dict)
@@ -187,7 +185,7 @@ class UCThemeSetting(BasePanel):
         self.mask_panel.mask_position_changed.connect(self._on_mask_position)
         self.mask_panel.mask_visibility_toggled.connect(self._on_mask_visibility)
 
-        self.background_panel = DisplayModePanel("background", ["Image", "Video", "Box"],
+        self.background_panel = DisplayModePanel("background", ["Image", "Video"],
                                                  self, skin=self._skin)
         self.background_panel.move(*BG_PANEL)
         self.background_panel.mode_changed.connect(self._on_mode_changed)
@@ -383,7 +381,6 @@ class UCThemeSetting(BasePanel):
             "Upload": self.CMD_MASK_UPLOAD,
             "VideoLoad": self.CMD_VIDEO_LOAD,
             "VideoUrl": self.CMD_VIDEO_URL,
-            "Box": self.CMD_INSET,
         }
         cmd = action_map.get(action_name)
         if cmd:
@@ -450,7 +447,6 @@ class UCThemeSetting(BasePanel):
                  MASK_DESC_POS, True, False),
                 (background, 'Load Image', BACKGROUND_LOAD_IMG_POS, False, False),
                 (background, 'Load Video', BACKGROUND_LOAD_VIDEO_POS, False, False),
-                (background, 'Box', BACKGROUND_BOX_POS, False, True),
                 (video, 'Load Video', MEDIA_PLAYER_LOAD_POS, False, False),
                 (video, 'Web Video', MEDIA_PLAYER_URL_POS, False, False)):
             x, y, w, h, pt = place

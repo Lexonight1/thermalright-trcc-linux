@@ -94,7 +94,6 @@ TOGGLE_MASK = (5, 5, 36, 18)
 MODE_TITLE = (44, 5, 140, 18)
 ACTION_BTN_1 = (149, 30, 40, 40)
 ACTION_BTN_2 = (219, 30, 40, 40)
-ACTION_BTN_3 = (289, 30, 40, 40)   # ours: the Background panel's Box
 
 # The Layer Mask panel: its two actions sit further left, beside X / Y.
 MASK_ACTION_BTN_1 = (115, 30, 40, 40)  # Masks

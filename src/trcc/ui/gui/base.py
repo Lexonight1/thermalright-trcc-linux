@@ -437,6 +437,7 @@ def gui_module_look() -> ModuleLook:
     """The gui's look for a module's page (``ui/module_page``): its tiles,
     and the controls in its own colours -- the groove shows on the dark
     panel, which the shared slider style leaves transparent."""
+    from .assets import Assets  # the gui's images; imported late, as here elsewhere
     log.debug("gui_module_look: built")
     return ModuleLook(
         tiles=gui_tile_skin(),
@@ -444,11 +445,21 @@ def gui_module_look() -> ModuleLook:
                   f"QPushButton {{ background: {Colors.BUTTON_BG}; color: "
                   f"{Colors.BUTTON_TEXT}; border: 1px solid {Colors.HOVER_BORDER}; "
                   f"padding: 4px 12px; }}"
+                  # A pick reads as one: a field and its arrow, as the font select.
+                  f"QComboBox {{ background-color: rgba(0, 0, 0, 70); color: {Colors.TEXT}; "
+                  f"border: 1px solid #555; border-radius: 3px; padding: 2px 8px; }}"
+                  "QComboBox:disabled { color: #666; }"
+                  "QComboBox QAbstractItemView { background-color: #2b2b2b; color: white; "
+                  "selection-background-color: #4a4a4a; }"
                   + Styles.SLIDER
                   + f"QSlider::groove:horizontal {{ background: {Colors.BUTTON_BG}; "
                     f"height: 6px; border-radius: 3px; }}"),
         dimmed=Colors.EMPTY_TEXT,
         status=f"color: {Colors.TEXT}; background: transparent; font-size: 12px;",
+        pixmap=Assets.load_pixmap,
+        switch_on=Assets.TOGGLE_ON,
+        switch_off=Assets.TOGGLE_OFF,
+        flat_button=Styles.FLAT_BUTTON,
     )
 
 

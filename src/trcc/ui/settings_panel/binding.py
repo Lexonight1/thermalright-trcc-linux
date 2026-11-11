@@ -18,15 +18,13 @@ from typing import Any, ClassVar
 
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QAction, QCursor
-from PySide6.QtWidgets import QDialog, QFileDialog, QInputDialog, QMenu, QWidget
+from PySide6.QtWidgets import QFileDialog, QInputDialog, QMenu, QWidget
 
-from ...core.commands import GetSensorDashboard, LcdSnapshot, ListModules, ReadSensors
+from ...core.commands import GetSensorDashboard, ListModules, ReadSensors
 from ...core.logs import per_frame
-from ...core.models import InsetCorner, InsetSize
 from ...core.ports import CommandBus
 from ..presentation.sensor_display import activity_rows
 from ..presentation.theme_settings import ElementDrag, ThemeSettings
-from .display_mode_panels import InsetDialog
 from .uc_theme_setting import UCThemeSetting
 
 log = logging.getLogger(__name__)
@@ -163,11 +161,6 @@ class SettingsBinding(QObject):
         if (url := self.steps.ask_url()):
             self._answer(self._settings.play_media(self._key(), url))
 
-    def _inset(self, _info: Any) -> None:
-        log.info("SettingsBinding._inset")
-        if (choice := self.steps.choose_inset(self._key())) is not None:
-            self._answer(self._settings.set_inset(self._key(), *choice))
-
     def _media_switch(self, on: Any) -> None:
         """The media player switch: off stops it; on needs a file or address."""
         log.info("SettingsBinding._media_switch: %s", on)
@@ -194,7 +187,6 @@ class SettingsBinding(QObject):
                                                           filter_=_VIDEOS),
         UCThemeSetting.CMD_VIDEO_LOAD: _media_file,
         UCThemeSetting.CMD_VIDEO_URL: _media_url,
-        UCThemeSetting.CMD_INSET: _inset,
         UCThemeSetting.CMD_VIDEO_TOGGLE: _media_switch,
         UCThemeSetting.CMD_COLOR_REMEMBER: _remember,
     }
@@ -286,21 +278,6 @@ class SettingsSteps:
             "An http, https or rtsp address (a video file or a live stream):")
         log.info("SettingsSteps.ask_url: ok=%s", ok)
         return url.strip() if ok and url.strip() else None
-
-    def choose_inset(self, key: str) -> tuple[str, str, str] | None:
-        """A module's picture in a box: (module, corner, size); "" module =
-        no box.  None when cancelled."""
-        snap = self._app.dispatch(LcdSnapshot(key=key))
-        choices = [(m.key, m.title) for m in self._app.dispatch(ListModules()).modules
-                   if m.draws_pictures]
-        if snap.inset_module and snap.inset_module not in dict(choices):
-            choices.append((snap.inset_module, snap.inset_title or snap.inset_module))
-        dialog = InsetDialog(choices, snap.inset_module,
-                             snap.inset_corner or InsetCorner.BOTTOM_RIGHT.value,
-                             snap.inset_size or InsetSize.MEDIUM.value, self._window)
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
-        log.info("SettingsSteps.choose_inset: %s accepted=%s", key, accepted)
-        return dialog.choice() if accepted else None
 
     def pick_colour(self, apply: Callable[[int, int, int], None]) -> None:
         """A colour off the screen, handed to *apply*."""

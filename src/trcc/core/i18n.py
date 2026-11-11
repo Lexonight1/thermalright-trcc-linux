@@ -85,8 +85,6 @@ MASK_DESC_POS = (7, 45, 90, 50, 7)
 BACKGROUND_TITLE_POS = (7, 73, 140, 22, 12)
 BACKGROUND_LOAD_IMG_POS = (150, 73, 70, 16, 9)
 BACKGROUND_LOAD_VIDEO_POS = (230, 73, 80, 16, 9)
-#: Ours: the Box's caption, centred under its icon (ACTION_BTN_3).
-BACKGROUND_BOX_POS = (289, 73, 40, 16, 9)
 
 # Media Player panel (P01播放器) — 351x100
 MEDIA_PLAYER_TITLE_POS = (7, 73, 140, 22, 12)

@@ -31,7 +31,6 @@ from typing import Any, NamedTuple, TypeVar
 
 from ...core.commands import (
     ApplyMask,
-    ClearInset,
     ControlCenterSnapshot,
     EnableOverlay,
     LcdSnapshot,
@@ -40,7 +39,6 @@ from ...core.commands import (
     RememberColor,
     ResolveOverlay,
     SetBackground,
-    SetInset,
     SetMaskPosition,
     SetMaskVisible,
     SetMediaPlayer,
@@ -252,13 +250,6 @@ class ThemeSettings:
         """A picture or a video becomes the background."""
         log.info("ThemeSettings.set_background: %s %s", key, path)
         return self._send(SetBackground(key=key, path=path))
-
-    def set_inset(self, key: str, module: str, corner: str, size: str) -> Result:
-        """A module's picture in a box over the theme -- or, with no module,
-        the box gone."""
-        log.info("ThemeSettings.set_inset: %s %r %s %s", key, module, corner, size)
-        return self._send(SetInset(key=key, module=module, corner=corner, size=size)
-                          if module else ClearInset(key=key))
 
     def play_media(self, key: str, uri: str) -> Result:
         """The media player plays a file or an address."""

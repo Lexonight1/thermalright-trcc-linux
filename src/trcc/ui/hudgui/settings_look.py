@@ -164,6 +164,12 @@ def hud_module_look() -> ModuleLook:
                   f"QPushButton {{ background: {GLASS}; color: {TEXT}; "
                   f"border: 1px solid {GLASS_EDGE}; border-radius: 4px; padding: 4px 12px; }}"
                   f"QPushButton:hover {{ border-color: {ACCENT}; }}"
+                  f"QComboBox {{ background-color: rgba(0, 0, 0, 90); color: {TEXT}; "
+                  "border: 1px solid rgba(255, 255, 255, 40); border-radius: 3px; "
+                  "padding: 2px 8px; }"
+                  "QComboBox:disabled { color: rgba(223, 229, 234, 90); }"
+                  f"QComboBox QAbstractItemView {{ background-color: #10202b; color: {TEXT}; "
+                  "selection-background-color: rgba(127, 212, 255, 70); }"
                   "QSlider::groove:horizontal { background: rgba(255, 255, 255, 30); "
                   "height: 6px; border-radius: 3px; }"
                   f"QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 3px; }}"
@@ -171,4 +177,8 @@ def hud_module_look() -> ModuleLook:
                   "margin: -4px 0; border-radius: 6px; }"),
         dimmed="rgba(223, 229, 234, 90)",
         status="color: #ffcf6e; background: transparent; font-size: 12px;",
+        pixmap=_pixmap,
+        switch_on='shared_toggle_on.png',
+        switch_off='shared_toggle_off.png',
+        flat_button="QPushButton { background-color: transparent; border: none; }",
     )

@@ -12,6 +12,7 @@ from functools import cache
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFormLayout, QVBoxLayout
 
 from ...module_page import ModuleLook
@@ -63,7 +64,14 @@ def qtgui_module_look() -> ModuleLook:
         controls="",
         dimmed="palette(placeholder-text)",
         status="",
+        pixmap=_no_pixmap, switch_on="", switch_off="", flat_button="",
     )
+
+
+def _no_pixmap(name: str, width: int, height: int) -> QPixmap:
+    """qtgui draws no images of its own: a switch says On / Off."""
+    log.debug("qtgui _no_pixmap: %r %dx%d", name, width, height)
+    return QPixmap()
 
 
 class ModulePagePanel(BasePanel):

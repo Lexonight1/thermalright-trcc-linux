@@ -28,7 +28,15 @@
     "Spikes": "Spikes",
     "Thickness": "Thickness",
     "Tint (white to colour)": "Tint (white to colour)",
-    "Warp": "Warp"
+    "Warp": "Warp",
+    "Top left": "Top left",
+    "Top right": "Top right",
+    "Bottom left": "Bottom left",
+    "Bottom right": "Bottom right",
+    "Small": "Small",
+    "Medium": "Medium",
+    "Large": "Large",
+    "Pick an LCD first": "Pick an LCD first"
   },
   "zh": {
     "Audio visuals": "音频可视化",
@@ -59,7 +67,15 @@
     "Spikes": "尖刺",
     "Thickness": "粗细",
     "Tint (white to colour)": "色调（白到彩色）",
-    "Warp": "扭曲"
+    "Warp": "扭曲",
+    "Top left": "左上",
+    "Top right": "右上",
+    "Bottom left": "左下",
+    "Bottom right": "右下",
+    "Small": "小",
+    "Medium": "中",
+    "Large": "大",
+    "Pick an LCD first": "请先选择一个 LCD"
   },
   "zh_TW": {
     "Audio visuals": "音訊視覺化",
@@ -90,7 +106,15 @@
     "Spikes": "尖刺",
     "Thickness": "粗細",
     "Tint (white to colour)": "色調（白到彩色）",
-    "Warp": "扭曲"
+    "Warp": "扭曲",
+    "Top left": "左上",
+    "Top right": "右上",
+    "Bottom left": "左下",
+    "Bottom right": "右下",
+    "Small": "小",
+    "Medium": "中",
+    "Large": "大",
+    "Pick an LCD first": "請先選擇一個 LCD"
   },
   "de": {
     "Audio visuals": "Audio-Visualisierung",
@@ -121,7 +145,15 @@
     "Spikes": "Zacken",
     "Thickness": "Dicke",
     "Tint (white to colour)": "Tönung (weiß bis farbig)",
-    "Warp": "Verzerrung"
+    "Warp": "Verzerrung",
+    "Top left": "Oben links",
+    "Top right": "Oben rechts",
+    "Bottom left": "Unten links",
+    "Bottom right": "Unten rechts",
+    "Small": "Klein",
+    "Medium": "Mittel",
+    "Large": "Groß",
+    "Pick an LCD first": "Wähle zuerst ein LCD"
   },
   "ru": {
     "Audio visuals": "Аудиовизуализация",
@@ -152,7 +184,15 @@
     "Spikes": "Шипы",
     "Thickness": "Толщина",
     "Tint (white to colour)": "Оттенок (от белого к цветному)",
-    "Warp": "Искажение"
+    "Warp": "Искажение",
+    "Top left": "Слева вверху",
+    "Top right": "Справа вверху",
+    "Bottom left": "Слева внизу",
+    "Bottom right": "Справа внизу",
+    "Small": "Маленькая",
+    "Medium": "Средняя",
+    "Large": "Большая",
+    "Pick an LCD first": "Сначала выберите LCD"
   },
   "fr": {
     "Audio visuals": "Visuels audio",
@@ -183,7 +223,15 @@
     "Spikes": "Pointes",
     "Thickness": "Épaisseur",
     "Tint (white to colour)": "Teinte (blanc à couleur)",
-    "Warp": "Distorsion"
+    "Warp": "Distorsion",
+    "Top left": "En haut à gauche",
+    "Top right": "En haut à droite",
+    "Bottom left": "En bas à gauche",
+    "Bottom right": "En bas à droite",
+    "Small": "Petit",
+    "Medium": "Moyen",
+    "Large": "Grand",
+    "Pick an LCD first": "Choisissez d'abord un LCD"
   },
   "pt": {
     "Audio visuals": "Visuais de áudio",
@@ -214,7 +262,15 @@
     "Spikes": "Pontas",
     "Thickness": "Espessura",
     "Tint (white to colour)": "Tom (branco a colorido)",
-    "Warp": "Distorção"
+    "Warp": "Distorção",
+    "Top left": "Superior esquerdo",
+    "Top right": "Superior direito",
+    "Bottom left": "Inferior esquerdo",
+    "Bottom right": "Inferior direito",
+    "Small": "Pequeno",
+    "Medium": "Médio",
+    "Large": "Grande",
+    "Pick an LCD first": "Escolha primeiro um LCD"
   },
   "ja": {
     "Audio visuals": "オーディオビジュアル",
@@ -245,7 +301,15 @@
     "Spikes": "スパイク",
     "Thickness": "太さ",
     "Tint (white to colour)": "色合い（白から色へ）",
-    "Warp": "ゆがみ"
+    "Warp": "ゆがみ",
+    "Top left": "左上",
+    "Top right": "右上",
+    "Bottom left": "左下",
+    "Bottom right": "右下",
+    "Small": "小",
+    "Medium": "中",
+    "Large": "大",
+    "Pick an LCD first": "先に LCD を選んでください"
   },
   "es": {
     "Audio visuals": "Visuales de audio",
@@ -276,7 +340,15 @@
     "Spikes": "Puntas",
     "Thickness": "Grosor",
     "Tint (white to colour)": "Tinte (blanco a color)",
-    "Warp": "Distorsión"
+    "Warp": "Distorsión",
+    "Top left": "Arriba a la izquierda",
+    "Top right": "Arriba a la derecha",
+    "Bottom left": "Abajo a la izquierda",
+    "Bottom right": "Abajo a la derecha",
+    "Small": "Pequeño",
+    "Medium": "Mediano",
+    "Large": "Grande",
+    "Pick an LCD first": "Elige primero un LCD"
   },
   "ko": {
     "Audio visuals": "오디오 비주얼",
@@ -307,7 +379,15 @@
     "Spikes": "가시",
     "Thickness": "굵기",
     "Tint (white to colour)": "색조 (흰색에서 색으로)",
-    "Warp": "왜곡"
+    "Warp": "왜곡",
+    "Top left": "왼쪽 위",
+    "Top right": "오른쪽 위",
+    "Bottom left": "왼쪽 아래",
+    "Bottom right": "오른쪽 아래",
+    "Small": "작게",
+    "Medium": "보통",
+    "Large": "크게",
+    "Pick an LCD first": "먼저 LCD를 선택하세요"
   },
   "it": {
     "Audio visuals": "Visual audio",
@@ -338,7 +418,15 @@
     "Spikes": "Punte",
     "Thickness": "Spessore",
     "Tint (white to colour)": "Tinta (dal bianco al colore)",
-    "Warp": "Distorsione"
+    "Warp": "Distorsione",
+    "Top left": "In alto a sinistra",
+    "Top right": "In alto a destra",
+    "Bottom left": "In basso a sinistra",
+    "Bottom right": "In basso a destra",
+    "Small": "Piccolo",
+    "Medium": "Medio",
+    "Large": "Grande",
+    "Pick an LCD first": "Scegli prima un LCD"
   },
   "nl": {
     "Audio visuals": "Audiovisuals",
@@ -369,7 +457,15 @@
     "Spikes": "Pieken",
     "Thickness": "Dikte",
     "Tint (white to colour)": "Tint (wit naar kleur)",
-    "Warp": "Vervorming"
+    "Warp": "Vervorming",
+    "Top left": "Linksboven",
+    "Top right": "Rechtsboven",
+    "Bottom left": "Linksonder",
+    "Bottom right": "Rechtsonder",
+    "Small": "Klein",
+    "Medium": "Middel",
+    "Large": "Groot",
+    "Pick an LCD first": "Kies eerst een LCD"
   },
   "pl": {
     "Audio visuals": "Wizualizacje audio",
@@ -400,7 +496,15 @@
     "Spikes": "Kolce",
     "Thickness": "Grubość",
     "Tint (white to colour)": "Odcień (od bieli do koloru)",
-    "Warp": "Zniekształcenie"
+    "Warp": "Zniekształcenie",
+    "Top left": "Lewy górny",
+    "Top right": "Prawy górny",
+    "Bottom left": "Lewy dolny",
+    "Bottom right": "Prawy dolny",
+    "Small": "Mała",
+    "Medium": "Średnia",
+    "Large": "Duża",
+    "Pick an LCD first": "Najpierw wybierz LCD"
   },
   "tr": {
     "Audio visuals": "Ses görselleri",
@@ -431,7 +535,15 @@
     "Spikes": "Dikenler",
     "Thickness": "Kalınlık",
     "Tint (white to colour)": "Ton (beyazdan renge)",
-    "Warp": "Bükülme"
+    "Warp": "Bükülme",
+    "Top left": "Sol üst",
+    "Top right": "Sağ üst",
+    "Bottom left": "Sol alt",
+    "Bottom right": "Sağ alt",
+    "Small": "Küçük",
+    "Medium": "Orta",
+    "Large": "Büyük",
+    "Pick an LCD first": "Önce bir LCD seçin"
   },
   "ar": {
     "Audio visuals": "مرئيات الصوت",
@@ -462,7 +574,15 @@
     "Spikes": "الأشواك",
     "Thickness": "السُمك",
     "Tint (white to colour)": "الصبغة (من الأبيض إلى اللون)",
-    "Warp": "التشويه"
+    "Warp": "التشويه",
+    "Top left": "أعلى اليسار",
+    "Top right": "أعلى اليمين",
+    "Bottom left": "أسفل اليسار",
+    "Bottom right": "أسفل اليمين",
+    "Small": "صغير",
+    "Medium": "متوسط",
+    "Large": "كبير",
+    "Pick an LCD first": "اختر شاشة LCD أولًا"
   },
   "hi": {
     "Audio visuals": "ऑडियो विज़ुअल",
@@ -493,7 +613,15 @@
     "Spikes": "काँटे",
     "Thickness": "मोटाई",
     "Tint (white to colour)": "रंगत (सफ़ेद से रंगीन)",
-    "Warp": "विकृति"
+    "Warp": "विकृति",
+    "Top left": "ऊपर बाएँ",
+    "Top right": "ऊपर दाएँ",
+    "Bottom left": "नीचे बाएँ",
+    "Bottom right": "नीचे दाएँ",
+    "Small": "छोटा",
+    "Medium": "मध्यम",
+    "Large": "बड़ा",
+    "Pick an LCD first": "पहले एक LCD चुनें"
   },
   "th": {
     "Audio visuals": "วิชวลเสียง",
@@ -524,7 +652,15 @@
     "Spikes": "หนาม",
     "Thickness": "ความหนา",
     "Tint (white to colour)": "โทนสี (ขาวถึงสี)",
-    "Warp": "การบิดเบือน"
+    "Warp": "การบิดเบือน",
+    "Top left": "บนซ้าย",
+    "Top right": "บนขวา",
+    "Bottom left": "ล่างซ้าย",
+    "Bottom right": "ล่างขวา",
+    "Small": "เล็ก",
+    "Medium": "กลาง",
+    "Large": "ใหญ่",
+    "Pick an LCD first": "เลือก LCD ก่อน"
   },
   "vi": {
     "Audio visuals": "Hình ảnh âm thanh",
@@ -555,7 +691,15 @@
     "Spikes": "Gai",
     "Thickness": "Độ dày",
     "Tint (white to colour)": "Sắc (trắng đến màu)",
-    "Warp": "Biến dạng"
+    "Warp": "Biến dạng",
+    "Top left": "Trên trái",
+    "Top right": "Trên phải",
+    "Bottom left": "Dưới trái",
+    "Bottom right": "Dưới phải",
+    "Small": "Nhỏ",
+    "Medium": "Vừa",
+    "Large": "Lớn",
+    "Pick an LCD first": "Hãy chọn một LCD trước"
   },
   "id": {
     "Audio visuals": "Visual audio",
@@ -586,7 +730,15 @@
     "Spikes": "Duri",
     "Thickness": "Ketebalan",
     "Tint (white to colour)": "Rona (putih ke warna)",
-    "Warp": "Distorsi"
+    "Warp": "Distorsi",
+    "Top left": "Kiri atas",
+    "Top right": "Kanan atas",
+    "Bottom left": "Kiri bawah",
+    "Bottom right": "Kanan bawah",
+    "Small": "Kecil",
+    "Medium": "Sedang",
+    "Large": "Besar",
+    "Pick an LCD first": "Pilih LCD dulu"
   },
   "cs": {
     "Audio visuals": "Zvukové vizualizace",
@@ -617,7 +769,15 @@
     "Spikes": "Hroty",
     "Thickness": "Tloušťka",
     "Tint (white to colour)": "Odstín (bílá až barva)",
-    "Warp": "Zkreslení"
+    "Warp": "Zkreslení",
+    "Top left": "Vlevo nahoře",
+    "Top right": "Vpravo nahoře",
+    "Bottom left": "Vlevo dole",
+    "Bottom right": "Vpravo dole",
+    "Small": "Malý",
+    "Medium": "Střední",
+    "Large": "Velký",
+    "Pick an LCD first": "Nejdřív vyberte LCD"
   },
   "sv": {
     "Audio visuals": "Ljudvisualiseringar",
@@ -648,7 +808,15 @@
     "Spikes": "Taggar",
     "Thickness": "Tjocklek",
     "Tint (white to colour)": "Ton (vit till färg)",
-    "Warp": "Förvrängning"
+    "Warp": "Förvrängning",
+    "Top left": "Uppe till vänster",
+    "Top right": "Uppe till höger",
+    "Bottom left": "Nere till vänster",
+    "Bottom right": "Nere till höger",
+    "Small": "Liten",
+    "Medium": "Mellan",
+    "Large": "Stor",
+    "Pick an LCD first": "Välj en LCD först"
   },
   "da": {
     "Audio visuals": "Lydvisualiseringer",
@@ -679,7 +847,15 @@
     "Spikes": "Pigge",
     "Thickness": "Tykkelse",
     "Tint (white to colour)": "Tone (hvid til farve)",
-    "Warp": "Forvrængning"
+    "Warp": "Forvrængning",
+    "Top left": "Øverst til venstre",
+    "Top right": "Øverst til højre",
+    "Bottom left": "Nederst til venstre",
+    "Bottom right": "Nederst til højre",
+    "Small": "Lille",
+    "Medium": "Mellem",
+    "Large": "Stor",
+    "Pick an LCD first": "Vælg først en LCD"
   },
   "no": {
     "Audio visuals": "Lydvisualiseringer",
@@ -710,7 +886,15 @@
     "Spikes": "Pigger",
     "Thickness": "Tykkelse",
     "Tint (white to colour)": "Tone (hvit til farge)",
-    "Warp": "Forvrengning"
+    "Warp": "Forvrengning",
+    "Top left": "Øverst til venstre",
+    "Top right": "Øverst til høyre",
+    "Bottom left": "Nederst til venstre",
+    "Bottom right": "Nederst til høyre",
+    "Small": "Liten",
+    "Medium": "Middels",
+    "Large": "Stor",
+    "Pick an LCD first": "Velg en LCD først"
   },
   "fi": {
     "Audio visuals": "Äänivisualisoinnit",
@@ -741,7 +925,15 @@
     "Spikes": "Piikit",
     "Thickness": "Paksuus",
     "Tint (white to colour)": "Sävy (valkoisesta väriin)",
-    "Warp": "Vääristymä"
+    "Warp": "Vääristymä",
+    "Top left": "Ylävasen",
+    "Top right": "Yläoikea",
+    "Bottom left": "Alavasen",
+    "Bottom right": "Alaoikea",
+    "Small": "Pieni",
+    "Medium": "Keskikokoinen",
+    "Large": "Suuri",
+    "Pick an LCD first": "Valitse ensin LCD"
   },
   "hu": {
     "Audio visuals": "Hangvizualizációk",
@@ -772,7 +964,15 @@
     "Spikes": "Tüskék",
     "Thickness": "Vastagság",
     "Tint (white to colour)": "Árnyalat (fehértől színesig)",
-    "Warp": "Torzítás"
+    "Warp": "Torzítás",
+    "Top left": "Bal felső",
+    "Top right": "Jobb felső",
+    "Bottom left": "Bal alsó",
+    "Bottom right": "Jobb alsó",
+    "Small": "Kicsi",
+    "Medium": "Közepes",
+    "Large": "Nagy",
+    "Pick an LCD first": "Előbb válassz egy LCD-t"
   },
   "ro": {
     "Audio visuals": "Vizualizări audio",
@@ -803,7 +1003,15 @@
     "Spikes": "Țepi",
     "Thickness": "Grosime",
     "Tint (white to colour)": "Nuanță (de la alb la culoare)",
-    "Warp": "Distorsiune"
+    "Warp": "Distorsiune",
+    "Top left": "Stânga sus",
+    "Top right": "Dreapta sus",
+    "Bottom left": "Stânga jos",
+    "Bottom right": "Dreapta jos",
+    "Small": "Mic",
+    "Medium": "Mediu",
+    "Large": "Mare",
+    "Pick an LCD first": "Alege mai întâi un LCD"
   },
   "uk": {
     "Audio visuals": "Аудіовізуалізації",
@@ -834,7 +1042,15 @@
     "Spikes": "Шипи",
     "Thickness": "Товщина",
     "Tint (white to colour)": "Відтінок (від білого до кольору)",
-    "Warp": "Викривлення"
+    "Warp": "Викривлення",
+    "Top left": "Ліворуч угорі",
+    "Top right": "Праворуч угорі",
+    "Bottom left": "Ліворуч унизу",
+    "Bottom right": "Праворуч унизу",
+    "Small": "Мала",
+    "Medium": "Середня",
+    "Large": "Велика",
+    "Pick an LCD first": "Спершу виберіть LCD"
   },
   "el": {
     "Audio visuals": "Οπτικοποιήσεις ήχου",
@@ -865,7 +1081,15 @@
     "Spikes": "Αγκάθια",
     "Thickness": "Πάχος",
     "Tint (white to colour)": "Απόχρωση (λευκό ως χρώμα)",
-    "Warp": "Παραμόρφωση"
+    "Warp": "Παραμόρφωση",
+    "Top left": "Πάνω αριστερά",
+    "Top right": "Πάνω δεξιά",
+    "Bottom left": "Κάτω αριστερά",
+    "Bottom right": "Κάτω δεξιά",
+    "Small": "Μικρό",
+    "Medium": "Μεσαίο",
+    "Large": "Μεγάλο",
+    "Pick an LCD first": "Επιλέξτε πρώτα μια LCD"
   },
   "he": {
     "Audio visuals": "ויזואליזציות שמע",
@@ -896,7 +1120,15 @@
     "Spikes": "קוצים",
     "Thickness": "עובי",
     "Tint (white to colour)": "גוון (מלבן לצבע)",
-    "Warp": "עיוות"
+    "Warp": "עיוות",
+    "Top left": "למעלה משמאל",
+    "Top right": "למעלה מימין",
+    "Bottom left": "למטה משמאל",
+    "Bottom right": "למטה מימין",
+    "Small": "קטן",
+    "Medium": "בינוני",
+    "Large": "גדול",
+    "Pick an LCD first": "בחרו קודם LCD"
   },
   "ms": {
     "Audio visuals": "Visual audio",
@@ -927,7 +1159,15 @@
     "Spikes": "Duri",
     "Thickness": "Ketebalan",
     "Tint (white to colour)": "Rona (putih ke warna)",
-    "Warp": "Herotan"
+    "Warp": "Herotan",
+    "Top left": "Atas kiri",
+    "Top right": "Atas kanan",
+    "Bottom left": "Bawah kiri",
+    "Bottom right": "Bawah kanan",
+    "Small": "Kecil",
+    "Medium": "Sederhana",
+    "Large": "Besar",
+    "Pick an LCD first": "Pilih LCD dahulu"
   },
   "bn": {
     "Audio visuals": "অডিও ভিজ্যুয়াল",
@@ -958,7 +1198,15 @@
     "Spikes": "কাঁটা",
     "Thickness": "পুরুত্ব",
     "Tint (white to colour)": "আভা (সাদা থেকে রঙিন)",
-    "Warp": "বিকৃতি"
+    "Warp": "বিকৃতি",
+    "Top left": "উপরে বাঁয়ে",
+    "Top right": "উপরে ডানে",
+    "Bottom left": "নিচে বাঁয়ে",
+    "Bottom right": "নিচে ডানে",
+    "Small": "ছোট",
+    "Medium": "মাঝারি",
+    "Large": "বড়",
+    "Pick an LCD first": "আগে একটি LCD বেছে নিন"
   },
   "ur": {
     "Audio visuals": "آڈیو بصریات",
@@ -989,7 +1237,15 @@
     "Spikes": "کانٹے",
     "Thickness": "موٹائی",
     "Tint (white to colour)": "رنگت (سفید سے رنگین)",
-    "Warp": "بگاڑ"
+    "Warp": "بگاڑ",
+    "Top left": "اوپر بائیں",
+    "Top right": "اوپر دائیں",
+    "Bottom left": "نیچے بائیں",
+    "Bottom right": "نیچے دائیں",
+    "Small": "چھوٹا",
+    "Medium": "درمیانہ",
+    "Large": "بڑا",
+    "Pick an LCD first": "پہلے ایک LCD چنیں"
   },
   "fa": {
     "Audio visuals": "جلوه‌های صوتی",
@@ -1020,7 +1276,15 @@
     "Spikes": "خارها",
     "Thickness": "ضخامت",
     "Tint (white to colour)": "ته‌رنگ (سفید تا رنگی)",
-    "Warp": "اعوجاج"
+    "Warp": "اعوجاج",
+    "Top left": "بالا چپ",
+    "Top right": "بالا راست",
+    "Bottom left": "پایین چپ",
+    "Bottom right": "پایین راست",
+    "Small": "کوچک",
+    "Medium": "متوسط",
+    "Large": "بزرگ",
+    "Pick an LCD first": "اول یک LCD انتخاب کنید"
   },
   "tl": {
     "Audio visuals": "Mga audio visual",
@@ -1051,7 +1315,15 @@
     "Spikes": "Mga tinik",
     "Thickness": "Kapal",
     "Tint (white to colour)": "Kulay-tono (puti hanggang kulay)",
-    "Warp": "Pagbaluktot"
+    "Warp": "Pagbaluktot",
+    "Top left": "Kaliwa sa itaas",
+    "Top right": "Kanan sa itaas",
+    "Bottom left": "Kaliwa sa ibaba",
+    "Bottom right": "Kanan sa ibaba",
+    "Small": "Maliit",
+    "Medium": "Katamtaman",
+    "Large": "Malaki",
+    "Pick an LCD first": "Pumili muna ng LCD"
   },
   "ta": {
     "Audio visuals": "ஆடியோ காட்சிகள்",
@@ -1082,7 +1354,15 @@
     "Spikes": "முட்கள்",
     "Thickness": "தடிமன்",
     "Tint (white to colour)": "சாயல் (வெள்ளை முதல் நிறம் வரை)",
-    "Warp": "திரிபு"
+    "Warp": "திரிபு",
+    "Top left": "மேல் இடது",
+    "Top right": "மேல் வலது",
+    "Bottom left": "கீழ் இடது",
+    "Bottom right": "கீழ் வலது",
+    "Small": "சிறியது",
+    "Medium": "நடுத்தரம்",
+    "Large": "பெரியது",
+    "Pick an LCD first": "முதலில் ஒரு LCD-ஐத் தேர்ந்தெடுக்கவும்"
   },
   "pa": {
     "Audio visuals": "ਆਡੀਓ ਵਿਜ਼ੂਅਲ",
@@ -1113,7 +1393,15 @@
     "Spikes": "ਕੰਡੇ",
     "Thickness": "ਮੋਟਾਈ",
     "Tint (white to colour)": "ਰੰਗਤ (ਚਿੱਟੇ ਤੋਂ ਰੰਗੀਨ)",
-    "Warp": "ਵਿਗਾੜ"
+    "Warp": "ਵਿਗਾੜ",
+    "Top left": "ਉੱਪਰ ਖੱਬੇ",
+    "Top right": "ਉੱਪਰ ਸੱਜੇ",
+    "Bottom left": "ਹੇਠਾਂ ਖੱਬੇ",
+    "Bottom right": "ਹੇਠਾਂ ਸੱਜੇ",
+    "Small": "ਛੋਟਾ",
+    "Medium": "ਦਰਮਿਆਨਾ",
+    "Large": "ਵੱਡਾ",
+    "Pick an LCD first": "ਪਹਿਲਾਂ ਇੱਕ LCD ਚੁਣੋ"
   },
   "sw": {
     "Audio visuals": "Taswira za sauti",
@@ -1144,7 +1432,15 @@
     "Spikes": "Miiba",
     "Thickness": "Unene",
     "Tint (white to colour)": "Rangi-tint (nyeupe hadi rangi)",
-    "Warp": "Upotoshaji"
+    "Warp": "Upotoshaji",
+    "Top left": "Juu kushoto",
+    "Top right": "Juu kulia",
+    "Bottom left": "Chini kushoto",
+    "Bottom right": "Chini kulia",
+    "Small": "Ndogo",
+    "Medium": "Wastani",
+    "Large": "Kubwa",
+    "Pick an LCD first": "Chagua LCD kwanza"
   },
   "my": {
     "Audio visuals": "အသံရုပ်ပုံ",
@@ -1175,6 +1471,14 @@
     "Spikes": "ဆူးများ",
     "Thickness": "အထူ",
     "Tint (white to colour)": "အရောင်ရင့် (အဖြူမှ အရောင်)",
-    "Warp": "ပုံပျက်"
+    "Warp": "ပုံပျက်",
+    "Top left": "ဘယ်ဘက်အပေါ်",
+    "Top right": "ညာဘက်အပေါ်",
+    "Bottom left": "ဘယ်ဘက်အောက်",
+    "Bottom right": "ညာဘက်အောက်",
+    "Small": "သေး",
+    "Medium": "အလယ်အလတ်",
+    "Large": "ကြီး",
+    "Pick an LCD first": "LCD တစ်ခုကို အရင်ရွေးပါ"
   }
 }

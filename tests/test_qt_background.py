@@ -85,3 +85,30 @@ def test_an_app_gone_meanwhile_is_an_answer_too(qtbot: Any) -> None:
     qtbot.waitUntil(lambda: bool(page.heard), timeout=2000)
     assert page.heard[0][0] == Result(
         ok=False, message="Could not reach TRCC: socket closed")
+
+
+class _Drawn(_Page):
+    """A page whose answer draws -- as every page's does."""
+
+    def on_done(self, result: Result) -> None:
+        self.setWindowTitle(result.message)             # dead widget: RuntimeError
+        super().on_done(result)
+
+
+def test_a_page_qt_deleted_while_python_holds_it_is_never_answered(qtbot: Any) -> None:
+    """A window closed: Qt deletes its widgets, yet a page list can keep the
+    Python side alive, so the weak reference above is still good.  The answer
+    used to land in the dead widget -- "Internal C++ object already deleted",
+    six times a run once the Visualizer page asked for its box on every
+    device change (2026-11-10).  MUTATION CHECK: drop the ``isValid`` test
+    from ``_Relay._deliver`` and pytest-qt reports the RuntimeError."""
+    import shiboken6
+
+    bus = _Bus(hold=True)
+    page = _Drawn()
+    dispatch_in_background(bus, ListDevices(), page.on_done)
+    qtbot.waitUntil(lambda: bool(bus.on_thread), timeout=2000)
+    shiboken6.delete(page)                              # Qt's half gone, Python's held
+    bus.release.set()
+    qtbot.wait(200)
+    assert page.heard == []

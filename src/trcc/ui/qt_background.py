@@ -25,6 +25,7 @@ import weakref
 from collections.abc import Callable
 from typing import Any
 
+import shiboken6
 from PySide6.QtCore import QObject, Signal
 
 from ..core.commands import Command
@@ -60,7 +61,13 @@ class _Relay(QObject):
     def _deliver(self, token: int, result: Result) -> None:
         ref = self._waiting.pop(token, None)
         on_done = ref() if ref is not None else None
-        if on_done is None:
+        # Gone two ways: the Python object freed (the weak reference is
+        # dead), or Qt deleted the widget while Python still holds it -- a
+        # window that closed and a page list that keeps it.  The second used
+        # to deliver into a dead widget: "Internal C++ object already deleted".
+        owner = getattr(on_done, "__self__", None)
+        if on_done is None or (isinstance(owner, QObject)
+                               and not shiboken6.isValid(owner)):
             log.info("_Relay: answer %d arrived after its window closed -- "
                      "dropped", token)
             return

@@ -15,7 +15,6 @@ import pytest
 from trcc.core.commands import (
     AddOverlayElement,
     ApplyMask,
-    ClearInset,
     DeleteOverlayElement,
     EnableOverlay,
     LcdSnapshot,
@@ -23,7 +22,6 @@ from trcc.core.commands import (
     RememberColor,
     ResolveOverlay,
     SetBackground,
-    SetInset,
     SetMaskPosition,
     SetMaskVisible,
     SetMediaPlayer,
@@ -71,9 +69,6 @@ def _settings(**answers: Any) -> tuple[ThemeSettings, _Bus]:
     (lambda s: s.show_background(KEY, True), ShowBackground(key=KEY, shown=True)),
     (lambda s: s.set_background(KEY, Path("/a.png")),
      SetBackground(key=KEY, path=Path("/a.png"))),
-    (lambda s: s.set_inset(KEY, "weather", "top_left", "small"),
-     SetInset(key=KEY, module="weather", corner="top_left", size="small")),
-    (lambda s: s.set_inset(KEY, "", "top_left", "small"), ClearInset(key=KEY)),
     (lambda s: s.play_media(KEY, "rtsp://cam"), SetMediaPlayer(key=KEY, uri="rtsp://cam")),
     (lambda s: s.stop_media(KEY), SetMediaPlayer(key=KEY, uri="")),
     (lambda s: s.start_cast(KEY, (1, 2, 30, 40), True),
@@ -82,7 +77,7 @@ def _settings(**answers: Any) -> tuple[ThemeSettings, _Bus]:
     (lambda s: s.set_region(KEY, (1, 2, 30, 40)),
      SetScreencastRegion(key=KEY, x=1, y=2, w=30, h=40)),
 ], ids=["overlay", "temp-unit", "mask-visible", "mask-position", "background-switch",
-        "background", "box", "box-off", "media", "media-off", "cast", "cast-off", "region"])
+        "background", "media", "media-off", "cast", "cast-off", "region"])
 def test_a_control_sends_its_one_command(action: Any, sent: Any) -> None:
     settings, bus = _settings()
     action(settings)

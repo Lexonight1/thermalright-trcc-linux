@@ -23,10 +23,6 @@ from PySide6.QtGui import (
     QPalette,
 )
 from PySide6.QtWidgets import (
-    QComboBox,
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
     QFrame,
     QLabel,
     QLineEdit,
@@ -36,12 +32,11 @@ from PySide6.QtWidgets import (
 
 from ...core.geometry import lock_region_to_panel
 from ...core.logs import per_frame
-from ...core.models import ACTION_ICON_IMAGES, InsetCorner, InsetSize, OverlayMode
+from ...core.models import ACTION_ICON_IMAGES, OverlayMode
 from ..qt_words import say_tip
 from .settings_layout import (
     ACTION_BTN_1,
     ACTION_BTN_2,
-    ACTION_BTN_3,
     CAST_BTN_ADD_H,
     CAST_BTN_ADD_W,
     CAST_BTN_ADD_X,
@@ -344,7 +339,6 @@ class DisplayModePanel(QFrame):
         "Network": "Network stream",
         "Settings": "Settings",
         "Upload": "Upload custom mask",
-        "Box": "A module's picture in a box over the theme",
     }
 
     # Tooltip text for toggle buttons by mode
@@ -382,15 +376,12 @@ class DisplayModePanel(QFrame):
         # Action buttons with icon images
         _ICON_MAP = ACTION_ICON_IMAGES
         self._action_buttons: list[QPushButton] = []
-        action_positions = [ACTION_BTN_1, ACTION_BTN_2,
-                            ACTION_BTN_3]
+        action_positions = [ACTION_BTN_1, ACTION_BTN_2]
         for i, action_name in enumerate(self.actions):
             if i >= len(action_positions):
                 break
             btn = QPushButton(self)
             btn.setGeometry(*action_positions[i])
-            # Every action has its icon (``ACTION_ICON_IMAGES``) -- Box's too,
-            # since 2026-11-10; it was the bare word until then.
             btn.setStyleSheet(self._skin.flat_button_hover)
             log.debug("_setup_ui: %s %s -> %s", self.mode_id, action_name,
                       _ICON_MAP[action_name])
@@ -865,48 +856,3 @@ class ScreenCastPanel(DisplayModePanel):
         self.audio_btn.setText("🎤" if self._audio_on else "🔇")
         self.audio_btn.setStyleSheet(self._skin.sound_on if self._audio_on
                                      else self._skin.sound_off)
-
-
-class InsetDialog(QDialog):
-    """The Background panel's Box: a module's picture in a box over the
-    theme -- which module (or Off), the corner, the size.  Opened on what
-    the App holds; it sends nothing itself (:meth:`choice`)."""
-
-    def __init__(self, modules: Sequence[tuple[str, str]], module: str,
-                 corner: str, size: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        log.info("InsetDialog: %d module(s), now %r %s %s", len(modules), module,
-                 corner, size)
-        self.setWindowTitle("Module picture in a box")
-        self._module = self._combo((("", "Off"), *modules), module)
-        self._corner = self._combo(tuple(
-            (c.value, c.value.replace("-", " ").capitalize()) for c in InsetCorner),
-            corner)
-        self._size = self._combo(tuple((z.value, z.value.capitalize())
-                                       for z in InsetSize), size)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=self)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        form = QFormLayout(self)
-        form.addRow("Module:", self._module)
-        form.addRow("Corner:", self._corner)
-        form.addRow("Size:", self._size)
-        form.addRow(buttons)
-
-    def _combo(self, items: Sequence[tuple[str, str]], current: str) -> QComboBox:
-        """A combo of ``(value, label)`` items, on *current*."""
-        combo = QComboBox(self)
-        for value, label in items:
-            combo.addItem(label, userData=value)
-        combo.setCurrentIndex(max(0, combo.findData(current)))
-        log.debug("InsetDialog._combo: %d item(s), on %r", len(items), current)
-        return combo
-
-    def choice(self) -> tuple[str, str, str]:
-        """The module ("" for Off), the corner and the size chosen."""
-        chosen = (str(self._module.currentData()), str(self._corner.currentData()),
-                  str(self._size.currentData()))
-        log.info("InsetDialog.choice: %s", chosen)
-        return chosen
