@@ -573,6 +573,14 @@ jobs:
           size = ${INSTALLED_SIZE}
           arch = any
           license = GPL-3.0-or-later
+          # Ours takes over from the third-party AUR packages (#337): they put
+          # the same /usr/bin/trcc and site-packages/trcc on disk, so without
+          # these a pacman -U of ours stops on conflicting files.  With them it
+          # offers to remove theirs, and whatever depends on their name still
+          # works.  (A replaces line acts only from a sync repo, never on -U.)
+          conflict = thermalright-trcc
+          conflict = thermalright-trcc-git
+          provides = thermalright-trcc=${VER}
           depend = python
           depend = pyside6
           depend = python-numpy

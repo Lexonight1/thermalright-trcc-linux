@@ -500,3 +500,19 @@ def test_every_package_installs_ffmpeg() -> None:
             for name, m in deb_depends.items()} == dict.fromkeys(deb_depends, True)
     assert re.search(r"^\s*Requires:\s+/usr/bin/ffmpeg\s*$", rpm, re.M)
     assert "ffmpeg" in _arch_depends()
+
+
+def test_the_arch_package_takes_over_from_the_aur_renames() -> None:
+    """The AUR's ``thermalright-trcc`` / ``-git`` are our PKGBUILD under
+    another name, owning the same /usr/bin/trcc: without these lines a
+    ``pacman -U`` of ours stops on conflicting files (#337).  With them pacman
+    offers to remove theirs -- measured with real pacman in an archlinux
+    container, 2026-11-10 -- and a dependency on their name stays satisfied.
+    MUTATION CHECK: drop a ``conflict =`` line and this fails."""
+    text = _RELEASE_YML.read_text()
+    start = text.index('cat > "$PKG/.PKGINFO" << INFO')
+    block = text[start:text.index("          INFO", start)]
+    assert set(re.findall(r"^\s*conflict = (\S+)", block, re.M)) == {
+        "thermalright-trcc", "thermalright-trcc-git"}
+    assert re.findall(r"^\s*provides = (\S+)", block, re.M) == [
+        "thermalright-trcc=${VER}"]
