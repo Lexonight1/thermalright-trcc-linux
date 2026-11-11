@@ -40,6 +40,7 @@ Bytes are encoded as ``{"__bytes__": "<base64>"}`` so binary payloads
 from __future__ import annotations
 
 import base64
+import contextlib
 import dataclasses
 import functools
 import inspect
@@ -53,6 +54,7 @@ import threading
 import time
 import types
 import typing
+from collections.abc import Iterator
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -1256,30 +1258,36 @@ class SingleInstance:
             )
             return instance
 
-        # ── Peer alive? ──
-        if _peer_alive(path, cls._CONNECT_TIMEOUT_S):
-            if not raise_peer:
-                log.info("SingleInstance(%r): peer alive — a hidden launch "
-                         "leaves its window as it is", name)
-                return None
-            try:
-                _send_raise(path, cls._RAISE_MESSAGE, cls._CONNECT_TIMEOUT_S)
-                log.info("SingleInstance(%r): peer alive, raise sent", name)
-            except OSError as e:
-                log.warning(
-                    "SingleInstance(%r): peer responded then closed; "
-                    "raise send failed (%s)", name, e,
-                )
+        # ── Peer alive?  If not, bind -- ONE step under the lock, so two
+        #    launches in one instant cannot both find no peer (#337). ──
+        with _bind_lock(path):
+            if not _peer_alive(path, cls._CONNECT_TIMEOUT_S):
+                return cls._bind_new(name, path)
+        # A peer is listening.
+        if not raise_peer:
+            log.info("SingleInstance(%r): peer alive — a hidden launch "
+                     "leaves its window as it is", name)
             return None
+        try:
+            _send_raise(path, cls._RAISE_MESSAGE, cls._CONNECT_TIMEOUT_S)
+            log.info("SingleInstance(%r): peer alive, raise sent", name)
+        except OSError as e:
+            log.warning(
+                "SingleInstance(%r): peer responded then closed; "
+                "raise send failed (%s)", name, e,
+            )
+        return None
 
-        # ── No peer — clean any stale socket file + bind ──
+    @classmethod
+    def _bind_new(cls, name: str, path: Path) -> SingleInstance:
+        """No peer: clean a stale socket file and bind -- under ``_bind_lock``."""
+        log.debug("SingleInstance._bind_new: %s", path)
         if path.exists():
             try:
                 path.unlink()
             except OSError as e:
                 log.debug("SingleInstance(%r): stale socket unlink failed: %s",
                           name, e)
-        path.parent.mkdir(parents=True, exist_ok=True)
         instance = super().__new__(cls)
         instance._bind(name, path)
         return instance
@@ -1427,6 +1435,30 @@ def _msvcrt_acquire(name: str) -> Any | None:
     except OSError:
         return None
     return fh
+
+
+@contextlib.contextmanager
+def _bind_lock(path: Path) -> Iterator[None]:
+    """One launch at a time between "is a peer listening on *path*?" and
+    "bind it" -- an exclusive ``flock`` on a lock file beside the socket.
+
+    Two steps without it: two launches in one instant (login autostart, #337)
+    both found no peer; the loser's bind failed with "Address already in use"
+    -- a CRITICAL traceback -- or, ordered otherwise, unlinked the winner's
+    fresh socket as stale and bound too.  The kernel drops the lock with the
+    process, so a crash never leaves it held; the file itself stays, as a
+    lock file must (deleting it would reopen the race)."""
+    import fcntl
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = path.with_name(f".{path.name}.lock")
+    with Path(lock).open("ab") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        log.debug("_bind_lock: %s held", lock)
+        try:
+            yield
+        finally:
+            fcntl.flock(held, fcntl.LOCK_UN)
 
 
 def _peer_alive(path: Path, timeout: float) -> bool:

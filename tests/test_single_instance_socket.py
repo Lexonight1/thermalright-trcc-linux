@@ -315,3 +315,40 @@ def test_send_raise_leaks_no_descriptor_when_the_peer_vanished(
 
     with _leaks_no_descriptor(), pytest.raises(OSError):
         _send_raise(stale, b'{"raise": true}\n', 0.5)
+
+
+def test_two_launches_at_one_instant_leave_one_instance() -> None:
+    """Login autostart can start the same UI twice in one millisecond (#337's
+    report: pids 1644 and 1646, both found no socket).  Checking for a peer
+    and binding were two steps: the loser's bind failed -- "Address already in
+    use", a CRITICAL traceback for a harmless race -- or, ordered otherwise,
+    the loser unlinked the winner's fresh socket as stale and bound too, two
+    windows.  They are one step now, under a lock file: exactly one instance,
+    and the other launch finds it.  MUTATION CHECK: drop the ``_bind_lock``
+    from ``SingleInstance.__new__`` and the rounds raise or double up."""
+    _needs_af_unix()
+    for round_ in range(30):
+        name = f"race{round_}"
+        start = threading.Barrier(2)
+        got: list[SingleInstance | None] = []
+        failed: list[BaseException] = []
+
+        def launch() -> None:
+            start.wait()
+            try:
+                got.append(SingleInstance(name, raise_peer=False))
+            except BaseException as e:                  # the bug, if it is back
+                failed.append(e)
+
+        threads = [threading.Thread(target=launch) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+        try:
+            assert failed == [], f"round {round_}: {failed}"
+            assert sorted(g is not None for g in got) == [False, True], f"round {round_}"
+        finally:
+            for g in got:
+                if g is not None:
+                    g.close()
