@@ -108,21 +108,9 @@ class Sizes:
     PANEL_W = 732
     PANEL_H = 652
 
-    # Thumbnail
-    THUMB_W = 120
-    THUMB_H = 140
-    THUMB_IMAGE = 120
-    THUMB_NAME_H = 20
-    THUMB_NAME_MAX = 15
-    THUMB_NAME_TRUNC = 12
-
-    # Theme grid
-    GRID_COLS = 5
+    # The tiles and their grid are the shared grid's own (``ui/tile_grid``).
     GRID_SCROLL_Y = 50
     GRID_SCROLL_H = 602  # PANEL_H - GRID_SCROLL_Y
-    GRID_MARGIN = (30, 10, 0, 10)  # left, top, right, bottom
-    GRID_H_SPACE = 15   # 135 - 120
-    GRID_V_SPACE = 10   # 150 - 140
 
     # Filter buttons
     FILTER_BTN_W = 63
@@ -221,9 +209,6 @@ class Layout:
         ('e',   520, 29, 63, 18),   # Nature
         ('y',   621, 29, 63, 18),   # Aesthetic
     ]
-
-    # Scroll area (shared by all theme browsers)
-    THEME_SCROLL = (0, 50, 732, 602)
 
     # Video controls
     PLAY_BTN = (10, 26, 34, 26)

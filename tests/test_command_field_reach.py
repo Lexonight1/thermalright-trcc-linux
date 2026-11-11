@@ -104,16 +104,6 @@ KNOWN_FIELD_ASYMMETRY: dict[tuple[str, str], tuple[frozenset[str], str]] = {
     ("GetPaths", "api"): (frozenset({"resolution"}), (
         "unclassified: measured 2026-09-22, not traced"
     )),
-    ("PlayVisual", "gui"): (frozenset({"settings"}), (
-        "scoped: a gallery click starts the visual at its default sliders "
-        "-- one click, as the user asked (2026-10-12) -- and the window's "
-        "sliders then move it live with SetVisualSettings"
-    )),
-    ("PlayVisual", "qtgui"): (frozenset({"settings"}), (
-        "scoped: a gallery click starts the visual at its default sliders "
-        "-- one click, as the user asked (2026-10-12) -- and the window's "
-        "sliders then move it live with SetVisualSettings"
-    )),
     ("ImportTheme", "gui"): (frozenset({"name"}), (
         "scoped: the C# import has no name field -- the theme is named after "
         "the file (FormCZTV.buttonDaoRu_Click sets textBoxCMM to the file "

@@ -176,6 +176,34 @@ def reach_by_command(
     return reach
 
 
+#: What a skin calls to show module pages (``ui/_module_faces.module_page``).
+_PAGE_HOST_CALL = "module_page"
+
+
+def _hosts_module_pages(tree: ast.AST) -> bool:
+    """Whether a file shows module pages -- calls ``module_page(...)``."""
+    return any(isinstance(node, ast.Call)
+               and _PAGE_HOST_CALL in (getattr(node.func, "id", None),
+                                       getattr(node.func, "attr", None))
+               for node in ast.walk(tree))
+
+
+def _module_page_files(anchor: Path) -> set[str]:
+    """Every module's page file -- each ``modules/<key>/ui/<PAGE_FACE>/`` file
+    but its package door.
+
+    A GUI loads a module's page by NAME (``module_page(key)`` ->
+    ``contribution``), never by an import, so following imports found no GUI
+    that uses one: its Commands read as reached by no UI, and the shared
+    pieces it stands on (``ui/tile_grid``) as serving one.  A GUI that calls
+    ``module_page`` uses every module's page -- each module it runs.
+    """
+    from trcc.ui._module_faces import PAGE_FACE
+    return {_module_name(path, anchor)
+            for path in sorted((_SRC / "modules").glob(f"*/ui/{PAGE_FACE}/*.py"))
+            if path.name != "__init__.py"}
+
+
 def _shared_reach(contract: set[str]) -> dict[str, set[str]]:
     """What each skin reaches THROUGH the shared ``ui/`` modules it imports.
 
@@ -194,6 +222,7 @@ def _shared_reach(contract: set[str]) -> dict[str, set[str]]:
     named: dict[str, set[str]] = {}         # shared module -> names it references
     imports: dict[str, set[str]] = {}       # any ui module -> shared modules it imports
     area_of: dict[str, str] = {}
+    pages = _module_page_files(anchor)
     for path in layers.files("ui"):
         this = _module_name(path, anchor)
         area = _area(layers.logical(this), ui_pkg, skins)
@@ -202,7 +231,10 @@ def _shared_reach(contract: set[str]) -> dict[str, set[str]]:
         area_of[this] = area
         found: set[str] = set()
         deps: set[str] = set()
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if area in skins and _hosts_module_pages(tree):
+            deps |= pages
+        for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 target = _resolve_import(node, this, path.name == "__init__.py")
                 if target and _area(layers.logical(target), ui_pkg, skins) == "shared":
@@ -470,9 +502,13 @@ def mislocated(ui_root: Path | None = None,
     # ``qt_ram_access`` that both skins build on.  Counted direct-only, it
     # read as qtgui's alone (2026-10-10).
     shared_importers: dict[str, set[str]] = {}
+    pages = _module_page_files(anchor) if ui_root == _UI_ROOT else set()
     for path, tree in trees.items():
         this = _module_name(path, anchor)
         src = _area(layers.logical(this), ui_pkg, skins)
+        if src in skins and _hosts_module_pages(tree):
+            for page in pages:
+                consumers.setdefault(page, set()).add(src)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom):
                 continue

@@ -3,8 +3,9 @@
 The skeleton is loaded through the real catalog and the real import path a
 built-in module uses (``trcc.modules.<key>``), so a change to the module API
 breaks here instead of leaving a stale template.  It carries one of each
-thing a module may have -- a Query, words, a CLI command, an API route, a
-gui page and a qtgui panel -- so every hook a module plugs into is driven.
+thing a module may have -- a Query, words, a CLI command, an API route and
+its page, which the gui and qtgui both show -- so every hook a module plugs
+into is driven.
 """
 from __future__ import annotations
 
@@ -248,8 +249,9 @@ def test_the_gui_shows_its_tab_while_it_is_on(
 
 def test_the_qtgui_shows_its_entry_while_it_is_on(
         hello: Path, qtbot: Any, tmp_home: Path) -> None:
-    """On: an entry above Modules opening Hello's panel.  Off: the entry hides
-    and the window goes back to Devices."""
+    """On: an entry above Modules opening Hello's page -- the same page the gui
+    shows, under qtgui's device picker.  Off: the entry hides and the window
+    goes back to Devices."""
     from trcc.ui.qtgui.app import MainWindow
 
     app = _app(tmp_home, on=True)
@@ -260,7 +262,7 @@ def test_the_qtgui_shows_its_entry_while_it_is_on(
     app.dispatch(SetModuleEnabled(key="hello", enabled=False))
     window._sync_module_panels()
     entry = window._sidebar._buttons["hello"]
-    assert (shown is window._panels["hello"], shown.label.text()) == (
+    assert (shown is window._panels["hello"], shown.page.label.text()) == (
         True, "Hello, world!")
     assert (entry.isVisibleTo(window),
             window._content.currentWidget() is window._panels["devices"]) == (

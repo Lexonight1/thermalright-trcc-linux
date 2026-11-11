@@ -26,8 +26,9 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QMovie
 
 from ...core.models import CloudThemeItem
-from .base import BaseThumbnail, DownloadableThemeBrowser
-from .constants import Layout, Sizes
+from ..tile_grid import TILE_IMAGE
+from .base import DownloadableThemeBrowser, GuiThumbnail
+from .constants import Layout
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ log = logging.getLogger(__name__)
 _CATEGORY_PROPERTY = "trcc_category"
 
 
-class CloudThemeThumbnail(BaseThumbnail):
+class CloudThemeThumbnail(GuiThumbnail):
     """Cloud theme thumbnail.
 
     A downloaded theme plays the animated GIF the App wrote beside its MP4,
@@ -68,7 +69,7 @@ class CloudThemeThumbnail(BaseThumbnail):
             log.debug("CloudThemeThumbnail: %s animates %s", self.item_info.id, gif)
             self._movie = QMovie(str(gif))
             self._movie.setScaledSize(
-                QSize(Sizes.THUMB_IMAGE, Sizes.THUMB_IMAGE))
+                QSize(TILE_IMAGE, TILE_IMAGE))
             self.thumb_label.setMovie(self._movie)
             return
         super()._load_thumbnail()

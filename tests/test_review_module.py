@@ -113,7 +113,7 @@ def test_a_bundle_holds_only_the_module_stored_under_its_key(author: Path) -> No
     names = [i.filename for i in infos]
     assert names == sorted(names)
     assert all(n.startswith("hello/") for n in names)
-    assert "hello/module.json" in names and "hello/ui/gui/__init__.py" in names
+    assert "hello/module.json" in names and "hello/ui/qt/__init__.py" in names
     assert not any("tests" in n or "README" in n or ".git" in n for n in names)
     assert {(i.compress_type, i.date_time, i.external_attr >> 16) for i in infos} == {
         (zipfile.ZIP_STORED, (1980, 1, 1, 0, 0, 0), 0o644)}

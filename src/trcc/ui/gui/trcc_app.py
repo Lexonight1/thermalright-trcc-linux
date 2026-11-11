@@ -76,6 +76,7 @@ from ...core.models import (
 from ...core.results import ControlCenterSnapshotResult, LanguageEntry
 from ..bus_bridge import BusBridge, DeviceSettingsEvent
 from ..device_selection import DeviceSelection
+from ..module_page import ModulePage
 from ..presentation import presentation_for
 from ..presentation.device_choice import DeviceChoice
 from ..presentation.theme_settings import ElementDrag, ThemeSettings, nudge
@@ -86,12 +87,11 @@ from ..settings_panel.uc_theme_setting import UCThemeSetting
 from ..ui_state import UiStateStore
 from ..viewfinder import ViewfinderFleet, open_picker, store_picked_region
 from .assets import Assets
-from .base import create_image_button, set_background_pixmap
+from .base import create_image_button, gui_module_look, set_background_pixmap
 from .base_handler import BaseHandler
 from .constants import Colors, Layout, Sizes, Styles
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
-from .module_page import ModulePage
 from .module_view import ModuleView
 from .settings_look import gui_skin
 from .uc_about import UCAbout, ensure_autostart
@@ -1258,17 +1258,18 @@ class TRCCApp(QMainWindow):
         module_view.set_language(lang)
 
     def _sync_module_tabs(self, on: set[str]) -> None:
-        """A mode tab for each module that is on and adds a gui page
-        (``ui/gui/``'s ``PAGE``); the tabs of the rest hidden.  A page is
+        """A mode tab for each module that is on and adds a page
+        (``module_page``: ``ui/qt/``'s ``PAGE``, the one every GUI shows); the
+        tabs of the rest hidden.  A page is
         built the first time its module is on and kept, so switching it back
         on brings the same page -- and a page showing when its module goes
         off gives way to Local themes."""
-        from .._module_faces import contribution
+        from .._module_faces import module_page
 
         log.info("_sync_module_tabs: on %s, built %s", sorted(on),
                  sorted(self._module_pages))
         for key in sorted(on - set(self._module_pages)):
-            page_class = contribution(key, "gui", "PAGE", optional=True)
+            page_class = module_page(key)
             if page_class is not None:
                 self._add_module_page(key, page_class)
         for key, button in self._module_tabs.items():
@@ -1289,7 +1290,7 @@ class TRCCApp(QMainWindow):
             log.warning("_add_module_page: no free tab slot for module %s", key)
             return
         lang = self._app.dispatch(ControlCenterSnapshot()).language
-        page = page_class(app=self._app)
+        page = page_class(app=self._app, look=gui_module_look())
         for event_type in page.EVENTS:
             self._bus.forward(event_type, "settings_changed")
         widget = cast(QWidget, page)

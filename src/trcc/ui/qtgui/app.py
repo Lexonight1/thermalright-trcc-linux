@@ -357,28 +357,36 @@ class MainWindow(QMainWindow):
 
     def _sync_module_panels(self) -> None:
         """A sidebar entry and a panel for each module that is on and adds one
-        (``ui/qtgui/``'s ``PANEL``); the entries of the rest hidden.  A panel
+        -- its page (``module_page``, the one every GUI shows) under qtgui's
+        device picker, else ``ui/qtgui/``'s ``PANEL``; the entries of the
+        rest hidden.  A panel
         is built the first time its module is on and kept; one showing when
         its module goes off gives way to Devices."""
-        from .._module_faces import contribution
+        from .._module_faces import contribution, module_page
+        from .panels.module_page_panel import ModulePagePanel
 
         on = {m.key for m in self._app.dispatch(ListModules()).modules
               if m.enabled}
         log.info("MainWindow._sync_module_panels: on %s, built %s", sorted(on),
                  sorted(self._module_panels))
         for key in sorted(on - self._module_panels):
-            panel_class = contribution(key, "qtgui", "PANEL")
-            if panel_class is None:
-                continue
             if key in self._panels:
                 log.error("module %s: the qtgui already has a %r panel -- "
                           "not added", key, key)
                 continue
-            panel = panel_class(self._app, self._bus, self,
-                                selection=self._lcd_selection)
+            if (page_class := module_page(key)) is not None:
+                panel = ModulePagePanel(page_class, self._app, self._bus, self,
+                                        selection=self._lcd_selection)
+                label = page_class.TITLE
+            elif (panel_class := contribution(key, "qtgui", "PANEL")) is not None:
+                panel = panel_class(self._app, self._bus, self,
+                                    selection=self._lcd_selection)
+                label = panel_class.LABEL
+            else:
+                continue
             self._panels[key] = panel
             self._content.addWidget(panel)
-            self._sidebar.add_entry(key, panel_class.LABEL)
+            self._sidebar.add_entry(key, label)
             self._module_panels.add(key)
         for key in self._module_panels:
             self._sidebar.set_entry_visible(key, key in on)

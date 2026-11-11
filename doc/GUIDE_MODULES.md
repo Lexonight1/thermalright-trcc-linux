@@ -109,8 +109,9 @@ A module is a small copy of TRCC's own layout. Each part has a fixed name, and T
 | `core/` | its Commands, Results and events | always, so its Commands are known in every window and refused while it is off |
 | `app.py` | its root: the `Module` class, holding its own state | when it is switched on |
 | `services/`, `adapters/` | its own logic, and the protocols it speaks to hardware the host lets it reach | by `app.py` |
-| `ui/gui/` | exports `PAGE`: a widget that also extends `ModulePage` — the page its mode tab opens; and/or `VIEW`: a widget that also extends `ModuleView` — a whole page its sidebar button opens (built with `app=` and `bridge=`, the window's events: `bridge.frame_sent`, `bridge.forward(MyEvent, "module_event")`, `bridge.add_preview(widget)`) | while it is on |
-| `ui/qtgui/` | exports `PANEL`: a `BasePanel` with a `LABEL` — its sidebar entry | while it is on |
+| `ui/qt/` | exports `PAGE`: a widget that also extends `ModulePage` (`trcc.ui.module_page`) — its page, **one page every window shows**: the gui as a mode tab, qtgui as a sidebar entry, hudgui as a tab of a device's panel. Built as `PAGE(app=bus, look=look)`; it draws with the window's `look` (a `ModuleLook`: its tiles, its controls' style, its dimmed and status styles), never a window's own styles, so a new window shows it with nothing written for it | while it is on |
+| `ui/gui/` | exports `VIEW`: a widget that also extends `ModuleView` — a whole page its sidebar button opens (built with `app=` and `bridge=`, the window's events: `bridge.frame_sent`, `bridge.forward(MyEvent, "module_event")`, `bridge.add_preview(widget)`) | while it is on |
+| `ui/qtgui/` | exports `PANEL`: a `BasePanel` with a `LABEL` — its sidebar entry; for a page that is not under an LCD (qtgui shows a `ui/qt/` page itself) | while it is on |
 | `ui/cli/` | exports `GROUP` (the `trcc` group, `""` for the top) and `COMMANDS` (a Typer app) | always, on or off |
 | `ui/api/` | exports `ROUTERS`, the FastAPI routers it adds | always, on or off |
 

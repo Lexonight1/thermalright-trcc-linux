@@ -141,7 +141,7 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: (src + tests + dev) since it was written; the module review
 #: (``dev/tools/review_module.py``) named it, holding the visualizer to a
 #: log line in every function.
-MAX_SILENT = 273
+MAX_SILENT = 259
 
 
 def test_logging_coverage_only_improves() -> None:

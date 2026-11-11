@@ -119,6 +119,141 @@ def _build_uc_theme_setting(edited: bool) -> Any:
     return window.uc_theme_setting
 
 
+def _tile_pngs(folder: Path, names: list[str]) -> dict[str, Path]:
+    """One flat-coloured PNG per name, the colour fixed by its position."""
+    from PySide6.QtGui import QColor, QImage
+    folder.mkdir(parents=True, exist_ok=True)
+    made = {}
+    for i, name in enumerate(names):
+        image = QImage(160, 160, QImage.Format.Format_RGB32)
+        image.fill(QColor(40 + 30 * i, 200 - 20 * i, 90 + 15 * i))
+        made[name] = folder / f"{name}.png"
+        image.save(str(made[name]))
+    return made
+
+
+#: Seven tiles -- one row and a half -- a long name among them, which the
+#: tile shortens.
+_TILE_NAMES = ["Theme1", "Theme2", "Theme3", "A very long theme name", "Theme5",
+               "Theme6", "Theme7"]
+
+
+def _build_uc_theme_local(filled: bool) -> Any:
+    """The gui's Local themes tab: seven tiles, the third current."""
+    import tempfile
+
+    from trcc.core.results import ThemeListEntry
+    from trcc.ui.gui.uc_theme_local import UCThemeLocal
+
+    panel = UCThemeLocal()
+    pngs = _tile_pngs(Path(tempfile.mkdtemp()), _TILE_NAMES) if filled else {}
+    panel.set_themes([ThemeListEntry(name=name, resolution=(320, 320),
+                                     path=str(png.parent / name), preview=str(png),
+                                     origin="user" if i % 2 else "shipped")
+                      for i, (name, png) in enumerate(pngs.items())])
+    if filled:
+        panel.show_current_theme(pngs["Theme3"].parent / "Theme3")
+    _KEEP.append(panel)
+    return panel
+
+
+def _build_uc_theme_web(filled: bool) -> Any:
+    """The gui's Cloud backgrounds tab: previews, the downloaded ones solid,
+    the rest dashed."""
+    import tempfile
+
+    from trcc.ui.gui.uc_theme_web import UCThemeWeb
+
+    panel = UCThemeWeb()
+    if filled:
+        folder = Path(tempfile.mkdtemp())
+        _tile_pngs(folder, ["a001", "a002", "b001", "b002", "c001", "c002"])
+        (folder / "a002.mp4").write_bytes(b"")          # downloaded
+    panel.set_web_directory(folder if filled else None)
+    _KEEP.append(panel)
+    return panel
+
+
+class _Masks:
+    """A bus that answers ``ListMasks`` with fixed masks -- nothing else."""
+
+    def __init__(self, masks: list[Any]) -> None:
+        self._masks = masks
+
+    def dispatch(self, _command: Any) -> Any:
+        from types import SimpleNamespace
+        return SimpleNamespace(ok=True, message="", directory="", masks=self._masks)
+
+
+def _build_uc_theme_mask(filled: bool) -> Any:
+    """The gui's Cloud masks tab: five masks, one the user's own."""
+    import tempfile
+    from types import SimpleNamespace
+
+    from trcc.ui.gui.uc_theme_mask import UCThemeMask
+
+    pngs = (_tile_pngs(Path(tempfile.mkdtemp()), ["000a", "000b", "000c", "000d", "mine"])
+            if filled else {})
+    masks = [SimpleNamespace(name=name, path=str(png.parent), preview=str(png),
+                             is_custom=name == "mine") for name, png in pngs.items()]
+    bus: Any = _Masks(masks)
+    panel = UCThemeMask(app=bus)
+    panel.set_resolution("320x320")
+    panel.set_mask_directory(Path(tempfile.mkdtemp()))
+    _KEEP.append(panel)
+    return panel
+
+
+def _build_uc_visuals() -> Any:
+    """The Audio Visualizer's gui tab, out of a real ``TRCCApp`` over a mock
+    panel: its gallery listed and every tile the App draws arrived."""
+    import tempfile
+    sys.path.insert(0, str(REPO))
+    from PySide6.QtWidgets import QApplication
+
+    from tests.conftest import show_a_theme
+    from tests.mock_platform import MockPlatform
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.app import App
+    from trcc.core.commands import ConnectDevice
+    from trcc.ui.gui.trcc_app import TRCCApp
+
+    key = "0402:3922"
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922", "fbl": 100}],
+                           Path(tempfile.mkdtemp())), renderer=QtRenderer())
+    assert app.dispatch(ConnectDevice(key=key)).ok
+    show_a_theme(app, key)
+    window = TRCCApp(app=app)
+    window.replay_initial_devices()
+    page: Any = window._module_pages["visualizer"]
+    page.refresh()
+    _settle(QApplication.instance(), page)
+    _KEEP.extend((app, window))
+    return page
+
+
+def _settle(qt: Any, page: Any, seconds: float = 60.0) -> None:
+    """Run the event loop until *page* has every tile: its listing arrived
+    and nothing waits in its tile queue.
+
+    Not "until the picture stops changing": the tiles scrolled out of view
+    change nothing on it, so that stopped while they were still being drawn
+    -- on a worker thread, in Qt -- and the process exited under them: a
+    segfault in 4 runs of 8 (2026-11-10), from the tool, not the page.
+    """
+    import time
+    end = time.monotonic() + seconds
+    while time.monotonic() < end and not (page.item_widgets and not page._tiles._waiting):
+        qt.processEvents()
+        time.sleep(0.05)
+    for _ in range(5):              # the last tile's delivery and paint
+        qt.processEvents()
+        time.sleep(0.05)
+    if page._tiles._waiting:
+        raise SystemExit(f"uc_visuals: {len(page._tiles._waiting)} tile(s) still "
+                         f"drawing after {seconds:g} s")
+
+
 # Add a row per panel as it is converted.  Keep builders deterministic — no
 # real device scan, no host-dependent strings.
 #
@@ -135,6 +270,14 @@ PANELS: dict[str, Callable[[], Any]] = {
     "uc_led_control": _build_uc_led_control,
     "uc_theme_setting": lambda: _build_uc_theme_setting(edited=False),
     "uc_theme_setting_edited": lambda: _build_uc_theme_setting(edited=True),
+    # The tile grid every theme tab and the Audio Visualizer stand on.
+    "uc_theme_local": lambda: _build_uc_theme_local(filled=True),
+    "uc_theme_local_empty": lambda: _build_uc_theme_local(filled=False),
+    "uc_theme_web": lambda: _build_uc_theme_web(filled=True),
+    "uc_theme_web_empty": lambda: _build_uc_theme_web(filled=False),
+    "uc_theme_mask": lambda: _build_uc_theme_mask(filled=True),
+    "uc_theme_mask_empty": lambda: _build_uc_theme_mask(filled=False),
+    "uc_visuals": _build_uc_visuals,
 }
 
 

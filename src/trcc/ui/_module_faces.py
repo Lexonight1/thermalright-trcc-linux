@@ -6,7 +6,9 @@ A module's ``ui/<face>/`` exports fixed names, the way a Django app's
 ============  ==============================================================
 face          names
 ============  ==============================================================
-``gui``       ``PAGE`` -- the page its mode tab opens (a ``ModulePage``)
+``qt``        ``PAGE`` -- its page under an LCD, ONE for every GUI (a
+              ``ModulePage``, built ``PAGE(app=bus, look=look)``) -- see
+              :func:`module_page`
 ``gui``       ``VIEW`` -- a whole page its sidebar button opens (a ``ModuleView``)
 ``qtgui``     ``PANEL`` -- its sidebar panel (a ``BasePanel`` with ``LABEL``)
 ``cli``       ``GROUP`` (the ``trcc`` group, ``""`` for the top) + ``COMMANDS``
@@ -94,6 +96,20 @@ def contribution(key: str, face: str, name: str,
             return None
         log.error("module %s: ui/%s/ exports no %s -- skipped", key, face, name)
     log.debug("contribution: %s %s %s -> %s", key, face, name, found is not None)
+    return found
+
+
+#: The face a module's page comes from -- the same page in every GUI.
+PAGE_FACE = "qt"
+
+
+def module_page(key: str) -> Any | None:
+    """Module *key*'s page class -- ``ui/qt/``'s ``PAGE``, the one page every
+    GUI shows, each in its own look (``ui/module_page.ModuleLook``) -- or None
+    when it adds none.  Every GUI asks here, never ``contribution`` itself, so
+    ``dev/tools/ui_contract`` can see which GUIs show module pages."""
+    found = contribution(key, PAGE_FACE, "PAGE", optional=True)
+    log.debug("module_page: %s -> %s", key, found is not None)
     return found
 
 

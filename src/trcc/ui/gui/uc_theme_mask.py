@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QMenu
 
 from ...core.commands import ListMasks
 from ...core.models import MaskItem
-from .base import BaseThumbnail, DownloadableThemeBrowser
+from .base import DownloadableThemeBrowser, GuiThumbnail
 
 if TYPE_CHECKING:
     from ...core.ports import CommandBus
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class MaskThumbnail(BaseThumbnail):
+class MaskThumbnail(GuiThumbnail):
     """Mask thumbnail with non-local (dashed border) state."""
 
     def __init__(self, mask_info: MaskItem, parent=None):

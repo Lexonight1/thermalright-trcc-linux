@@ -25,14 +25,15 @@ from ...core.models import LocalThemeItem
 from ...core.results import ThemeListEntry
 from ..presentation.slideshow_model import SlideshowModel
 from ..qt_words import retranslate, say_tip
+from ..tile_grid import BaseThumbnail
 from .assets import Assets
-from .base import BaseThemeBrowser, BaseThumbnail
+from .base import GuiThemeBrowser, GuiThumbnail
 from .constants import Layout, Styles
 
 log = logging.getLogger(__name__)
 
 
-class ThemeThumbnail(BaseThumbnail):
+class ThemeThumbnail(GuiThumbnail):
     """Local theme thumbnail with optional delete button and slideshow badge."""
 
     delete_clicked = Signal(object)
@@ -122,7 +123,7 @@ class ThemeThumbnail(BaseThumbnail):
         self.clicked.emit(self.item_info)
 
 
-class UCThemeLocal(BaseThemeBrowser):
+class UCThemeLocal(GuiThemeBrowser):
     """
     Local themes browser panel.
 

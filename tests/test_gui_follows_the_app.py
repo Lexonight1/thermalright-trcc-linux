@@ -225,7 +225,7 @@ def test_picking_a_language_in_the_gui_reaches_the_app_and_the_labels(
 def test_the_theme_on_the_panel_is_highlighted_and_stays_highlighted(
     window: Any, qtbot: Any,
 ) -> None:
-    from trcc.ui.gui.base import BaseThumbnail
+    from trcc.ui.tile_grid import BaseThumbnail
 
     browser = window.uc_theme_local
     themes = window._app.platform.paths().theme_dir(320, 320)

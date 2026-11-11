@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-#: A tile, as the gui's (``Sizes.THUMB_W`` x ``THUMB_H``), and its picture.
+#: A tile, as the gui's (``tile_grid.TILE_W`` x ``TILE_H``), and its picture.
 TILE = QSize(120, 140)
 PICTURE = 110
 #: The space between tiles.
