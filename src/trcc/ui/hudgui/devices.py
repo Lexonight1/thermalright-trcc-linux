@@ -40,6 +40,7 @@ from ..qt_preview import FRAME_EDGE, PreviewSurface
 from ..settings_panel.binding import SettingsBinding, SettingsSteps
 from ..settings_panel.uc_theme_setting import UCThemeSetting
 from .chrome import DEVICE_SETTINGS_TAB, DEVICE_TABS, TabBar
+from .module_tabs import ModuleTabs
 from .settings_look import hud_skin
 from .sources import DeviceControls
 from .themes import CloudBackgrounds, CloudMasks, LocalThemes
@@ -185,6 +186,9 @@ class DevicePanel(QWidget):
         column.addLayout(row)
         self.tabs.tab_chosen.connect(self._on_tab)
         self._on_tab(self.tabs.current)
+        #: Each module's page, a tab beside the theme tabs while it is on.
+        self.modules = ModuleTabs(app, bus, selection, self.tabs, self.area,
+                                  self.pages, self._first_tab)
         # Moving an overlay element by hand -- only while Settings is open, so
         # browsing themes never moves one by accident.
         self.preview.pressed.connect(self._on_pressed)
@@ -195,6 +199,12 @@ class DevicePanel(QWidget):
         """Show *name*'s area."""
         log.info("DevicePanel._on_tab: %s", name)
         self.area.setCurrentWidget(self.pages[name])
+
+    def _first_tab(self) -> None:
+        """The first tab, lit and shown -- a module's page went off."""
+        log.info("DevicePanel._first_tab: %s", DEVICE_TABS[0])
+        self.tabs.choose(DEVICE_TABS[0])
+        self._on_tab(DEVICE_TABS[0])
 
     def _editor(self) -> SettingsBinding | None:
         """The Settings panel's binding, while the Settings tab is the one shown."""

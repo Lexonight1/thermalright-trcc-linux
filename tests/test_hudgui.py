@@ -75,8 +75,10 @@ def test_devices_opens_on_a_device_and_shows_its_side_panel(
     assert window._selection.key == _KEY and button.isChecked()
     button.click()                                              # a pick still works
     assert window._selection.key == _KEY and button.isChecked()
+    # The module on by default adds its page's tab (``ModuleTabs``).
     assert list(devices.panel.tabs.tabs) == ["Local Theme", "Cloud Masks",
-                                             "Cloud Backgrounds", "Settings"]
+                                             "Cloud Backgrounds", "Settings",
+                                             "visualizer"]
     assert devices.panel.tabs.current == "Local Theme"
     assert isinstance(devices.panel.preview, PreviewSurface)
 
@@ -1002,3 +1004,37 @@ def test_every_box_says_what_it_is(window: Any, qtbot: Any) -> None:
                 if label.text() in {"X", "Y", "W", "H"}}
     assert letters(panel.color_panel) == {"X", "Y"}
     assert letters(panel.screencast_panel) == {"X", "Y", "W", "H"}
+
+
+def test_a_modules_page_is_a_device_tab_while_it_is_on(window: Any, qtbot: Any) -> None:
+    """The Audio Visualizer's page -- the one every GUI shows -- is a tab of the
+    device's panel.  Switched on in any UI while a device is picked, its tab
+    comes and a tile click plays it on that device; switched off, the tab
+    hides and the panel leaves the page; on again, the same page.
+    MUTATION CHECK: drop the hiding in ``ModuleTabs.sync`` and the tab stays;
+    drop ``set_device_key`` in ``_add`` and the click plays on nothing."""
+    from trcc.core.commands import SetModuleEnabled
+    from trcc.core.models import ModuleBackground
+
+    app = window._app
+    app.dispatch(SetModuleEnabled(key="visualizer", enabled=False))
+    _tab(window, qtbot, "Local Theme")
+    panel = window.panel("Devices").panel
+    assert "visualizer" not in panel.tabs.tabs       # built the first time it is on
+    app.dispatch(SetModuleEnabled(key="visualizer", enabled=True))
+    qtbot.waitUntil(lambda: "visualizer" in panel.tabs.tabs)
+    panel.tabs.tabs["visualizer"].click()        # not _tab: a 2nd Devices click shuts it
+    page = panel.pages["visualizer"]
+    qtbot.waitUntil(lambda: bool(page.item_widgets) and not page._tiles._waiting,
+                    timeout=60000)
+    page._on_item_clicked(page.item_widgets[0].item_info)
+    assert (panel.area.currentWidget() is page,
+            app.settings.for_device(_KEY).background) == (
+        True, ModuleBackground("visualizer"))
+    app.dispatch(SetModuleEnabled(key="visualizer", enabled=False))
+    qtbot.waitUntil(lambda: not panel.tabs.tabs["visualizer"].isVisible())
+    assert (panel.tabs.current, panel.area.currentWidget() is page) == (
+        "Local Theme", False)
+    app.dispatch(SetModuleEnabled(key="visualizer", enabled=True))
+    qtbot.waitUntil(lambda: panel.tabs.tabs["visualizer"].isVisible())
+    assert panel.pages["visualizer"] is page

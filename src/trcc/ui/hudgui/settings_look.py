@@ -1,4 +1,5 @@
-"""hudgui's look for the device Settings panel -- its own styles, injected.
+"""hudgui's look for the shared panels -- the device Settings panel and every
+module's page -- its own styles, injected.
 
 The gui's panel, its layout and its behaviour; hudgui's look: the blue glass
 of its bar and dropped panels, its text colour, its accent, and its chrome
@@ -15,8 +16,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QWidget
 
+from ..module_page import ModuleLook
 from ..qt_assets import Assets
 from ..settings_panel.settings_skin import SettingsSkin
+from ..tile_grid import TileSkin
 
 log = logging.getLogger(__name__)
 
@@ -114,4 +117,58 @@ def hud_skin() -> SettingsSkin:
         flag_off_fallback=flag.format("#555", 8),
         sound_on=flag.format(ACCENT, 10),
         sound_off=flag.format("#555", 10),
+    )
+
+
+def _tile_selected(cls_name: str) -> str:
+    """A lit tile: hudgui's accent round it, as its theme tiles."""
+    log.debug("hud _tile_selected: %s", cls_name)
+    return (f"{cls_name} {{ background: rgba(127, 212, 255, 40); "
+            f"border: 2px solid {ACCENT}; border-radius: 6px; }}")
+
+
+def _tile_normal(cls_name: str) -> str:
+    """A tile at rest: faint glass, brighter under the pointer."""
+    log.debug("hud _tile_normal: %s", cls_name)
+    return (f"{cls_name} {{ background: rgba(255, 255, 255, 12); "
+            f"border: 2px solid transparent; border-radius: 6px; }}"
+            f"{cls_name}:hover {{ background: rgba(255, 255, 255, 30); }}")
+
+
+def _tile_not_local(cls_name: str) -> str:
+    """A tile not yet downloaded: dashed glass."""
+    log.debug("hud _tile_not_local: %s", cls_name)
+    return (f"{cls_name} {{ background: rgba(255, 255, 255, 8); "
+            f"border: 1px dashed {GLASS_EDGE}; border-radius: 6px; }}")
+
+
+@cache
+def hud_module_look() -> ModuleLook:
+    """hudgui's look for a module's page: its tiles as its theme tiles, its
+    controls on the glass."""
+    log.debug("hud_module_look: built")
+    return ModuleLook(
+        tiles=TileSkin(
+            image="background-color: rgba(0, 0, 0, 90); border: none; border-radius: 4px;",
+            name=f"color: {TEXT}; font-size: 9px; font-weight: bold; background: transparent;",
+            scroll_area=("QScrollArea { border: none; background: transparent; }"
+                         "QScrollBar:vertical { background: transparent; width: 8px; }"
+                         f"QScrollBar::handle:vertical {{ background: {GLASS_EDGE}; "
+                         "border-radius: 4px; min-height: 20px; }"
+                         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical "
+                         "{ height: 0; }"),
+            selected=_tile_selected, normal=_tile_normal, not_local=_tile_not_local,
+            placeholder=(16, 28, 38), placeholder_text=(150, 170, 180),
+            empty_text="rgba(223, 229, 234, 90)"),
+        controls=(f"QLabel {{ color: {TEXT}; background: transparent; }}"
+                  f"QPushButton {{ background: {GLASS}; color: {TEXT}; "
+                  f"border: 1px solid {GLASS_EDGE}; border-radius: 4px; padding: 4px 12px; }}"
+                  f"QPushButton:hover {{ border-color: {ACCENT}; }}"
+                  "QSlider::groove:horizontal { background: rgba(255, 255, 255, 30); "
+                  "height: 6px; border-radius: 3px; }"
+                  f"QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 3px; }}"
+                  f"QSlider::handle:horizontal {{ background: {TEXT}; width: 12px; "
+                  "margin: -4px 0; border-radius: 6px; }"),
+        dimmed="rgba(223, 229, 234, 90)",
+        status="color: #ffcf6e; background: transparent; font-size: 12px;",
     )

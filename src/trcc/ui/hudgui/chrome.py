@@ -89,21 +89,30 @@ class TabBar(SilverStrip):
         super().__init__(parent)
         log.info("TabBar: %s ... %s", ", ".join(DEVICE_TABS), DEVICE_SETTINGS_TAB)
         self.setFixedHeight(CHROME_HEIGHT - 6)
-        row = QHBoxLayout(self)
+        self._row = row = QHBoxLayout(self)
         row.setContentsMargins(10, 0, 10, 0)
         row.setSpacing(4)
         #: The tabs, by name.
         self.tabs: dict[str, QPushButton] = {}
         for name in DEVICE_TABS:
-            row.addWidget(self._tab(name))
+            row.addWidget(self._tab(say(QPushButton(self), name), name))
         row.addStretch(1)                         # an installed module's tab goes here
-        row.addWidget(self._tab(DEVICE_SETTINGS_TAB))
+        row.addWidget(self._tab(say(QPushButton(self), DEVICE_SETTINGS_TAB),
+                                DEVICE_SETTINGS_TAB))
         self.choose(DEVICE_TABS[0])
 
-    def _tab(self, name: str) -> QPushButton:
-        """One tab button."""
+    def add_tab(self, name: str, text: str) -> QPushButton:
+        """A module's tab, *name* its key, after the theme tabs and any module
+        tab before it.  *text* is said by the caller in the module's own words
+        -- the window's pass translates TRCC's, not a module's."""
+        log.info("TabBar.add_tab: %s %r", name, text)
+        button = self._tab(QPushButton(text, self), name)
+        self._row.insertWidget(len(self.tabs) - 2, button)
+        return button
+
+    def _tab(self, button: QPushButton, name: str) -> QPushButton:
+        """*button* as the tab *name*."""
         log.debug("TabBar._tab: %s", name)
-        button = say(QPushButton(self), name)
         button.setCheckable(True)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setStyleSheet(_MENU_STYLE)
