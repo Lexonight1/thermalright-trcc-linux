@@ -29,6 +29,7 @@ from ...core.errors import TrccError
 from ...core.logs import per_frame
 from ...core.models import THEME_FONT, RawFrame
 from ...core.ports import Renderer
+from . import turbojpeg
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -380,30 +381,42 @@ class QtRenderer(Renderer):
 
     def encode_jpeg(self, surface: Any, quality: int = 95,
                     max_size: int = 0) -> bytes:
-        """Encode QImage → JPEG bytes.  Optionally retry lower quality until ≤ max_size."""
-        frame_log.debug("encode_jpeg: quality=%d max_size=%d", quality, max_size)
-        def _save(q: int) -> bytes:
-            frame_log.debug("_save: q=%s", q)
-            from PySide6.QtCore import QBuffer, QIODevice
-            qbuf = QBuffer()
-            qbuf.open(QIODevice.OpenModeFlag.WriteOnly)
-            surface.save(qbuf, "JPEG", q)
-            qbuf.close()
-            return bytes(qbuf.data().data())
+        """Encode QImage → JPEG bytes.  Optionally retry lower quality until ≤ max_size.
 
-        data = _save(quality)
-        if not max_size or len(data) <= max_size:
-            return data
-        # Shrink-quality loop
-        for q in (85, 75, 60, 45, 30):
-            data = _save(q)
-            frame_log.debug("QtRenderer.encode_jpeg: q=%d size=%d (target ≤%d)",
-                      q, len(data), max_size)
-            if len(data) <= max_size:
+        Through TurboJPEG at full colour (4:4:4) where this system has it
+        (``turbojpeg.load``): Qt's own writer drops to 4:2:0 below quality 91,
+        exactly where this loop goes, and a saturated edge fringed (#336).
+        A frame that does not fit even at q=30 in 4:4:4 tries 4:2:0, so the
+        panel is never sent one its firmware drops (#251).  No TurboJPEG:
+        Qt's writer, as before.
+        """
+        frame_log.debug("encode_jpeg: quality=%d max_size=%d", quality, max_size)
+        encoder = turbojpeg.load()
+        attempts = [(q, turbojpeg.SAMP_444) for q in (quality, 85, 75, 60, 45, 30)]
+        if encoder is not None:
+            attempts += [(q, turbojpeg.SAMP_420) for q in (60, 45, 30)]
+        data = b""
+        for q, sampling in attempts:
+            data = (encoder.encode(surface, q, sampling) if encoder is not None
+                    else self._qt_jpeg(surface, q))
+            frame_log.debug("QtRenderer.encode_jpeg: q=%d samp=%d size=%d (target ≤%d)",
+                            q, sampling, len(data), max_size)
+            if not max_size or len(data) <= max_size:
                 return data
         log.warning("QtRenderer.encode_jpeg: %d bytes exceeds target %d "
                     "even at q=30", len(data), max_size)
         return data  # last attempt, may still exceed
+
+    @staticmethod
+    def _qt_jpeg(surface: Any, quality: int) -> bytes:
+        """Qt's own JPEG writer -- the encoder where TurboJPEG is missing."""
+        frame_log.debug("QtRenderer._qt_jpeg: q=%d", quality)
+        from PySide6.QtCore import QBuffer, QIODevice
+        qbuf = QBuffer()
+        qbuf.open(QIODevice.OpenModeFlag.WriteOnly)
+        surface.save(qbuf, "JPEG", quality)
+        qbuf.close()
+        return bytes(qbuf.data().data())
 
     def encode_png(self, surface: Any) -> bytes:
         """Encode QImage → PNG bytes (lossless).

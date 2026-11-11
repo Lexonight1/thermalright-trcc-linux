@@ -119,3 +119,113 @@ def test_an_oversized_frame_is_shrunk_not_shipped() -> None:
         f"{_CSHARP_MAX_JPEG_BYTES} — the frame would vanish with no error"
     )
     assert len(payload) > 0
+
+
+# ── Full colour resolution: TurboJPEG at 4:4:4 (#336) ────────────────────
+
+def _sampling(data: bytes) -> list[tuple[int, int]]:
+    """(H, V) JPEG sampling factors per component, from the SOF marker --
+    Alex Shutov's reader from #336."""
+    for i in range(len(data) - 4):
+        if data[i] == 0xFF and data[i + 1] in (0xC0, 0xC1, 0xC2, 0xC3):
+            return [(data[i + 11 + 3 * j] >> 4, data[i + 11 + 3 * j] & 0x0F)
+                    for j in range(data[i + 9])]
+    return []
+
+
+def _needs_turbojpeg() -> None:
+    from trcc.adapters.render import turbojpeg
+    if turbojpeg.load() is None:
+        pytest.skip("no libturbojpeg on this machine -- CI installs it")
+
+
+def _grating(renderer, w: int, h: int):
+    """1 px vertical lines of changing colour: the worst case for size."""
+    from PySide6.QtGui import QColor, QPainter
+    surface = renderer.create_surface(w, h)
+    painter = QPainter(surface)
+    for x in range(0, w, 2):
+        painter.setPen(QColor((x * 37) % 256, (x * 91) % 256, (x * 53) % 256))
+        painter.drawLine(x, 0, x, h)
+    painter.end()
+    return surface
+
+
+def test_every_quality_the_loop_reaches_keeps_full_colour() -> None:
+    """Qt keeps 4:4:4 only at quality 91 and up and falls to 4:2:0 below --
+    exactly where the shrink loop goes when a frame would not fit, so a
+    saturated edge fringed on the panel.  Found, measured and first tested by
+    Alex Shutov (#336).  MUTATION CHECK: encode with ``SAMP_420`` in the 4:4:4
+    attempts and q<=90 reads 2x2."""
+    _needs_turbojpeg()
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage
+
+    from trcc.adapters.render.qt import QtRenderer
+
+    surface = QImage(64, 64, QImage.Format.Format_RGB32)
+    surface.fill(Qt.GlobalColor.red)
+    for quality in (95, 75, 45, 30):
+        sampling = _sampling(QtRenderer().encode_jpeg(surface, quality=quality))
+        assert sampling == [(1, 1)] * 3, f"q={quality}: {sampling}"
+
+
+def test_without_turbojpeg_the_frame_is_still_sent_by_qt(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """No libturbojpeg (pip on a bare system, Windows and macOS today): Qt's
+    writer, exactly as before -- 4:2:0 below quality 91, never no frame.
+    MUTATION CHECK: drop the Qt branch and a missing library raises."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage
+
+    from trcc.adapters.render import turbojpeg
+    from trcc.adapters.render.qt import QtRenderer
+
+    monkeypatch.setattr(turbojpeg, "load", lambda: None)
+    surface = QImage(64, 64, QImage.Format.Format_RGB32)
+    surface.fill(Qt.GlobalColor.red)
+    data = QtRenderer().encode_jpeg(surface, quality=75)
+    assert data[:2] == b"\xff\xd8" and _sampling(data) == [(2, 2), (1, 1), (1, 1)]
+
+
+def test_a_frame_too_big_at_full_colour_still_fits_in_420() -> None:
+    """4:4:4 frames are larger; one that is over the panel's ceiling even at
+    q=30 retries in 4:2:0 rather than shipping a frame the firmware drops
+    (#251).  MUTATION CHECK: drop the 4:2:0 attempts and the payload comes back
+    over the limit."""
+    _needs_turbojpeg()
+    from trcc.adapters.render import turbojpeg
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    surface = _grating(renderer, 1920, 462)
+    encoder = turbojpeg.load()
+    assert encoder is not None
+    full = len(encoder.encode(surface, 30, turbojpeg.SAMP_444))
+    quarter = len(encoder.encode(surface, 30, turbojpeg.SAMP_420))
+    limit = (full + quarter) // 2              # between the two: only 4:2:0 fits
+    data = renderer.encode_jpeg(surface, max_size=limit)
+    assert len(data) <= limit and _sampling(data)[0] == (2, 2)
+
+
+def test_a_premultiplied_frame_gets_the_colours_the_rgb565_panels_get() -> None:
+    """A frame painted with transparency is premultiplied.  ``encode_rgb565``
+    converts to ``Format_RGB32`` first so such a pixel is not darkened, and the
+    JPEG path now does the same -- measured 2026-11-11: Qt's own JPEG writer
+    gave (99, 60, 19) for a half-transparent (200, 120, 40), the RGB32 rule
+    (199, 120, 41), so JPEG and RGB565 panels had disagreed.  MUTATION CHECK:
+    skip the ``Format_RGB32`` conversion in ``TurboJpeg.encode`` and the pixel
+    darkens to Qt's old values."""
+    _needs_turbojpeg()
+    from PySide6.QtGui import QColor, QImage
+
+    from trcc.adapters.render import turbojpeg
+
+    surface = QImage(64, 64, QImage.Format.Format_ARGB32_Premultiplied)
+    surface.fill(QColor(200, 120, 40, 128))
+    encoder = turbojpeg.load()
+    assert encoder is not None
+    ours = QColor(QImage.fromData(encoder.encode(surface, 95)).pixel(32, 32))
+    rgb32 = QColor(surface.convertToFormat(QImage.Format.Format_RGB32).pixel(32, 32))
+    assert max(abs(ours.red() - rgb32.red()), abs(ours.green() - rgb32.green()),
+               abs(ours.blue() - rgb32.blue())) <= 3, (ours.getRgb(), rgb32.getRgb())

@@ -49,7 +49,7 @@ jobs:
       - name: Install system dependencies
         uses: ./.github/actions/system-deps
         with:
-          packages: libgl1 libegl1 libegl-mesa0 libgl1-mesa-dri ffmpeg
+          packages: libgl1 libegl1 libegl-mesa0 libgl1-mesa-dri ffmpeg libturbojpeg
 
       - name: Install dependencies
         run: |
@@ -182,7 +182,7 @@ jobs:
       - name: Install system dependencies
         uses: ./.github/actions/system-deps
         with:
-          packages: libgl1 libegl1 libegl-mesa0 libgl1-mesa-dri ffmpeg
+          packages: libgl1 libegl1 libegl-mesa0 libgl1-mesa-dri ffmpeg libturbojpeg
 
       - name: Install dependencies
         run: |

@@ -389,6 +389,23 @@ def check_package_owner(platform: Platform) -> HealthCheckResult:
     )
 
 
+def check_jpeg_encoder() -> HealthCheckResult:
+    """Which encoder JPEG panels get: TurboJPEG at full colour (4:4:4), or
+    Qt's writer, which drops to 4:2:0 below quality 91 -- a saturated edge
+    can fringe on a busy frame (#336).  OK either way: the frame is sent; a
+    report says which, so a fringing complaint answers itself."""
+    from ..render import turbojpeg
+
+    found = turbojpeg.load() is not None
+    log.info("check_jpeg_encoder: turbojpeg=%s", found)
+    return HealthCheckResult(
+        name="jpeg-encoder", severity="OK",
+        message=("libturbojpeg -- JPEG panel frames keep full colour (4:4:4)"
+                 if found else
+                 "no libturbojpeg -- JPEG panel frames use Qt's encoder "
+                 "(4:2:0 below quality 91)"))
+
+
 def check_qt_importable() -> HealthCheckResult:
     """PySide6 is required for the GUI; absence is WARN if headless."""
     log.info("check_qt_importable: called")
@@ -784,6 +801,7 @@ def run_health_checks(
         check_gpu_sensors(platform, gpu_state),
         check_ffmpeg_present(platform),
         check_package_owner(platform),
+        check_jpeg_encoder(),
         check_qt_importable(),
         check_udev_rules_linux(),
         check_world_open_scsi_linux(),

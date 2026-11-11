@@ -516,3 +516,18 @@ def test_the_arch_package_takes_over_from_the_aur_renames() -> None:
         "thermalright-trcc", "thermalright-trcc-git"}
     assert re.findall(r"^\s*provides = (\S+)", block, re.M) == [
         "thermalright-trcc=${VER}"]
+
+
+def test_every_linux_package_brings_libturbojpeg() -> None:
+    """JPEG panel frames keep full colour (4:4:4) only through libturbojpeg
+    (adapters/render/turbojpeg.py, #336); without it they fall back to Qt's
+    writer, 4:2:0 below quality 91.  Names measured 2026-11-11: Ubuntu 22.04 and
+    24.04 have only libturbojpeg, Debian 13 libturbojpeg0, Fedora turbojpeg,
+    Arch ships it inside libjpeg-turbo.  MUTATION CHECK: drop it from one
+    package and this fails."""
+    text = _RELEASE_YML.read_text()
+    debs = re.findall(r"^\s*Depends: python3 \(>= 3\.9\).*$", text, re.M)
+    assert len(debs) == 2 and all(
+        line.rstrip().endswith("libturbojpeg0 | libturbojpeg") for line in debs), debs
+    assert re.search(r"^\s*Requires:\s+turbojpeg$", text, re.M)
+    assert "libjpeg-turbo" in _arch_depends()

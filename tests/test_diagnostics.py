@@ -4596,3 +4596,22 @@ def test_the_report_says_whose_package_installed_trcc(
     result = check_package_owner(fake_platform)
     assert (result.name, result.severity, result.message, result.fix_hint) == (
         "package", severity, message, fix)
+
+
+@pytest.mark.parametrize(("encoder", "message"), [
+    (object(), "libturbojpeg -- JPEG panel frames keep full colour (4:4:4)"),
+    (None, "no libturbojpeg -- JPEG panel frames use Qt's encoder "
+           "(4:2:0 below quality 91)"),
+])
+def test_the_report_says_which_jpeg_encoder_panels_get(
+        monkeypatch: pytest.MonkeyPatch, encoder: object, message: str) -> None:
+    """A fringing complaint on a JPEG panel answers itself from the report
+    (#336).  MUTATION CHECK: answer the full-colour line either way and the
+    no-library case fails."""
+    from trcc.adapters.diagnostics.health import check_jpeg_encoder
+    from trcc.adapters.render import turbojpeg
+
+    monkeypatch.setattr(turbojpeg, "load", lambda: encoder)
+    result = check_jpeg_encoder()
+    assert (result.name, result.severity, result.message) == (
+        "jpeg-encoder", "OK", message)

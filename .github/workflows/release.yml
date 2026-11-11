@@ -223,6 +223,8 @@ jobs:
           # ffmpeg-free, or the RPM Fusion ffmpeg where that repo is on.  7z the
           # same: the Fedora p7zip ships 7za, not the 7z the app looks for.
           Requires:   /usr/bin/ffmpeg
+          # JPEG panel frames keep full colour through libturbojpeg (#336).
+          Requires:   turbojpeg
           Recommends: /usr/bin/7z
           Recommends: python3-dbus
           Recommends: dmidecode
@@ -371,7 +373,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-hid, python3-click, python3-typer, python3-fastapi, python3-cryptography, python3-uvicorn, python3-websockets, python3-python-multipart | python3-multipart (<< 0.1), python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils, ffmpeg
+          Depends: python3 (>= 3.9), python3-pyside6.qtcore, python3-pyside6.qtgui, python3-pyside6.qtwidgets, python3-numpy, python3-psutil, python3-usb, python3-pyudev, python3-hid, python3-click, python3-typer, python3-fastapi, python3-cryptography, python3-uvicorn, python3-websockets, python3-python-multipart | python3-multipart (<< 0.1), python3-prompt-toolkit, libportaudio2, libusb-1.0-0, sg3-utils, ffmpeg, libturbojpeg0 | libturbojpeg
           Recommends: p7zip-full, python3-pynvml, python3-dbus, dmidecode, python3-sounddevice
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
@@ -455,7 +457,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pip, python3-venv, libportaudio2, libusb-1.0-0, sg3-utils, libxcb-cursor0, libegl1, ffmpeg
+          Depends: python3 (>= 3.9), python3-pip, python3-venv, libportaudio2, libusb-1.0-0, sg3-utils, libxcb-cursor0, libegl1, ffmpeg, libturbojpeg0 | libturbojpeg
           Recommends: p7zip-full, python3-dbus, python3-gi, dmidecode
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
@@ -604,6 +606,9 @@ jobs:
           # video and the trimmer run it.  It was an optdepend, which pacman
           # never installs unless asked.
           depend = ffmpeg
+          # JPEG panel frames keep full colour through libturbojpeg (#336),
+          # which ships inside libjpeg-turbo on Arch.
+          depend = libjpeg-turbo
           # DO NOT make this a hard depend. python-nvidia-ml-py depends on
           # nvidia-utils -- ~938 MB of driver + EGL stack on an AMD-only
           # machine (#216). It was changed to a hard depend once, shipped in
