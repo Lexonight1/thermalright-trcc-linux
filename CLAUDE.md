@@ -310,8 +310,9 @@ same App behind the same `CommandBus` port, so nothing below changes.
   closes that UI only; the panels keep playing (decided 2026-09-29). `trcc kill`
   is the one way to quit: it stops the App, which puts the panels to sleep, and
   every open UI closes with it. If the App crashes, each open UI restarts and
-  finds or starts a new one. (On Windows each UI runs its own App, so there
-  Exit does quit.)
+  finds or starts a new one. (Windows shares one App too, over a named pipe,
+  since f30dc462 / 9.11.0. Only a platform with no IPC channel at all runs
+  an App per UI, and there Exit does quit.)
 - **Every UI shows the same truth.** What is on the panel, whether a cast is
   running, which theme is loaded: all UIs agree, because all of them read it
   from the App.
@@ -513,7 +514,7 @@ current_platform()                  ← OS dispatch    → Platform
 
 ## Daemon Mode (`TRCC_DAEMON`)
 
-One background process per user owns USB and every panel, and serves the CLI, API, gui and qtgui over a Unix domain socket. It is the default: any UI finds the running App or starts it (`daemon.ensure_daemon()`). A UI builds its own in-process App only for a reason `_boot._local_reason` names: `TRCC_DAEMON` set to anything but `1` (tests, dev mocks, profilers), no `AF_UNIX` (CPython on Windows, every build), root elevated from a user (`sudo`/`run0`/`pkexec`/`doas` — a root login or root service shares an App like any user), or a stand-in platform (mock, fake, dev subclass) — or when the App fails to start (WARNING, then in-process).
+One background process per user owns USB and every panel, and serves the CLI, API, gui, hudgui and qtgui over a Unix domain socket (a named pipe on Windows, `\\.\pipe\trcc-<user SID>`, since f30dc462). It is the default: any UI finds the running App or starts it (`daemon.ensure_daemon()`). A UI builds its own in-process App only for a reason `_boot._local_reason` names: `TRCC_DAEMON` set to anything but `1` (tests, dev mocks, profilers), no IPC channel for this platform (`ipc.channel()` is None), root elevated from a user (`sudo`/`run0`/`pkexec`/`doas` — a root login or root service shares an App like any user), or a stand-in platform (mock, fake, dev subclass) — or when the App fails to start (WARNING, then in-process).
 
 ### Composition root
 
@@ -533,7 +534,7 @@ What `trcc()` returns depends on environment:
 | Situation | Returns | Behaviour |
 |---|---|---|
 | default (`TRCC_DAEMON` unset or `1`) | `AppProxy` | finds or starts the App via `daemon.ensure_daemon()`; each `dispatch(cmd)` is one socket round-trip |
-| `TRCC_DAEMON=0`, root under sudo/pkexec/doas, a stand-in platform, or no `AF_UNIX` (Windows) | real `App` | in-process, from the passed `platform` / `renderer` (auto-detected when omitted) |
+| `TRCC_DAEMON=0`, root under sudo/pkexec/doas, a stand-in platform, or no IPC channel (`ipc.channel()` is None) | real `App` | in-process, from the passed `platform` / `renderer` (auto-detected when omitted) |
 | the App fails to start | real `App` | WARNING, then in-process |
 
 `AppProxy` (`proxy.py`) implements the **`CommandBus` port** (`dispatch`,
@@ -581,8 +582,11 @@ and serializes the Result back:
 - **Donor matrix**: SCSI verified end-to-end through the shared App. HID / Bulk /
   LY / LED take the same `App.dispatch` with JSON in front; real-hardware
   confirmation is still owed.
-- **Windows**: no `AF_UNIX`, so every UI builds its own in-process App and UIs
-  there do not share panels.
+- **Windows**: shares one App over a named pipe since f30dc462 (9.11.0); the
+  exes still need administrator until the SYSTEM service for SCSI and PawnIO
+  lands (memory `project_windows_c_split_plan.md`). This line said "no
+  AF_UNIX, every UI builds its own App" until 2026-11-11, a month after it
+  stopped being true.
 
 ## THE RULE: every function gets a log line — new code AND old code
 
@@ -1030,11 +1034,13 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 - Don't close issues until reporter confirms the fix works
 - Every reply ends with funding footer: `\n\n---\nIf this project helps you, consider [buying me a beer](https://buymeacoffee.com/Lexonight1) 🍺 or [Ko-fi](https://ko-fi.com/lexonight1) ☕`
 - Check if reporter is a donor (README thanks section) — thank by name if so
-- **Package upgrade instructions must be copy-paste ready** — always provide the full `wget -c <URL>` + install command so users can paste directly into their terminal. Use the actual download URL from `gh release view --json assets`, not just "go to Releases page". Distro-specific:
-  - Arch: `wget -c <url>.pkg.tar.zst && sudo pacman -U trcc-linux-*.pkg.tar.zst`
-  - Fedora: `wget -c <url>.rpm && sudo dnf install ./trcc-linux-*.rpm`
-  - Ubuntu/Debian (legacy): `wget -c <url>.legacy_all.deb && sudo apt install ./trcc-linux_*.legacy_all.deb`
-  - Ubuntu/Debian (standard): `wget -c <url>.deb && sudo apt install ./trcc-linux_*.deb`
+- **Package upgrade instructions must be copy-paste ready** — always the full download + install command so users can paste it directly. The line is the APP's own (`Platform.upgrade_hint`, `download_and_install` in `adapters/system/_base.py`): `wget -O /tmp/<asset>`, never `-c` — continuing onto a stale file of the same name corrupts it or keeps the old one (#181). This list said `wget -c` until 2026-11-11, contradicting the app. Use the fixed-name `latest` aliases (`.../releases/latest/download/<asset>`), and check `/releases/latest` is a `v*` tag first (a module release has taken Latest). Match how the reporter installed:
+  - Arch: `wget -O /tmp/trcc-linux-latest-any.pkg.tar.zst <url> && sudo pacman -U /tmp/trcc-linux-latest-any.pkg.tar.zst`
+  - Fedora: `sudo dnf install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm`
+  - Ubuntu/Debian (legacy): `wget -O /tmp/trcc-linux-latest.legacy_all.deb <url> && sudo apt install /tmp/trcc-linux-latest.legacy_all.deb`
+  - Ubuntu/Debian (standard): `wget -O /tmp/trcc-linux-latest_all.deb <url> && sudo apt install /tmp/trcc-linux-latest_all.deb`
+  - pipx: `pipx upgrade trcc-linux`
+  - The AUR's `thermalright-trcc(-git)` is not ours: refer its problems to its maintainer (memory `feedback_aur_issues_go_to_its_maintainer.md`)
 
 ## Deployment
 - Default branch: `main`

@@ -45,7 +45,7 @@ Your device should appear in the sidebar. Click it to select it.
 
 ## The GUI
 
-The GUI matches the Windows TRCC app layout. Here's what each area does:
+The GUI matches the Windows TRCC app layout. Here's what each area does. (Prefer a lighter look? `trcc hud` opens **hudgui**, the same app as a HUD: a thin bar whose Devices, Sensors, Modules, Control Center and About panels drop down over a live preview. Its Devices panel has the same theme tabs, Settings panel and module pages as this window.)
 
 ### Sidebar (Left)
 - **Sensor** (top) — live system metrics panel (see [System Monitoring](#system-monitoring))
@@ -197,7 +197,9 @@ On Wayland desktops, TRCC uses the PipeWire screen-cast portal for screen captur
 
 ## Audio Visuals
 
-The **Audio visuals** tab comes with the Audio Visualizer module — install it from **Modules → Get modules** ([Modules Guide](GUIDE_MODULES.md#audio-visualizer)). It is a gallery of sound-driven animations: one tile per visual (and per preset). Clicking one makes it the panel's background; picking any other background ends it. CLI: `trcc display visuals` lists them, `trcc display visual` plays one.
+The **Audio visuals** tab comes with the Audio Visualizer module — install it from **Modules → Get modules** ([Modules Guide](GUIDE_MODULES.md#audio-visualizer)). It is a gallery of sound-driven animations: one tile per visual (and per preset). Clicking one plays it on the panel; picking any other background ends it. CLI: `trcc display visuals` lists them, `trcc display visual` plays one.
+
+Above the sliders, **Off | Background | Box** says where it plays: nowhere, filling the panel, or in a box in a corner over the theme (pick the corner and the size beside it). The lit button always shows what the panel is doing.
 
 ---
 
@@ -272,7 +274,7 @@ The gold bar at the top also has:
 
 ## Closing the Window vs Quitting
 
-One TRCC process runs your panels; the GUI, `trcc qtgui`, the CLI and the API are all remote controls for it, and the first one you start starts it.
+One TRCC process runs your panels; the GUI, hudgui (`trcc hud`), `trcc qtgui`, the CLI and the API are all remote controls for it, and the first one you start starts it. Open any of them, or several at once: each shows what the others did.
 - Closing the window hides it to the tray. The tray's **Exit** closes the window only — the panels keep playing.
 - `trcc kill` stops TRCC itself.
 - `trcc status` shows what every device is doing; `trcc daemon-status` says whether TRCC is running.

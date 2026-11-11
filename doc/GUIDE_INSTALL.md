@@ -185,6 +185,8 @@ cd ~/Downloads
 sudo pacman -U trcc-linux-*-any.pkg.tar.zst
 ```
 
+> **The AUR's `thermalright-trcc` / `thermalright-trcc-git` are not ours.** They are a third party's repackaging of our PKGBUILD under another name, not built or tested by this project; report problems with them to their maintainer, on their AUR page. Since 9.12.1 the `pacman -U` above offers to remove them and puts TRCC's own package in their place.
+
 > **Optional HID backend:** Arch ships two Python HID bindings that conflict, so the package depends on neither. Install `python-hidapi`, or keep `python-hid` if it is already there (SteamOS ships it) — one, never both.
 
 **Step 3 — Launch:**

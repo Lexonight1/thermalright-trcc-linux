@@ -80,6 +80,8 @@ Pre-built packages are available for every major distro. No pip, no venv, no PEP
 
 Each guide has a one-liner copy-paste command and step-by-step instructions. After installing, run `trcc gui` — TRCC picks the cooler up automatically. (Not detected? Restart your computer and try again.)
 
+> **Arch users:** the AUR's `thermalright-trcc` / `thermalright-trcc-git` are not ours — they are a third party's repackaging of our PKGBUILD under another name, not built or tested by this project. Use `trcc-linux` from the releases; since 9.12.1 it replaces the AUR package in one `pacman -U`. Problems with the AUR packages go to their maintainer, on their AUR page.
+
 ### Verify your download
 
 Every release includes `SHA256SUMS.txt`, the hash of every file in it, signed by the maintainer (`SHA256SUMS.txt.sig`). Download both from the same release page, then:
@@ -140,10 +142,12 @@ Run `trcc report` and [attach the `trcc-report.txt` it saves in your home folder
 ### GUI
 
 ```bash
-trcc gui
+trcc gui     # the full desktop app, laid out like the Windows TRCC
+trcc hud     # hudgui: the same app redesigned as a HUD -- a thin bar, panels that drop down
+trcc qtgui   # a plain desktop-style window
 ```
 
-Full desktop app with theme browser, video player, overlay editor, LED control panel, and hardware sensor dashboard.
+Theme browser, video player, overlay editor, LED control panel, and hardware sensor dashboard. All three windows control the same running TRCC, so you can open any of them, or several at once, and each shows what the others did.
 
 ### CLI
 
@@ -246,7 +250,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 
 | Category | What you get |
 |----------|-------------|
-| **GUI** | Full PySide6 desktop app — theme browser, video player, overlay editor, LED control panel, 38 languages |
+| **GUI** | Three windows, one app: `trcc gui` (the Windows TRCC's layout), `trcc hud` (hudgui, a HUD bar with drop-down panels) and `trcc qtgui` — theme browser, video player, overlay editor, LED control panel, 38 languages |
 | **CLI** | `trcc gui`, `trcc display send-image`, `trcc display play-video`, `trcc led color`, `trcc display screencast`, `trcc shell`, and more |
 | **REST API** | Control everything remotely, build integrations, automate your setup |
 | **Themes** | Local, cloud, and masks — carousel mode, export/import as `.tr` files, custom mask upload with X/Y positioning, 5 starters + 120 masks per resolution |
@@ -255,17 +259,17 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | **Hardware Sensors** | 77+ sensors — CPU/GPU temp, fan speed, power, usage — customizable dashboard |
 | **LED Control** | 13 LED styles, zone carousel, breathing/rainbow/static/wave modes, per-zone color |
 | **Modules** | Optional features you switch on and off on the **Modules** page, in every window and from the CLI and API — no restart. A module that is off is hidden and costs nothing. **RGB Lighting** is built in; the **Audio Visualizer** you install from **Get modules**. See the [Modules Guide](doc/GUIDE_MODULES.md) |
-| **Audio Visualizer** *(module, install from Get modules)* | What your computer is playing, drawn as a panel's background with the theme's mask and readings on top — TRCC Pipes, Spike Circle, Cavalier's eleven modes, KarmaViz and MilkDrop |
+| **Audio Visualizer** *(module, install from Get modules)* | What your computer is playing, drawn on the panel with the theme's mask and readings on top — TRCC Pipes, Spike Circle, Cavalier's eleven modes, KarmaViz and MilkDrop. **Off, Background or Box:** fill the panel, or play in a box in a corner over a theme that keeps playing |
 | **RGB Lighting** *(module, built in)* | Corsair RGB RAM, ASUS Aura motherboard headers, and anything OpenRGB drives, on one page — a built-in effect per stick or header, lights that show CPU or GPU temp or load (green → yellow → orange → red), or lights that follow the cooler's colours; and OpenRGB 1.0+ can light the coolers in turn, over DDP |
 | **Display** | 16 resolutions (240x240 to 1920x462), 0/90/180/270 rotation, 3 brightness levels |
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
 | **Security** | udev rules that give the devices to you and the `trcc` group only, polkit policy, SELinux support, no root required after setup |
 
-**Under the hood**: 357 source files, ~127K lines of Python, 30,000+ tests across 304 test files. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
+**Under the hood**: 440 source files, ~152K lines of Python, 11,000+ tests across 335 test files. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
 
 ### Make your own module
 
-Have an idea for the panel — weather, a stock ticker, your own visual? **You can write a module.** Start from the working skeleton (`dev/tools/new_module.py`) and the [Modules Guide](doc/GUIDE_MODULES.md#writing-a-module): a module gets its own page, commands, API routes and words in every language, and switches on and off like the built-in ones. **A website for TRCC modules is on the way**, for finding and sharing them. Until then a module runs in your own copy of TRCC — TRCC does not install modules from anywhere yet.
+Have an idea for the panel — weather, a stock ticker, your own visual? **You can write a module.** Start from the working skeleton (`dev/tools/new_module.py`) and the [Modules Guide](doc/GUIDE_MODULES.md#writing-a-module): a module gets its own page, commands, API routes and words in every language, and switches on and off like the built-in ones. **Get modules** installs reviewed modules from TRCC's own signed list; a module you are writing runs live from your workspace in developer mode. **A website for TRCC modules is on the way**, for finding and sharing them.
 
 ### What we do better than Windows TRCC
 

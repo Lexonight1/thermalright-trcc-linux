@@ -52,10 +52,21 @@ Draws what your computer is playing as a panel's background — TRCC Pipes, the 
 
 **Installing it:** open **Modules → Get modules** and choose **Install** beside Audio Visualizer; it arrives switched on. From the command line, `trcc system modules install visualizer`; from the API, `POST /system/modules/visualizer/install`. It needs TRCC 9.12.0 or newer. If a panel was playing a visual before you upgraded, TRCC kept that choice: the Modules page says which panel wants the Audio Visualizer, and the panel plays its visual again the moment it is installed.
 
-- **gui:** the audio-bars tab beside Cloud backgrounds. Click a tile and it plays on the panel you have selected; its sliders and the centre picture are below the tiles.
-- **qtgui:** *Audio visuals* in the sidebar.
-- **Command line:** `trcc display visuals` lists them; `trcc display visual <key> <name>` plays one, and `trcc display visual <key>` stops it. `visual-set`, `visual-picture`, `visual-center` and `visual-tile` do the rest.
-- **API:** `POST /devices/{key}/display/visual`, `GET /display/visuals`, and the other `/display/visual-*` routes.
+It is one page, the same in every window:
+
+- **gui:** the audio-bars tab beside Cloud backgrounds.
+- **hudgui:** **Devices** → your LCD → the **Audio visuals** tab.
+- **qtgui:** *Audio visuals* in the sidebar, under the device picker.
+
+Click a tile and it plays on the selected panel; its sliders and the centre picture are below the tiles. If the panel refuses a visual, the page says why.
+
+**Off, Background or Box.** The row above the sliders says where the visual plays, and its lit button always shows what the panel is doing, even when another window or the command line changed it:
+
+- **Off** — the visual plays nowhere: its box closes or its background ends, and the theme shows as it was.
+- **Background** — the visual fills the panel. Out of a box it moves to the whole panel; from Off it plays the panel's last visual.
+- **Box** — the visual sits in a corner over the theme, which keeps playing underneath with its mask and readings. Pick the corner and the size beside it.
+- **Command line:** `trcc display visuals` lists them; `trcc display visual <key> <name>` plays one, and `trcc display visual <key>` stops it. `visual-set`, `visual-picture`, `visual-center` and `visual-tile` do the rest. The box: `trcc display set-inset <key> visualizer` (with the corner and size) and `trcc display clear-inset <key>`.
+- **API:** `POST /devices/{key}/display/visual`, `GET /display/visuals`, and the other `/display/visual-*` routes; the box is `POST` / `DELETE /devices/{key}/display/inset`.
 
 **What it needs to hear the music:** on Linux, ffmpeg with PulseAudio (or PipeWire's PulseAudio layer), or PipeWire's `pw-record`; on Windows, the `soundcard` package; on a Mac, macOS 14.2 or later and the `catap` package. A visual that cannot hear or draw on your computer says why on its tile. MilkDrop presets go in `~/.trcc/data/visuals/`.
 
