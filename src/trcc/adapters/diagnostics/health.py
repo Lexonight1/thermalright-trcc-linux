@@ -28,10 +28,11 @@ from pathlib import Path
 
 from ...core import toolchain
 from ...core.diagnostics import HealthCheckResult, HealthReport, Severity
-from ...core.models import ModuleInfo
+from ...core.models import OUR_PACKAGE, ModuleInfo
 from ...core.ports import Paths, Platform
 from ..sensors._pawnio_cpu import PawnioCpu
 from ..sensors.nvml import NVML_RELOAD_HINT, GpuStateFn, nvml_init_state
+from ..system._base import RELEASES_URL, package_owner
 from .install import collect_install_info
 
 log = logging.getLogger(__name__)
@@ -350,6 +351,41 @@ def check_ffmpeg_present(platform: Platform) -> HealthCheckResult:
         message=f"ffmpeg not found (tried: {toolchain.tried('ffmpeg')})",
         fix_hint=_install_advice(platform, "ffmpeg", "/usr/bin/ffmpeg")
                  + " — image themes still work without it",
+    )
+
+
+def check_package_owner(platform: Platform) -> HealthCheckResult:
+    """Which package installed TRCC -- ours, or a third party's.
+
+    The AUR's ``thermalright-trcc`` / ``-git`` are packaged by someone else,
+    built from our source but not by us; their updates have stopped on
+    conflicting files twice (#333's /usr/bin helpers, #337's bundled
+    uvicorn), and a report said only "installed_by package", hiding why.
+    WARN, not FAIL: it runs -- the user should know whose package it is and
+    how to get past the conflict, or onto ours.
+    """
+    owner = package_owner(platform)
+    log.info("check_package_owner: %s", owner)
+    if owner is None:
+        return HealthCheckResult(name="package", severity="OK",
+                                 message="not a package this system can name")
+    if owner == OUR_PACKAGE:
+        return HealthCheckResult(name="package", severity="OK",
+                                 message=f"{owner} -- TRCC's own release package")
+    manager = platform.packages()
+    page, remove = manager.page(owner), manager.remove_line(owner)
+    return HealthCheckResult(
+        name="package", severity="WARN",
+        message=(f"installed by {owner} -- a third-party package (the AUR's: "
+                 f"TRCC's own {OUR_PACKAGE} under another name), not built, "
+                 f"tested or supported by TRCC"),
+        fix_hint=((f"Its packaging problems go to its maintainer: {page}.  "
+                   if page else "")
+                  + f"If an update stops on 'conflicting files', remove {owner} "
+                    f"and install it again.  Or switch to TRCC's own "
+                    f"{OUR_PACKAGE}: "
+                  + (f"{remove}, then " if remove else "")
+                  + f"install it from {RELEASES_URL}"),
     )
 
 
@@ -747,6 +783,7 @@ def run_health_checks(
         check_sensors_enumerable(platform),
         check_gpu_sensors(platform, gpu_state),
         check_ffmpeg_present(platform),
+        check_package_owner(platform),
         check_qt_importable(),
         check_udev_rules_linux(),
         check_world_open_scsi_linux(),

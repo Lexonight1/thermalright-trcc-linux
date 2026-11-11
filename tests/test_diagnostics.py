@@ -4564,3 +4564,35 @@ def test_a_terminal_start_writes_no_version_constant_or_per_frame_lines(
     leaked = [line for line in records
               if _site(line)[0].startswith("trcc.frame.") or _site(line) in _VERSION_CONSTANT]
     assert leaked == [], f"{len(leaked)} line(s), first: {leaked[0][:160]}"
+
+
+@pytest.mark.parametrize(("owner", "severity", "message", "fix"), [
+    (None, "OK", "not a package this system can name", ""),
+    ("trcc-linux", "OK", "trcc-linux -- TRCC's own release package", ""),
+    ("thermalright-trcc-git", "WARN",
+     "installed by thermalright-trcc-git -- a third-party package (the AUR's: "
+     "TRCC's own trcc-linux under another name), not built, tested or supported "
+     "by TRCC",
+     "Its packaging problems go to its maintainer: PAGE.  If an update stops on "
+     "'conflicting files', remove thermalright-trcc-git and install it again.  "
+     "Or switch to TRCC's own trcc-linux: REMOVE, then install it from "
+     "https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest"),
+])
+def test_the_report_says_whose_package_installed_trcc(
+        fake_platform, monkeypatch: pytest.MonkeyPatch, owner: str | None,
+        severity: str, message: str, fix: str) -> None:
+    """#337: the report said only "installed_by package", so a third-party
+    AUR package -- whose updates stopped on conflicting files, twice -- was
+    invisible.  It is named now, and the user is told how past the conflict
+    and how onto TRCC's own.  MUTATION CHECK: answer OK for any owner and
+    the AUR row is no WARN."""
+    from types import SimpleNamespace
+
+    from trcc.adapters.diagnostics.health import check_package_owner
+
+    manager = SimpleNamespace(page=lambda p: "PAGE", remove_line=lambda p: "REMOVE")
+    monkeypatch.setattr(health_mod, "package_owner", lambda platform: owner)
+    monkeypatch.setattr(type(fake_platform), "packages", lambda self: manager)
+    result = check_package_owner(fake_platform)
+    assert (result.name, result.severity, result.message, result.fix_hint) == (
+        "package", severity, message, fix)

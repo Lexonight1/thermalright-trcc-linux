@@ -20,6 +20,11 @@ from .logs import per_frame
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
 
+#: The name every TRCC release package goes by (rpm, deb, pacman).  A package
+#: by any other name that installed TRCC is someone else's -- the AUR's
+#: ``thermalright-trcc`` (#333, #337).
+OUR_PACKAGE = "trcc-linux"
+
 # ── The IPC boundary ─────────────────────────────────────────────────────
 #: Field metadata for a value that exists only in this process -- a live
 #: renderer surface.  ``ipc`` leaves the field off the wire and the far side

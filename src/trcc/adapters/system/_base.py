@@ -167,6 +167,22 @@ RELEASES_URL = "https://github.com/Lexonight1/thermalright-trcc-linux/releases/l
 _LEGACY_DEB_VENV = "/opt/trcc-linux"
 
 
+def package_owner(platform: Platform) -> str | None:
+    """The package that installed TRCC -- ``trcc-linux``, ours; another name
+    is someone else's (the AUR's ``thermalright-trcc``, #333 #337) -- or
+    None: not a package install, or the OS's manager cannot name an owner.
+
+    Two questions the Platform port already asks, put together -- a function,
+    not another method on every OS."""
+    if platform.install_method() != "package":
+        log.debug("package_owner: not a package install")
+        return None
+    import trcc
+    owner = platform.packages().owns(str(Path(trcc.__file__).resolve()))
+    log.info("package_owner: TRCC's files belong to %s", owner)
+    return owner
+
+
 def download_and_install(asset: str, installer: str) -> str:
     """One copy-paste line: fetch the release's *asset*, install it.
 

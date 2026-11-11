@@ -66,6 +66,16 @@ class _InTerminal(PackageManager):
         log.info("%s.run: %d step(s)", type(self).__name__, len(steps))
         return run_steps(steps)
 
+    def remove_line(self, package: str) -> str:
+        """None to give -- a manager that has one says (``Pacman``)."""
+        log.debug("%s.remove_line: none for %s", type(self).__name__, package)
+        return ""
+
+    def page(self, package: str) -> str:
+        """No third-party collection with a page per package."""
+        log.debug("%s.page: none for %s", type(self).__name__, package)
+        return ""
+
 
 class NoPackageManager(_InTerminal):
     """The honest default: this OS cannot be asked.
@@ -162,6 +172,19 @@ class Pacman(_InTerminal):
     pacman every file read as unowned, so the update hint could not tell an
     AUR package from TRCC's own.
     """
+
+    def remove_line(self, package: str) -> str:
+        """``pacman -R``: the package only, what depends on it untouched."""
+        line = f"sudo pacman -R {package}"
+        log.debug("Pacman.remove_line: %s", line)
+        return line
+
+    def page(self, package: str) -> str:
+        """The AUR page -- where a package that is not TRCC's own (#337,
+        honjow's rename of our PKGBUILD) and its maintainer are."""
+        page = f"https://aur.archlinux.org/packages/{package}"
+        log.debug("Pacman.page: %s", page)
+        return page
 
     def owns(self, path: str) -> str | None:
         """``pacman -Qqo`` -- the local package database, ~11 ms."""

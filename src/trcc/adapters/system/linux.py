@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 from ...core.errors import PermissionError_, TransportError
 from ...core.logs import per_frame
-from ...core.models import UsbPowerState
+from ...core.models import OUR_PACKAGE, UsbPowerState
 from ...core.ports import (
     AutostartManager,
     HotplugMonitor,
@@ -50,7 +50,7 @@ from ..sensors.gpu_detect import (
 from ..visual._gl import EglSurface
 from ..visual.sound import MonitorSoundInput
 from ._autostart import SystemdUserService
-from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install
+from ._base import RELEASES_URL, BaseOS, BasePaths, download_and_install, package_owner
 from ._desktop_entry import XdgDesktopEntry
 from ._module_devices import LinuxModuleDevices, NixosModuleDevices
 from ._polkit_install import POLKIT_POLICY
@@ -447,7 +447,7 @@ class LinuxFamily:
     #: or "" where we ship none (the hint then points at the release page).
     package_upgrade: str = ""
     #: The upgrade line, with a ``{pkg}`` slot, for a package that installed
-    #: TRCC but is NOT TRCC's own (:data:`_OUR_PACKAGE`) -- the AUR's
+    #: TRCC but is NOT TRCC's own (:data:`OUR_PACKAGE`) -- the AUR's
     #: ``thermalright-trcc`` (#333).  "" where the family's manager cannot
     #: name an owner, and the hint stays :attr:`package_upgrade`.
     foreign_upgrade: str = ""
@@ -462,9 +462,6 @@ class LinuxFamily:
     full_ffmpeg_steps: tuple[tuple[str, ...], ...] = ()
 
 
-#: The name every TRCC release package goes by (rpm, deb, pacman): an owner
-#: by any other name installed TRCC some other way (#333).
-_OUR_PACKAGE = "trcc-linux"
 
 #: Probe order, first match wins.  Preserved exactly from the class tuple it
 #: replaced: it is NOT definition order, and a machine with two managers gets
@@ -513,7 +510,7 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         # -Syu, as Arch requires: a bare -S of one package is a partial upgrade.
         # The comment keeps the line copy-pasteable.
         foreign_upgrade=("yay -Syu {pkg}   # or paru -Syu -- {pkg} comes from "
-                         "the AUR, not TRCC's own " + _OUR_PACKAGE),
+                         "the AUR, not TRCC's own " + OUR_PACKAGE),
         # Arch names it differently, and advising Debian's name here is #207.
         packages={"pynvml": "python-nvidia-ml-py", "sensors-detect": "lm_sensors"},
     ),
@@ -1097,13 +1094,9 @@ class LinuxOS(BaseOS, key="linux"):
         Telling an AUR install to ``pacman -U`` trcc-linux names a second
         package owning the same files, which pacman refuses (#333)."""
         if self.install_method() == "package":
-            # Only a family that can name an owner asks (``foreign_upgrade``).
-            owner = None
-            if self._family.foreign_upgrade:
-                import trcc
-                owner = self.packages().owns(str(Path(trcc.__file__).resolve()))
-                log.info("upgrade_hint: TRCC's files belong to %s", owner)
-            if owner not in (None, _OUR_PACKAGE):
+            # Only a family that can say something with an owner asks.
+            owner = package_owner(self) if self._family.foreign_upgrade else None
+            if owner not in (None, OUR_PACKAGE):
                 hint = self._family.foreign_upgrade.format(pkg=owner)
                 log.info("upgrade_hint: %s installed by %s -> %s",
                          self._family.name, owner, hint)

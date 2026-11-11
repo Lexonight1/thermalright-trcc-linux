@@ -3790,6 +3790,17 @@ class PackageManager(ABC):
         """Argv that installs *package*.  Empty when this OS has no manager."""
 
     @abstractmethod
+    def remove_line(self, package: str) -> str:
+        """The line that removes *package* -- shown, never run; "" where this
+        manager has none to give."""
+
+    @abstractmethod
+    def page(self, package: str) -> str:
+        """Where a third-party *package* and its maintainer are (the AUR's
+        page) -- its packaging problems go there, not to TRCC; "" where
+        there is no such place."""
+
+    @abstractmethod
     def run(self, steps: tuple[tuple[str, ...], ...]) -> int:
         """Run *steps* -- argument lists, no shell -- in the user's terminal,
         so sudo and the manager can ask; stop at the first failure and return
@@ -4127,6 +4138,7 @@ class Platform(ABC):
         Never run by TRCC: no distro repo carries trcc-linux, so a package
         manager "upgrade" upgraded everything else and reported success.
         """
+
 
     @classmethod
     def resolve(cls) -> type[Platform]:

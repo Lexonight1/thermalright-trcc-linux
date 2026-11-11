@@ -267,6 +267,12 @@ class _Packages(PackageManager):
     def install_argv(self, package: str) -> tuple[str, ...]:
         return ()
 
+    def remove_line(self, package: str) -> str:
+        return ""
+
+    def page(self, package: str) -> str:
+        return ""
+
     def run(self, steps: tuple[tuple[str, ...], ...]) -> int:
         return 0
 
@@ -467,3 +473,23 @@ def test_every_os_puts_the_report_in_the_home_folder(
     ``BasePaths.report_file`` and Linux answers ``~/.trcc/trcc-report.txt``."""
     monkeypatch.setenv("HOME", str(tmp_path))
     assert LinuxPaths().report_file() == tmp_path / "trcc-report.txt"
+
+
+def test_pacman_removes_a_package_alone_and_sends_it_to_its_aur_page() -> None:
+    """Problems from the AUR's renamed package go to its maintainer, not our
+    tracker (his rule, 2026-11-10), and a switch to ours takes theirs off
+    first -- two packages cannot own the same files (#337).
+    MUTATION CHECK: drop ``Pacman.page`` and the default "" answers."""
+    from trcc.adapters.system._packages import Pacman
+
+    assert (Pacman().remove_line("thermalright-trcc-git"),
+            Pacman().page("thermalright-trcc-git")) == (
+        "sudo pacman -R thermalright-trcc-git",
+        "https://aur.archlinux.org/packages/thermalright-trcc-git")
+
+
+def test_a_manager_without_a_collection_gives_no_page() -> None:
+    from trcc.adapters.system._packages import NoPackageManager, Rpm
+
+    assert [(m.remove_line("x"), m.page("x")) for m in (NoPackageManager(), Rpm())] == [
+        ("", ""), ("", "")]
