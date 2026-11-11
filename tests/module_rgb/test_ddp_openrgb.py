@@ -398,3 +398,17 @@ def test_the_query_names_each_connected_coolers_port_and_leds(
     assert (result.ok, cooler.key, cooler.led_count, cooler.error) == (
         True, _LED_KEY, 30, "")
     assert cooler.port > 0
+
+
+def test_the_port_is_read_once_at_bind_never_from_a_closing_socket() -> None:
+    """``port`` asked the socket each time, and a ``close`` on another thread
+    could clear and close it between the check and the ask -- EBADF on the
+    receive thread (ci_local, 2026-11-10).  It is kept from the bind now, so
+    it stays the OS's pick after a close.  MUTATION CHECK: read
+    ``getsockname`` in ``port`` again and, closed, it answers the asked 0."""
+    from trcc.modules.rgb.adapters.ddp import DdpPort
+
+    listener = DdpPort(0)
+    bound = listener.port
+    listener.close()
+    assert bound != 0 and listener.port == bound

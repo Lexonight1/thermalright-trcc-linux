@@ -74,6 +74,8 @@ class DdpPort(DdpListener):
         self._last: float | None = None
         self._error = ""
         self._asked = port
+        #: The port bound -- read once, at bind: the OS's pick for 0.
+        self._port = port
         self._sock: socket.socket | None = None
         self._thread: threading.Thread | None = None
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -86,6 +88,7 @@ class DdpPort(DdpListener):
                         "OpenRGB's colours will not reach this cooler", port, e)
             return
         sock.settimeout(0.5)
+        self._port = sock.getsockname()[1]
         self._sock = sock
         self._thread = threading.Thread(target=self._receive, args=(sock,),
                                         name=f"trcc-ddp-{self.port}", daemon=True)
@@ -94,10 +97,12 @@ class DdpPort(DdpListener):
 
     @property
     def port(self) -> int:
-        """The bound port (the asked one, or the OS's pick for 0)."""
-        port = self._sock.getsockname()[1] if self._sock else self._asked
-        frame_log.debug("DdpPort.port: %d", port)
-        return port
+        """The bound port (the asked one, or the OS's pick for 0) -- kept from
+        the bind.  It asked the socket every time, and a ``close`` on another
+        thread could clear and close it between the check and the ask:
+        EBADF on the receive thread (ci_local, 2026-11-10)."""
+        frame_log.debug("DdpPort.port: %d", self._port)
+        return self._port
 
     @property
     def error(self) -> str:
