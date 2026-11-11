@@ -15,18 +15,26 @@ thread through the relay's queued signal and goes to *on_done* through a
 WEAK method reference -- a widget closed meanwhile just never hears it.
 ``tests/test_architecture_boundaries.py`` keeps ``Thread(target=self...)``
 out of the UI.
+
+A quit waits for the workers (:func:`drain`).  In-process -- Windows, and any
+``TRCC_DAEMON=0`` run -- a worker runs the Command itself, Qt drawing included
+(a Visualizer tile is ``QtRenderer.encode_png``); a process that quit while
+one drew tore Qt down under it: a segfault, 8 runs in 8 when a GUI quit as its
+tiles were asked for (2026-11-10).
 """
 from __future__ import annotations
 
+import atexit
 import itertools
 import logging
 import threading
+import time
 import weakref
 from collections.abc import Callable
 from typing import Any
 
 import shiboken6
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QCoreApplication, QObject, Signal
 
 from ..core.commands import Command
 from ..core.ports import CommandBus
@@ -79,12 +87,41 @@ _relay: _Relay | None = None
 
 
 def _the_relay() -> _Relay:
-    """Made on first use -- by a window, so on the GUI thread."""
+    """Made on first use -- by a window, so on the GUI thread.  A quit waits
+    for the workers from then on (:func:`drain`)."""
     global _relay
     if _relay is None:
         log.info("qt_background: the relay is made")
         _relay = _Relay()
+        if (qt := QCoreApplication.instance()) is not None:
+            qt.aboutToQuit.connect(drain)
+        atexit.register(drain)
     return _relay
+
+
+#: The workers still running.  A worker adds and removes itself.
+_workers: set[threading.Thread] = set()
+_workers_lock = threading.Lock()
+#: How long a quit waits for them, in all -- a worker stuck on a dead App
+#: must not keep the window from closing.
+DRAIN_SECONDS = 5.0
+
+
+def drain(seconds: float = DRAIN_SECONDS) -> list[str]:
+    """Wait for the workers still running, *seconds* in all -- before Qt
+    goes, so none draws in it as it is torn down.  The ones still running
+    after that, by name (logged)."""
+    with _workers_lock:
+        running = list(_workers)
+    log.info("qt_background.drain: %d worker(s)", len(running))
+    deadline = time.monotonic() + seconds
+    for worker in running:
+        worker.join(max(0.0, deadline - time.monotonic()))
+    left = [w.name for w in running if w.is_alive()]
+    if left:
+        log.warning("qt_background.drain: still running after %gs: %s",
+                    seconds, left)
+    return left
 
 
 def could_not_reach(message: str) -> Result:
@@ -105,8 +142,12 @@ def dispatch_in_background(bus: CommandBus, command: Command[Any],
     token = relay.wait_for(on_done)
     log.info("dispatch_in_background: %s (answer %d)", type(command).__name__,
              token)
-    threading.Thread(target=_dispatch, args=(bus, command, relay, token, failed),
-                     daemon=True, name=f"trcc-{type(command).__name__}").start()
+    worker = threading.Thread(target=_dispatch,
+                              args=(bus, command, relay, token, failed),
+                              daemon=True, name=f"trcc-{type(command).__name__}")
+    with _workers_lock:
+        _workers.add(worker)
+    worker.start()
 
 
 def _dispatch(bus: CommandBus, command: Command[Any], relay: _Relay,
@@ -119,4 +160,7 @@ def _dispatch(bus: CommandBus, command: Command[Any], relay: _Relay,
         log.warning("dispatch_in_background: %s failed -- %s: %s",
                     type(command).__name__, type(e).__name__, e)
         result = failed(f"Could not reach TRCC: {e}")
+    finally:
+        with _workers_lock:
+            _workers.discard(threading.current_thread())
     relay.answered.emit(token, result)

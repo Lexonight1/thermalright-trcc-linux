@@ -112,3 +112,36 @@ def test_a_page_qt_deleted_while_python_holds_it_is_never_answered(qtbot: Any) -
     bus.release.set()
     qtbot.wait(200)
     assert page.heard == []
+
+
+def test_a_quit_waits_for_a_worker_still_running(qtbot: Any) -> None:
+    """In-process a worker runs the Command itself -- Qt drawing included --
+    so a process that quit under it segfaulted (8 runs in 8, 2026-11-10,
+    ``dev/tools/quit_mid_work.py``).  ``drain`` -- on ``aboutToQuit`` and at
+    exit -- waits for it.  MUTATION CHECK: drop the ``join`` in ``drain`` and
+    the worker is still running when it returns."""
+    from trcc.ui import qt_background
+
+    bus, page = _Bus(hold=True), _Page()
+    qtbot.addWidget(page)
+    dispatch_in_background(bus, ListDevices(), page.on_done)
+    qtbot.waitUntil(lambda: bool(bus.on_thread), timeout=2000)
+    threading.Timer(0.2, bus.release.set).start()
+    assert qt_background.drain(2.0) == []
+    assert not qt_background._workers                  # it took itself off
+
+
+def test_a_stuck_worker_does_not_hold_the_quit(qtbot: Any) -> None:
+    """A worker waiting on an App that will never answer must not keep the
+    window from closing: ``drain`` gives up after its time and names it."""
+    from trcc.ui import qt_background
+
+    bus, page = _Bus(hold=True), _Page()
+    qtbot.addWidget(page)
+    dispatch_in_background(bus, ListDevices(), page.on_done)
+    qtbot.waitUntil(lambda: bool(bus.on_thread), timeout=2000)
+    try:
+        assert qt_background.drain(0.2) == ["trcc-ListDevices"]
+    finally:
+        bus.release.set()
+        qt_background.drain(2.0)
