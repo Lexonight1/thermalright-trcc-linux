@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -39,6 +40,30 @@ log = logging.getLogger(__name__)
 # Only the deliberate narrowings + projections live here.  Every other route
 # returns its Command's Result verbatim.
 # =========================================================================
+
+
+#: A path segment shaped like a secret: 22+ URL-safe characters, no ``:`` or
+#: ``.`` -- an API token, which ``trcc api --token random:N`` makes with
+#: ``secrets.token_urlsafe`` (22 characters at the least, 43 by default).
+#: Device keys always carry a ``:`` and files a ``.``, so neither is hidden.
+_SECRET_SEGMENT = re.compile(r"(?<=/)[A-Za-z0-9_-]{22,}(?=/|$)")
+
+
+def loggable_path(path: str) -> str:
+    """*path* fit for the log -- and so for a ``trcc report`` posted in
+    public: a segment shaped like a token reads ``<redacted>``.
+
+    #334: a token pasted where the device key goes was rejected, and the
+    rejection logged the path -- the token -- into the report its owner
+    attached to a public issue.  By shape, never by comparing with the
+    configured token: a logged value computed from the secret is the
+    secret, to CodeQL and in fact.  A short token the user chose by hand
+    has no shape to find; the generated ones all do.
+    """
+    safe = _SECRET_SEGMENT.sub("<redacted>", path)
+    if safe != path:
+        log.debug("loggable_path: a token-shaped segment redacted")
+    return safe
 
 
 def product_to_schema(p: ProductInfo, key: str) -> ProductSchema:
@@ -165,10 +190,10 @@ async def admit_ws(ws: WebSocket) -> bool:
         admitted = is_loopback_client(ws.url.hostname, ws.headers.get("origin"))
         reason = "not a loopback client"
     if not admitted:
-        log.warning("admit_ws: refused %s (%s)", ws.url.path, reason)
+        log.warning("admit_ws: refused %s (%s)", loggable_path(ws.url.path), reason)
         await ws.close(code=1008)
         return False
-    log.info("admit_ws: admitted %s", ws.url.path)
+    log.info("admit_ws: admitted %s", loggable_path(ws.url.path))
     return True
 
 

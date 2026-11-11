@@ -2237,3 +2237,47 @@ def test_dispatch_says_a_refusal_as_an_error(api_client: TestClient) -> None:
     resp = api_client.post("/dispatch", json={"command": "OpenRgbPorts"})
     assert (resp.status_code, resp.json()) == (
         400, {"detail": "RGB Lighting is off -- turn it on in Modules"})
+
+
+def test_a_token_pasted_into_a_path_never_reaches_the_log(
+    api_client: TestClient, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """#334: a token pasted where the device key goes was rejected -- and the
+    rejection, and the request line, logged the path: the token, in the
+    report its owner then attached to a public issue.  A token-shaped
+    segment is ``<redacted>`` in every API log line; a device key is not.
+    MUTATION CHECK: log ``request.url.path`` raw in ``check_token`` and the
+    token is in the log."""
+    import logging
+    import secrets
+
+    from trcc.ui.api.main import configure_auth
+
+    token = secrets.token_urlsafe(32)
+    configure_auth(token)
+    try:
+        with caplog.at_level(logging.INFO, logger="trcc.ui.api"):
+            resp = api_client.post(f"/devices/{token}/display/brightness",
+                                   json={"level": 25})
+            api_client.post("/devices/87ad:70db/display/brightness",
+                            json={"level": 25})
+    finally:
+        configure_auth(None)
+    assert resp.status_code == 401
+    assert token not in caplog.text
+    assert "/devices/<redacted>/display/brightness" in caplog.text
+    assert "/devices/87ad:70db/display/brightness" in caplog.text
+
+
+@pytest.mark.parametrize(("path", "logged"), [
+    ("/devices/0402:3922/display", "/devices/0402:3922/display"),
+    ("/themes/Theme1.zip", "/themes/Theme1.zip"),
+    ("/devices/oGO2ZVLPAgSJQ7xfST2M0jc1SqTAlItFNK_lHZRS7I8/display/brightness",
+     "/devices/<redacted>/display/brightness"),
+    ("/x/abcdefghijklmnopqrstuv", "/x/<redacted>"),          # 22: the least made
+    ("/x/abcdefghijklmnopqrstu", "/x/abcdefghijklmnopqrstu"),  # 21: not one
+])
+def test_only_a_token_shaped_segment_is_redacted(path: str, logged: str) -> None:
+    from trcc.ui.api._shared import loggable_path
+
+    assert loggable_path(path) == logged

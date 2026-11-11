@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from ...core.results import ApiTlsResult
 from . import config, devices, dispatch, display, events, led, system, theme
 from . import trcc as _trcc_router
-from ._shared import is_loopback_client
+from ._shared import is_loopback_client, loggable_path
 
 if TYPE_CHECKING:
     from starlette.routing import BaseRoute
@@ -177,7 +177,8 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
         start = time.perf_counter()
         response = await call_next(request)
         ms = (time.perf_counter() - start) * 1000
-        line = ("API %s %s → %d (%.0fms)", request.method, request.url.path,
+        line = ("API %s %s → %d (%.0fms)", request.method,
+                loggable_path(request.url.path),
                 response.status_code, ms)
         if getattr(request.state, "per_frame", False):
             frame_log.debug(*line)
@@ -199,7 +200,7 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
             if not hmac.compare_digest(header_token, _api_token):
                 log.warning(
                     "API auth: rejected %s %s (token mismatch)",
-                    request.method, request.url.path,
+                    request.method, loggable_path(request.url.path),
                 )
                 return JSONResponse(
                     status_code=401,
@@ -209,7 +210,7 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
                 request.url.hostname, request.headers.get("origin")):
             log.warning("API auth: refused %s %s from host=%s origin=%s "
                         "(token-less server, not a loopback client)",
-                        request.method, request.url.path,
+                        request.method, loggable_path(request.url.path),
                         request.headers.get("host"),
                         request.headers.get("origin"))
             return JSONResponse(
