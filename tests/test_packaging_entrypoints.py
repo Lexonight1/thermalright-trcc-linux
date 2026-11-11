@@ -537,7 +537,8 @@ def test_every_linux_package_brings_libturbojpeg() -> None:
     """JPEG panel frames keep full colour (4:4:4) only through libturbojpeg
     (adapters/render/turbojpeg.py, #336); without it they fall back to Qt's
     writer, 4:2:0 below quality 91.  Names measured 2026-11-11: Ubuntu 22.04 and
-    24.04 have only libturbojpeg, Debian 13 libturbojpeg0, Fedora turbojpeg,
+    24.04 have only libturbojpeg; Ubuntu 26.04 (CI's ubuntu-latest) and Debian 13
+    only libturbojpeg0; Fedora turbojpeg;
     Arch ships it inside libjpeg-turbo.  MUTATION CHECK: drop it from one
     package and this fails."""
     text = _RELEASE_YML.read_text()
