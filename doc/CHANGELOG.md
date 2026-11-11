@@ -1,5 +1,74 @@
 # Changelog
 
+## v9.12.1
+
+### Added
+
+- **hudgui, a new window: the gui redesigned as a HUD.** Start it with
+  `trcc hud`. A thin bar with Devices, Sensors, Modules, Control Center and
+  About; each drops a panel down over a live preview of your LCD. Devices has
+  the gui's theme tabs, the Settings panel and every module's page. In all 38
+  languages.
+- **Off, Background or Box: choose where the Audio Visualizer plays.** On the
+  Visualizer page, the same in every window: off, filling the panel, or in a
+  box in a corner of the panel, over a theme that keeps playing. Pick the
+  corner and the size. `trcc display set-inset` / `clear-inset` and the API
+  do the same.
+- **One Audio Visualizer page in every window.** The gui, qtgui and hudgui
+  show the same page; a Play the panel refuses now says why on the page.
+- **A module can add its own readings**, shown and picked like any sensor's.
+- **`trcc doctor` names the package that installed TRCC.** A third-party
+  package, such as the AUR's `thermalright-trcc` (our package under another
+  name), is flagged with its maintainer's page and how to switch to ours.
+- **Arch: TRCC's own package replaces the AUR's in one step.**
+  `sudo pacman -U` of `trcc-linux` offers to remove `thermalright-trcc` /
+  `thermalright-trcc-git` instead of stopping on conflicting files.
+- **OpenRGB drives a cooler automatically**, and the RGB page says where
+  OpenRGB finds each one.
+- **Setup offers the ffmpeg that plays Apple video** on Fedora (RPM Fusion),
+  openSUSE and RHEL, and the trimmer and web streams say why one will not play.
+- **One door for every Command:** `trcc dispatch` and `POST /dispatch`.
+
+### Changed
+
+- **The Settings panel keeps everything in the panel.** The font is a
+  dropdown where its name is, not a separate window, and every coordinate box
+  says what it is (X, Y, W, H). The Background panel's Box button is gone: the
+  box is chosen on the Visualizer page.
+- **Every package installs ffmpeg** -- video themes, cloud videos and the
+  trimmer need it.
+- **One RPM per Fedora release**, built from the released wheel.
+- **The RGB memory rule belongs to the RGB module**; core setup and the
+  packages no longer install it.
+
+### Fixed
+
+- **A device key typed in capitals is the same device** (#334). From the API
+  or the CLI, `87AD:70DB` used to open the panel a second time and drop it.
+- **An API token pasted into a URL is never written to the log**, and so never
+  into a posted `trcc report`.
+- **Two windows starting at the same moment** (two autostart entries) leave
+  one running, without an error in the log.
+- **Quitting while the Visualizer's previews were still drawing could crash**
+  (Windows, and any `TRCC_DAEMON=0` run). A quit now waits for them.
+- **Screencast:** a cast you started comes back with the panel; turning it
+  off gives the panel back to the theme instead of a blank screen; it no
+  longer paints over a picture another window sent; letting a panel go
+  releases the microphone and capture.
+- **The panel's background survives a restart**, and Stop gives the panel
+  back to the theme.
+- **`trcc system setup` writes nothing under `/usr` on a package install**
+  (#333), and a redirected `trcc report` says it is not the report.
+- **A theme saved with a media player reloads with it**; a saved theme keeps
+  each element's font and size.
+- **A slideshow ends** when a visual or another window's source takes the
+  panel.
+- **The preview fills the bezel's screen** -- no black band, nothing cut --
+  and shows the Dynamic Island over casts, streams and module pictures.
+- **A temperature element switches °C | °F again**, and a clock 12H | 24H.
+- **Autostart and the user service run this install**, never another `trcc`
+  on your PATH, and the service no longer restarts in a loop.
+
 ## v9.12.0
 
 ### Added
