@@ -154,6 +154,20 @@ class Rpm(_InTerminal):
         return argv
 
 
+class RpmOstree(Rpm):
+    """Fedora Atomic -- Silverblue, Kinoite, Bazzite, Bluefin, Aurora.
+
+    The rpmdb and dnf's cache answer as on Fedora; installing does not: the
+    root is an image, so a package is LAYERED onto the next one with
+    ``rpm-ostree install`` and arrives at the next boot (#338).
+    """
+
+    def install_argv(self, package: str) -> tuple[str, ...]:
+        argv = ("rpm-ostree", "install", package)
+        log.debug("RpmOstree.install_argv: %s", " ".join(argv))
+        return argv
+
+
 class Pacman(_InTerminal):
     """Arch and its family (CachyOS, Manjaro, EndeavourOS) -- ``pacman``.
 

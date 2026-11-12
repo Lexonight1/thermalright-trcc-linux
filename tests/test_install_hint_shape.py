@@ -37,7 +37,13 @@ from __future__ import annotations
 import pytest
 
 from trcc.adapters.system.bsd import FreeBsdOS, NetBsdOS, OpenBsdOS
-from trcc.adapters.system.linux import _EL_FAMILY, _FAMILIES, _GENERIC_FAMILY, LinuxOS
+from trcc.adapters.system.linux import (
+    _ATOMIC_FAMILY,
+    _EL_FAMILY,
+    _FAMILIES,
+    _GENERIC_FAMILY,
+    LinuxOS,
+)
 from trcc.adapters.system.macos import MacOSPlatform
 from trcc.adapters.system.windows import WindowsPlatform
 from trcc.core.ports import Platform
@@ -56,6 +62,8 @@ ALL_OS: tuple[Platform, ...] = (
     # Every Linux family, injected into the one LinuxOS -- they were eight
     # classes with zero methods between them.
     *(LinuxOS(f) for f in _FAMILIES), LinuxOS(_GENERIC_FAMILY),
+    # Picked by /run/ostree-booted, not by a manager probe (#338).
+    LinuxOS(_ATOMIC_FAMILY),
 )
 
 #: Every key any caller passes, plus one that is deliberately unmapped so the

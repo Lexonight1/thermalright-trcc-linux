@@ -493,3 +493,62 @@ def test_a_manager_without_a_collection_gives_no_page() -> None:
 
     assert [(m.remove_line("x"), m.page("x")) for m in (NoPackageManager(), Rpm())] == [
         ("", ""), ("", "")]
+
+
+# ── #338: Fedora Atomic -- Bazzite, Silverblue -- layers packages ────────────
+
+def test_an_ostree_booted_root_is_fedora_atomic_though_dnf_is_on_path(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bazzite has dnf on PATH and was told ``sudo dnf install`` -- for TRCC's
+    upgrade and every missing tool -- which an image root refuses.
+
+    MUTATION CHECK: drop the ostree check in LinuxOS._detect_family."""
+    import trcc.adapters.system.linux as linux_mod
+
+    monkeypatch.setattr(linux_mod, "_is_ostree_booted", lambda: True)
+    monkeypatch.setattr(linux_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert LinuxOS._detect_family() is linux_mod._ATOMIC_FAMILY
+
+
+@pytest.mark.parametrize("marker, rpm_ostree, booted", [
+    (True, True, True), (True, False, False), (False, True, False)])
+def test_ostree_booted_needs_the_marker_and_rpm_ostree(
+        tmp_path, monkeypatch: pytest.MonkeyPatch, marker: bool,
+        rpm_ostree: bool, booted: bool) -> None:
+    import trcc.adapters.system.linux as linux_mod
+
+    path = tmp_path / "ostree-booted"
+    if marker:
+        path.touch()
+    monkeypatch.setattr(linux_mod.shutil, "which",
+                        lambda name: "/usr/bin/rpm-ostree" if rpm_ostree else None)
+    assert linux_mod._is_ostree_booted(path) is booted
+
+
+def test_fedora_atomic_swaps_its_layered_trcc(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``rpm-ostree install`` of a newer TRCC beside the layered one is not an
+    upgrade; one transaction removes the old and layers the new."""
+    from trcc.adapters.system.linux import _ATOMIC_FAMILY
+
+    os_obj = LinuxOS(_ATOMIC_FAMILY)
+    monkeypatch.setattr(os_obj, "install_method", lambda: "package")
+    assert os_obj.upgrade_hint() == (
+        "rpm-ostree uninstall trcc-linux --install https://github.com/Lexonight1/"
+        "thermalright-trcc-linux/releases/latest/download/"
+        "trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm && systemctl reboot")
+
+
+def test_fedora_atomic_layers_a_missing_tool_and_offers_no_ffmpeg_swap() -> None:
+    """MUTATION CHECK: give _ATOMIC_FAMILY Fedora's full_ffmpeg_steps -> the
+    App would RUN ``sudo dnf swap`` on an image root."""
+    from trcc.adapters.system._packages import RpmOstree
+    from trcc.adapters.system.linux import _ATOMIC_FAMILY
+
+    os_obj = LinuxOS(_ATOMIC_FAMILY)
+    assert os_obj.software_install_hint("7z") == (
+        "rpm-ostree install /usr/bin/7z && systemctl reboot")
+    assert os_obj.full_ffmpeg_hint() == ""
+    assert os_obj.install_full_ffmpeg() == 1
+    packages = os_obj.packages()
+    assert type(packages) is RpmOstree
+    assert packages.install_argv("ffmpeg") == ("rpm-ostree", "install", "ffmpeg")

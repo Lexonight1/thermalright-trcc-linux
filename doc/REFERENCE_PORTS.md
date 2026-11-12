@@ -82,7 +82,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`Paths`](#paths) | 4 | 15 | 5 |
 | [`SendTask`](#sendtask) | 4 | 1 | 6 |
 | [`SmBus`](#smbus) | 4 | 0 | 1 |
-| [`_InTerminal`](#_interminal) | 4 | 3 | 3 |
+| [`_InTerminal`](#_interminal) | 4 | 3 | 4 |
 | [`BaseVisual`](#basevisual) | 5 | 0 | 16 |
 | [`BulkTransport`](#bulktransport) | 5 | 2 | 2 |
 | [`DdpListener`](#ddplistener) | 5 | 0 | 1 |
@@ -96,7 +96,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`VisualEngine`](#visualengine) | 5 | 0 | 16 |
 | [`AutostartManager`](#autostartmanager) | 6 | 0 | 4 |
 | [`Diagnostics`](#diagnostics) | 7 | 0 | 1 |
-| [`PackageManager`](#packagemanager) | 7 | 0 | 3 |
+| [`PackageManager`](#packagemanager) | 7 | 0 | 4 |
 | [`VideoTool`](#videotool) | 8 | 0 | 1 |
 | [`RgbSkin`](#rgbskin) | 9 | 0 | 2 |
 | [`SensorEnumerator`](#sensorenumerator) | 11 | 13 | 1 |
@@ -1291,7 +1291,7 @@ provides(path: 'str') -> str | None
 
 **You inherit (3):** `page` · `remove_line` · `run`
 
-**Implementations (3):** `NoPackageManager` · `Pacman` · `Rpm`
+**Implementations (4):** `NoPackageManager` · `Pacman` · `Rpm` · `RpmOstree`
 
 ## BaseVisual
 
@@ -1550,7 +1550,7 @@ remove_line(package: 'str') -> str
 run(steps: 'tuple[tuple[str, ...], ...]') -> int
 ```
 
-**Implementations (3):** `NoPackageManager` · `Pacman` · `Rpm`
+**Implementations (4):** `NoPackageManager` · `Pacman` · `Rpm` · `RpmOstree`
 
 ## VideoTool
 

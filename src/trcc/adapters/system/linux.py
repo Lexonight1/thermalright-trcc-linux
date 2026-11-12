@@ -571,6 +571,28 @@ _EL_FAMILY = LinuxFamily(
         ("sudo", "dnf", "swap", "ffmpeg-free", "ffmpeg", "--allowerasing")),
 )
 
+#: Fedora Atomic -- Silverblue, Kinoite, Bazzite, Bluefin, Aurora.  dnf may be
+#: there, but the root is an image: a package is LAYERED with rpm-ostree and
+#: arrives at the next boot, so ``sudo dnf install`` fails and the RPM Fusion
+#: swap cannot run (#338).  A layered TRCC is swapped, never upgraded in place:
+#: ``uninstall --install`` is one transaction (rpm-ostree's
+#: rpmostree-pkg-builtins.cxx; not yet run here).  Bazzite ships a full ffmpeg;
+#: a Silverblue that does not is not offered a swap it cannot make.
+_ATOMIC_FAMILY = LinuxFamily(
+    name="Fedora-Atomic", manager="rpm-ostree",
+    install_cmd="rpm-ostree install {pkg} && systemctl reboot",
+    package_upgrade=(f"rpm-ostree uninstall trcc-linux --install {RELEASES_URL}/download/"
+                     "trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm && systemctl reboot"),
+    packages={"pynvml": "python3-pynvml",
+              "7z": "/usr/bin/7z",
+              "ffmpeg": "/usr/bin/ffmpeg",
+              "sensors-detect": "lm_sensors"},
+)
+
+#: Written at boot on an ostree-booted root (ostree-prepare-root); a tool that
+#: must know whether the root is an image tests for it.
+_OSTREE_BOOTED = Path("/run/ostree-booted")
+
 #: ``ID=`` values that mean Enterprise Linux, and the ``ID_LIKE`` token that
 #: covers the rebuilds this list does not name.
 _EL_IDS = frozenset({"rhel", "rocky", "almalinux", "centos", "ol", "oracle"})
@@ -626,6 +648,14 @@ def _os_release_ids(text: str | None = None) -> tuple[str, str]:
             like = line[8:].strip().strip('"')
     log.debug("_os_release_ids: ID=%r ID_LIKE=%r", ident, like)
     return ident, like
+
+
+def _is_ostree_booted(marker: Path = _OSTREE_BOOTED) -> bool:
+    """Is the running root an ostree image -- Fedora Atomic, Bazzite?  The
+    package-manager probe cannot tell: dnf may be on PATH there too."""
+    booted = marker.exists() and shutil.which("rpm-ostree") is not None
+    log.debug("_is_ostree_booted: %s -> %s", marker, booted)
+    return booted
 
 
 def _is_enterprise_linux(text: str | None = None) -> bool:
@@ -1035,8 +1065,12 @@ class LinuxOS(BaseOS, key="linux"):
 
         ``sys.platform`` is "linux" on every distro, so the manager is the only
         thing that distinguishes them.  Hundreds of distros, a handful of
-        managers.
+        managers.  An ostree-booted root comes first: it layers packages
+        whichever managers are on PATH (#338).
         """
+        if _is_ostree_booted():
+            log.info("LinuxOS._detect_family: ostree-booted -- Fedora Atomic")
+            return _ATOMIC_FAMILY
         for candidate in _FAMILIES:
             if shutil.which(candidate.manager):
                 log.debug("LinuxOS._detect_family: found %s",
@@ -1072,7 +1106,11 @@ class LinuxOS(BaseOS, key="linux"):
         writing them from documentation is what put four wrong package names
         in the tables this replaces.
         """
-        from ._packages import NoPackageManager, Pacman, Rpm
+        from ._packages import NoPackageManager, Pacman, Rpm, RpmOstree
+        if self._family.manager == "rpm-ostree":
+            log.info("%s._build_packages: rpm, layered with rpm-ostree",
+                     type(self).__name__)
+            return RpmOstree()
         if self._family.manager == "dnf":
             log.info("%s._build_packages: rpm", type(self).__name__)
             return Rpm()

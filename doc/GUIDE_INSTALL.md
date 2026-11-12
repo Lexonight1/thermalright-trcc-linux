@@ -558,6 +558,14 @@ After reboot: `trcc gui`
 > If you have a bulk USB device, you may also need SELinux policy: `trcc system setup`
 > (if `checkmodule` is not found: `rpm-ostree install checkpolicy` and reboot first)
 
+**To update TRCC:** `trcc system upgrade` prints the command for your system.
+
+**Before a new Fedora version** (Bazzite 44 → 45, Silverblue 44 → 45 — the jump that comes about twice a year): remove TRCC first, then update. Each RPM is built for one Fedora's Python, so a layered TRCC cannot move to the next Fedora, and rpm-ostree stops the whole system update ("Some System Updates Failed"). Your themes and settings live in your home folder and stay.
+```bash
+rpm-ostree uninstall trcc-linux && rpm-ostree upgrade && systemctl reboot
+```
+After the reboot, install it again with the one-liner above — it picks the RPM for your new Fedora.
+
 **Option B — pip in a venv (if RPM doesn't work):**
 
 ```bash
