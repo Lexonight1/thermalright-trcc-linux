@@ -104,6 +104,6 @@ class PdhCpu(CpuSource):
             recurring_failure(log, "PdhCpu.freq: read failed")
             return None
         if mhz <= 0:
-            frame_log.debug("PdhCpu.freq: %.1f MHz is no reading", mhz)
+            log.debug("PdhCpu.freq: %.1f MHz is no reading", mhz)
             return None
         return round(mhz)
