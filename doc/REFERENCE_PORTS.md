@@ -12,7 +12,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 4 | 5 |
 | [`Command`](#command) | 1 | 1 | 178 |
-| [`CpuSource`](#cpusource) | 1 | 5 | 11 |
+| [`CpuSource`](#cpusource) | 1 | 5 | 12 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MetricsPort`](#metricsport) | 1 | 0 | 1 |
@@ -154,7 +154,7 @@ name() -> str
 
 **You inherit (5):** `freq` · `power` · `temp` · `temp_label` · `usage`
 
-**Implementations (11):** `CpuSourceChain` · `HwinfoCpu` · `HwmonCpu` · `LhmCpu` · `MacosHidCpu` · `PawnioCpu` · `PowermetricsCpu` · `PsutilCpu` · `SmcCpu` · `SysctlCpu` · `WmiAcpiCpu`
+**Implementations (12):** `CpuSourceChain` · `HwinfoCpu` · `HwmonCpu` · `LhmCpu` · `MacosHidCpu` · `PawnioCpu` · `PdhCpu` · `PowermetricsCpu` · `PsutilCpu` · `SmcCpu` · `SysctlCpu` · `WmiAcpiCpu`
 
 ## DataInstaller
 

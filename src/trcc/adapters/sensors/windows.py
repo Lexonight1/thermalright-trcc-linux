@@ -8,7 +8,9 @@ Priority order (matches legacy ``WindowsSensorSource.in_priority_order``):
   3. LibreHardwareMonitor WMI namespace — a user's own LHM 0.9.4 or older
      (0.9.5 removed WMI).
   4. MSAcpi ACPI thermal zone — Windows-native fallback, temp-only.
-  5. psutil / pynvml — universal baseline.
+  5. PDH performance counters — the CPU clock that runs, clock-only (#339:
+     psutil's Windows clock is the nominal one).
+  6. psutil / pynvml — universal baseline.
 
 Each strategy returns ``None`` when its backend isn't present, so the
 chain naturally degrades.
@@ -29,6 +31,7 @@ from ._igcl import discover_igcl_gpus
 from ._lhm import LhmCpu, discover_lhm_disks, discover_lhm_gpus
 from ._msacpi import WmiAcpiCpu
 from ._pawnio_cpu import PawnioCpu
+from ._pdh_cpu import PdhCpu
 from ._storage_query import discover_windows_disks
 from ._superio import discover_superio
 from ._wmi_gpu import discover_wmi_gpus
@@ -59,6 +62,7 @@ def build_windows_sensors(
         pawnio or PawnioCpu(),
         LhmCpu(),
         WmiAcpiCpu(),
+        PdhCpu(),
         PsutilCpu(),
     ])
     gpus = _build_windows_gpu_chains()

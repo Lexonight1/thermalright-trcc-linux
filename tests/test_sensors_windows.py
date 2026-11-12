@@ -540,11 +540,12 @@ def test_build_windows_sensors_constructs_chain(monkeypatch) -> None:
     sensors = win_factory.build_windows_sensors()
     cpu = sensors.cpu()
     # PawnIO second: a running HWiNFO still wins, a user's old LHM still reads
-    # (MUTATION CHECK: drop PawnioCpu from the chain).
+    # (MUTATION CHECK: drop PawnioCpu from the chain).  PDH before psutil: its
+    # Windows clock is the base one (#339; MUTATION CHECK: swap the two).
     from trcc.adapters.sensors.chain import CpuSourceChain
     assert isinstance(cpu, CpuSourceChain)
     assert [type(s).__name__ for s in cpu._sources] == [
-        "HwinfoCpu", "PawnioCpu", "LhmCpu", "WmiAcpiCpu", "PsutilCpu"]
+        "HwinfoCpu", "PawnioCpu", "LhmCpu", "WmiAcpiCpu", "PdhCpu", "PsutilCpu"]
     # The chain falls through to PsutilCpu, which always answers usage on linux/win
     assert cpu.usage() is not None      # psutil baseline
     # Temp may be None on a VM/dev box; just verify no exception
