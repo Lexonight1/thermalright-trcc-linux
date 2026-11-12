@@ -2,9 +2,12 @@
 
 macOS has no SG_IO / DeviceIoControl SCSI-passthrough equivalent:
 IOUSBMassStorageClass claims mass-storage devices exclusively.  SCSI
-CDBs are therefore framed as USB BOT (CBW/data/CSW) over libusb.  The
-app needs to run with elevated privileges (root / entitled) to detach
-the kernel driver; see `setup()`.
+CDBs are therefore framed as USB BOT (CBW/data/CSW) over libusb, and
+capturing that device needs root — Apple does not grant
+``com.apple.vm.device-access`` to a non-VM app.  HID-report panels
+(firmware bcdDevice 4.07) open through hidapi as the logged-in user.
+Sensor readings do not need root either: SMC, the HID sensor hub, and
+IOReport.  See `setup()`.
 """
 from __future__ import annotations
 
@@ -123,10 +126,15 @@ class MacOSPlatform(BaseOS, key="darwin"):
         return MacOSPaths()
 
     def _build_sensors(self) -> SensorEnumerator:
-        """SMC temperature on top of the psutil / NVML baseline.
+        """HID, SMC and IOReport on the psutil baseline. No root.
 
-        Intel keys ship enabled by default; Apple Silicon keys are gated
-        behind ``TRCC_NEXT_APPLE_SILICON_SMC=1`` until reporter-confirmed.
+        CPU temperature is the HID hub, then SMC. On Apple Silicon the
+        GPU temperature is the SMC ``Tg*`` keys, passed in explicitly —
+        the HID hub on M1 Ultra publishes no GPU temperature.
+        ``TRCC_NEXT_APPLE_SILICON_SMC`` still gates the Intel-shaped SMC
+        CPU keys. Package power, GPU residency and GPU clock come from
+        IOReport. The clock is the ``pmgr`` DVFS table, which needs
+        neither root nor a Developer ID.
         """
         log.debug("_build_sensors")
         from ..sensors.macos import build_macos_sensors
@@ -157,24 +165,26 @@ class MacOSPlatform(BaseOS, key="darwin"):
         return UsbBotScsiTransport(bulk)
 
     def setup(self, dry_run: bool = False) -> int:
-        """Diagnose codesign / quarantine / privileges, print fix steps.
+        """Diagnose codesign / quarantine, and print fix steps.
 
-        Read-only: macOS USB access requires either a signed bundle
-        with a provisioning entitlement (Developer Program) or
-        ``sudo``, neither of which a setup wizard can install for the
-        user.
+        Read-only. Sensor readings and HID-report panels need neither
+        root nor a Developer ID. A mass-storage SCSI panel still needs
+        root; the printed check says so. A setup wizard cannot grant
+        either.
         """
         log.info("setup: dry_run=%s", dry_run)
         from ._macos_setup import install
         return install(dry_run=dry_run)
 
     def check_permissions(self) -> list[str]:
-        log.info("check_permissions: called")
-        if os.geteuid() != 0:
-            return [
-                "macOS requires root privileges to detach the mass-storage "
-                "kernel driver — run with sudo or install as a signed app bundle.",
-            ]
+        """Nothing to warn about merely for being the logged-in user.
+
+        Sensor reads and HID-report panels work without root. A
+        mass-storage SCSI open the kernel refuses raises
+        ``PermissionError`` and :meth:`permission_denied_hint` names
+        sudo then — that hint is the failed open, not this standing check.
+        """
+        log.info("check_permissions: euid=%s", os.geteuid())
         return []
 
     def display_session(self) -> DisplaySession:

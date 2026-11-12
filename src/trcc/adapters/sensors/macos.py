@@ -21,6 +21,11 @@ from collections.abc import Iterable
 
 from ...core.logs import per_frame
 from ...core.ports import CpuSource, FanSource, GpuSource
+from ._ioreport import (
+    IOReportCpu,
+    IOReportGpu,
+    _IOReportSnapshot,
+)
 from ._macos_hid import (
     MacosHidCpu,
     MacosHidGpu,
@@ -295,45 +300,47 @@ def _gpu_chain_key_and_name() -> tuple[str, str]:
 
 
 def build_macos_sensors() -> BaselineSensors:
-    """Compose HID + powermetrics + SMC on top of the psutil baseline.
+    """Compose HID + SMC + IOReport on top of the psutil baseline.
 
     Source priority by metric:
 
     ============  ==================================================
     CPU temp      HID (Apple Silicon) → SMC (Intel) → none
     CPU usage     psutil (universal)
-    CPU freq      powermetrics (Apple Silicon, requires helper) → psutil
-    CPU power     powermetrics (Apple Silicon, requires helper) → none
-    GPU temp      HID (Apple Silicon) → SMC (Intel) → NVML (discrete)
-    GPU usage     powermetrics (Apple Silicon) → NVML (discrete)
-    GPU clock     powermetrics (Apple Silicon) → NVML (discrete)
-    GPU power     powermetrics (Apple Silicon) → NVML (discrete)
+    CPU freq      powermetrics (helper or root) → psutil
+    CPU power     IOReport (no root) → powermetrics → none
+    GPU temp      HID → SMC Apple Silicon keys → SMC (Intel) → NVML
+    GPU usage     IOReport (no root) → powermetrics → NVML
+    GPU clock     IOReport DVFS table (no root) → powermetrics → NVML
+    GPU power     IOReport (no root) → powermetrics → NVML
     Fans          SMC FNum / F{i}Ac (universal where present)
     ============  ==================================================
 
-    Every source short-circuits to ``None`` when its backend isn't
-    present, so the chain degrades gracefully on Intel (no HID), on
-    Apple Silicon without the powermetrics helper, etc.
-
-    **Hardware unverified** — per CLAUDE.md macOS protocol, a
-    release advertising these sources should wait for a reporter to
-    confirm on real hardware before shipping.
+    IOReport is the unprivileged Apple Silicon power, GPU-residency and
+    GPU-clock source. The clock is the ``GPUPH`` residency weighted by
+    the ``pmgr`` ``voltage-states9`` table. ``powermetrics`` remains
+    the fallback when a root helper is installed and the table is
+    absent. Every source returns ``None`` when its backend is absent.
     """
     log.info("build_macos_sensors: called")
     client = SMCClient()
     client.open()                       # idempotent; failure → fallthrough
 
     hid_snap = _HidSnapshot()
+    io_snap = _IOReportSnapshot()
     pm_snap = _PowermetricsSnapshot()
 
     cpu: CpuSource = CpuSourceChain([
         MacosHidCpu(hid_snap),          # HID die temp (Apple Silicon)
         SmcCpu(client=client),          # SMC keys (Intel + AS opt-in)
-        PowermetricsCpu(pm_snap),       # power + freq (Apple Silicon)
+        IOReportCpu(io_snap),           # package power, no root
+        PowermetricsCpu(pm_snap),       # power + freq when helper/root
         PsutilCpu(),                    # universal usage + freq baseline
     ])
 
-    gpus: list[GpuSource] = _build_macos_gpus(client, hid_snap, pm_snap)
+    gpus: list[GpuSource] = _build_macos_gpus(
+        client, hid_snap, io_snap, pm_snap,
+    )
     fans = discover_smc_fans(client)
 
     log.info(
@@ -353,13 +360,15 @@ def build_macos_sensors() -> BaselineSensors:
 def _build_macos_gpus(
     client: SmcClientPort,
     hid_snap: _HidSnapshot,
+    io_snap: _IOReportSnapshot,
     pm_snap: _PowermetricsSnapshot,
 ) -> list[GpuSource]:
     """One GpuSourceChain per discovered GPU.
 
-    Apple Silicon: HID temp + powermetrics usage/clock/power blended
-    into a single ``apple:0`` chain — the aggregator's vendor key
-    dedup keeps these three sources from showing as separate GPUs.
+    Apple Silicon: HID temp, then SMC ``Tg*`` keys (confirmed on M1
+    Ultra — the HID hub on that machine publishes no GPU temperature),
+    then IOReport for usage, power and clock, then powermetrics.
+    One ``apple:0`` chain, so the aggregator keeps a single GPU row.
 
     Intel Mac with discrete NVIDIA: NVML reports a ``nvidia:N``
     chain; SMC adds an ``intel:0`` iGPU chain.
@@ -369,6 +378,13 @@ def _build_macos_gpus(
     if platform.machine() == "arm64":
         apple_chain = GpuSourceChain([
             MacosHidGpu(hid_snap),
+            SmcGpu(
+                client=client,
+                keys=APPLE_SILICON_GPU_TEMP_KEYS,
+                key=gpu_key,
+                name=gpu_name,
+            ),
+            IOReportGpu(io_snap, model_name=gpu_name),
             PowermetricsGpu(pm_snap, model_name=gpu_name),
         ])
         out: list[GpuSource] = [apple_chain]

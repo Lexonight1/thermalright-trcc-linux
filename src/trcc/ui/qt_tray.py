@@ -1,9 +1,11 @@
 """Shared system-tray behaviour for the Qt UIs (gui + qtgui).
 
-Both windows want the same tray: an icon with Show/Hide + Exit, click to toggle
-visibility, and a window-close that hides to the tray instead of
-quitting — so the LCD keeps running — unless the user explicitly Exits.  This
-lived only in ``ui/gui/trcc_app.py``; extracted here so both skins share ONE
+Both windows want the same tray: an icon with Show/Hide, a checkable
+"Display on LCD", and Exit.  Click toggles visibility, and a window-close
+hides to the tray instead of quitting — so the LCD keeps running — unless
+the user explicitly Exits.  Unchecking "Display on LCD" blanks the panel
+and stops updates; it does not stop the App.  This lived only in
+``ui/gui/trcc_app.py``; extracted here so both skins share ONE
 implementation.
 
 Composition, not a mixin: ``QMainWindow`` / ``QFrame`` + ``ABC`` raises a
@@ -25,9 +27,10 @@ Usage::
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtGui import QCloseEvent, QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 
 log = logging.getLogger(__name__)
@@ -49,16 +52,30 @@ class TrayController:
         self._tooltip = tooltip
         self._force_quit = False
         self._tray: QSystemTrayIcon | None = None
+        self._display_action: QAction | None = None
+        self._display_handler: Callable[[bool], None] | None = None
 
-    def install(self) -> None:
-        """Create the tray icon + Show/Hide + Exit menu, and show it."""
-        log.info("TrayController.install: close hides to the tray")
+    def set_display_handler(self, handler: Callable[[bool], None]) -> None:
+        """Who turns the LCD picture on or off.  The window dispatches; the
+        tray only reports the check."""
+        log.info("TrayController.set_display_handler")
+        self._display_handler = handler
+
+    def install(self, *, display_on: bool = True) -> None:
+        """Create the tray icon + Show/Hide + Display on LCD + Exit, and show it."""
+        log.info("TrayController.install: close hides to the tray, "
+                 "display_on=%s", display_on)
         self._window.setWindowIcon(self._icon)
         tray = QSystemTrayIcon(self._icon, self._window)
         tray.setToolTip(self._tooltip)
         menu = QMenu()
         if (show_action := menu.addAction("Show/Hide")):
             show_action.triggered.connect(self.toggle_visibility)
+        if (display := menu.addAction("Display on LCD")):
+            display.setCheckable(True)
+            display.setChecked(display_on)
+            display.toggled.connect(self._on_display_toggled)
+            self._display_action = display
         menu.addSeparator()
         if (exit_action := menu.addAction("Exit")):
             exit_action.triggered.connect(self.request_quit)
@@ -66,6 +83,24 @@ class TrayController:
         tray.activated.connect(self._on_activated)
         tray.show()
         self._tray = tray
+
+    def show_lcd_display(self, enabled: bool) -> None:
+        """Move the check to *enabled* without asking the handler again."""
+        log.info("TrayController.show_lcd_display: %s", enabled)
+        action = self._display_action
+        if action is None or action.isChecked() == enabled:
+            return
+        action.blockSignals(True)
+        action.setChecked(enabled)
+        action.blockSignals(False)
+
+    def _on_display_toggled(self, checked: bool) -> None:
+        log.info("TrayController: Display on LCD -> %s", checked)
+        handler = self._display_handler
+        if handler is None:
+            log.info("TrayController: no display handler")
+            return
+        handler(checked)
 
     # ── Actions ───────────────────────────────────────────────────────
 

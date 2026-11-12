@@ -84,14 +84,20 @@ if sys.platform == 'win32':
         pass  # add_dll_directory requires Python 3.8+ and a valid dir
 
 try:
-    # trcc-gui.exe is the WINDOWED twin of trcc.exe: same CLI, ``gui`` when no
-    # subcommand is given.  It used to call ``gui()`` directly, which dropped
-    # every argument — so the sign-in task's ``--resume`` could never reach it
-    # — and skipped the shared entry's bundled-tools PATH step.
-    from trcc._entry import main, with_default_gui
-    if Path(sys.executable).name.lower().startswith('trcc-gui'):
-        sys.argv[1:] = with_default_gui(sys.argv[1:])
-        log.info("trcc-gui: argv=%s", sys.argv[1:])
+    # trcc-gui.exe is the Windows windowed twin of trcc.exe.  The Mac app has
+    # one binary named TRCC, so a Finder double-click used to print the CLI
+    # help into a window that has no console and exit a second later.
+    # ``argv_for_this_executable`` opens the GUI for those launches and leaves
+    # a named subcommand (``kill``, ``daemon``, ``version``) alone.
+    from trcc._entry import argv_for_this_executable, has_a_console, main
+    sys.argv[1:] = argv_for_this_executable(
+        sys.argv[1:],
+        executable=sys.executable,
+        frozen=bool(getattr(sys, "frozen", False)),
+        platform=sys.platform,
+        console=has_a_console(),
+    )
+    log.info("argv=%s", sys.argv[1:])
     # Everything goes through the shared entry so python -m trcc, the `trcc`
     # console script and both frozen exes dispatch the same way.
     sys.exit(main() or 0)

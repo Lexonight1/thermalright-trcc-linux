@@ -56,6 +56,7 @@ from trcc.core.events import (
     ModuleRemoved,
     OrientationChanged,
     OverlayChanged,
+    PanelOutputChanged,
     RefreshIntervalChanged,
     ScreencastRegionChanged,
     ScreencastStarted,
@@ -130,6 +131,8 @@ class BusBridge(QObject):
     screencast_started = Signal(object)        # ScreencastStarted
     screencast_stopped = Signal(object)        # ScreencastStopped
     slideshow_changed = Signal(object)         # SlideshowChanged
+    # The tray's "Display on LCD" switch.  Every window shows the same state.
+    panel_output_changed = Signal(object)     # PanelOutputChanged
     game_mode_engaged = Signal(object)         # GameModeEngaged
     system_suspending = Signal(object)         # SystemSuspending
     system_resumed = Signal(object)            # SystemResumed
@@ -270,6 +273,7 @@ class BusBridge(QObject):
             (ScreencastStarted, self.screencast_started),
             (ScreencastStopped, self.screencast_stopped),
             (SlideshowChanged, self.slideshow_changed),
+            (PanelOutputChanged, self.panel_output_changed),
             (GameModeEngaged, self.game_mode_engaged),
             (SystemSuspending, self.system_suspending),
             (SystemResumed, self.system_resumed),

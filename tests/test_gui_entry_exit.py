@@ -342,6 +342,34 @@ def test_closing_after_a_taskbar_restore_still_hides_to_the_tray(
     assert quits == [1]
 
 
+def test_the_tray_display_switch_reports_the_check_once(
+        qtbot: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unchecking asks the window once.  Putting the check back from an event
+    must not ask again, or the command and the signal loop."""
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QSystemTrayIcon, QWidget
+
+    from trcc.ui.qt_tray import TrayController
+
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable",
+                        staticmethod(lambda: True))
+    window = QWidget()
+    qtbot.addWidget(window)
+    seen: list[bool] = []
+    tray = TrayController(window, icon=QIcon())
+    tray.set_display_handler(seen.append)
+    tray.install(display_on=True)
+    action = tray._display_action
+    assert action is not None and action.isChecked()
+
+    action.setChecked(False)
+    assert seen == [False]
+
+    tray.show_lcd_display(True)
+    assert seen == [False]
+    assert action.isChecked()
+
+
 @pytest.mark.parametrize(("face", "module", "factory"), [
     ("GuiUI", "trcc.ui.gui.splash", "run_bootstrap_with_splash"),
     ("QtGuiUI", "trcc.ui.qtgui.splash", "show_splash"),
@@ -427,3 +455,51 @@ def test_the_gui_exe_defaults_to_gui_only_when_no_subcommand_is_named(
     from trcc._entry import with_default_gui
 
     assert with_default_gui(given) == runs
+
+
+@pytest.mark.parametrize(
+    ("frozen", "platform", "console", "name", "given", "runs"), [
+        (True, "darwin", False, "TRCC", [], ["gui"]),
+        (True, "darwin", True, "TRCC", [], []),
+        (True, "darwin", False, "TRCC", ["daemon"], ["daemon"]),
+        (True, "darwin", False, "TRCC", ["-vvv", "kill"], ["-vvv", "kill"]),
+        (True, "darwin", False, "TRCC", ["version"], ["version"]),
+        (True, "darwin", False, "TRCC", ["--version"], ["--version", "gui"]),
+        (True, "darwin", False, "TRCC", ["-psn_0_12345"], ["gui"]),
+        (True, "darwin", True, "TRCC", ["-psn_0_1"], []),
+        (True, "win32", False, "trcc-gui.exe", [], ["gui"]),
+        (True, "win32", True, "trcc.exe", [], []),
+        (False, "darwin", False, "python", [], []),
+    ])
+def test_a_mac_app_opens_the_gui_only_without_a_console(
+        frozen: bool, platform: str, console: bool, name: str,
+        given: list[str], runs: list[str]) -> None:
+    """Finder launches ``TRCC`` with no arguments and no terminal.  That used
+    to print the CLI help into nowhere and exit.  A terminal run of the same
+    binary still prints the help.  ``--version`` stays an eager root option:
+    the ``gui`` that follows it never starts, because the callback exits first.
+
+    MUTATION CHECK: treat every frozen darwin launch as the GUI — the console
+    cases fail.  Keep the ``trcc-gui`` name check only — the Finder case fails."""
+    from trcc._entry import argv_for_this_executable
+
+    assert argv_for_this_executable(
+        given, executable=name, frozen=frozen, platform=platform,
+        console=console) == runs
+
+
+def test_a_missing_stdout_is_not_a_console(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """PyInstaller's windowed bootloader sets ``sys.stdout`` to ``None``."""
+    import sys
+
+    from trcc._entry import has_a_console
+
+    class _TTY:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(sys, "stdout", None)
+    assert has_a_console() is False
+    assert has_a_console(_TTY()) is True
+    assert has_a_console(object()) is False

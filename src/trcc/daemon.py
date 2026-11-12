@@ -70,8 +70,252 @@ def run_daemon(
     already had removed for the same reason.
     """
     log.info("run_daemon: delegating to the UI bus")
+    _background_on_macos()
     from .ui._uis import DaemonUI
     return DaemonUI(renderer=renderer).start(platform)
+
+
+def _background_on_macos() -> None:
+    """A frozen Mac app started as the daemon should not take a Dock icon.
+
+    The window and the daemon are the same ``TRCC`` binary.  Finder already
+    shows the window.  This process is a second launch of that app, and
+    Launch Services would give it a Dock tile with no window behind it.
+    ``kProcessTransformToBackgroundApplication`` is 2; ``kCurrentProcess`` is
+    the ``{0, 2}`` serial number.  A failure here still serves — the tile is
+    the only thing lost.
+    """
+    if sys.platform != "darwin" or not getattr(sys, "frozen", False):
+        log.debug("_background_on_macos: not a frozen Mac app")
+        return
+    import ctypes
+
+    log.info("_background_on_macos: keeping this process out of the Dock")
+    try:
+        app_services = ctypes.CDLL(
+            "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
+
+        class _ProcessSerialNumber(ctypes.Structure):
+            # MacTypes.h: two UInt32s.  ``unsigned long`` is 8 bytes on
+            # arm64, so the callee reads the low half as 0.  The current
+            # process is ``{0, kCurrentProcess}``, not ``{0, 0}``.
+            _fields_ = [("highLongOfPSN", ctypes.c_uint32),
+                        ("lowLongOfPSN", ctypes.c_uint32)]
+
+        transform = app_services.TransformProcessType
+        transform.argtypes = [
+            ctypes.POINTER(_ProcessSerialNumber), ctypes.c_uint32]
+        transform.restype = ctypes.c_int32
+        # {0, kCurrentProcess}.  The header's own example.
+        psn = _ProcessSerialNumber(0, 2)
+        err = transform(ctypes.byref(psn), 2)
+    except OSError as exc:
+        log.warning("_background_on_macos: %s", exc)
+        return
+    if err:
+        log.warning("_background_on_macos: TransformProcessType returned %s", err)
+    else:
+        log.info("_background_on_macos: this process will not show in the Dock")
+
+
+# Apple event class and ids.  ``oapp`` is this process's own launch.
+# ``rapp`` is Finder opening the app again.  Measured 2026-11-12 on a
+# windowed PyInstaller build: the daemon's first event is ``oapp``; a later
+# ``open`` of the same bundle, while the daemon is still that app, is ``rapp``.
+_AEVT = 0x61657674
+_OAPP = 0x6F617070
+_RAPP = 0x72617070
+# Carbon: kEventClassAppleEvent / kEventAppleEvent.  CFRunLoop does not
+# drain this queue — ReceiveNextEvent does.
+_EPPC = 0x65707063
+_APPLE_EVENT = 1
+_EVENT_LOOP_TIMED_OUT = -9875  # eventLoopTimedOutErr
+_EVENT_NOT_HANDLED = -1708  # errAEEventNotHandled
+_REOPEN_GAP_S = 1.0
+
+_AE_FRAMEWORK = (
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/AE.framework/AE")
+_HI_FRAMEWORK = (
+    "/System/Library/Frameworks/Carbon.framework/Frameworks/"
+    "HIToolbox.framework/HIToolbox")
+
+
+def _child_env() -> dict[str, str]:
+    """Environment for a process this one starts.
+
+    ``TRCC_DAEMON`` is stripped so the child cannot proxy to itself (#162).
+    A frozen child also gets ``PYINSTALLER_RESET_ENVIRONMENT=1``: without it
+    PyInstaller starts that child as a worker of this process, and the worker
+    dies when this process does.  The daemon has to outlive the window.  The
+    bootloader consumes the variable, so the child's Python never sees it.
+    """
+    from ._boot import _ENV_FLAG
+    env = {k: v for k, v in os.environ.items() if k != _ENV_FLAG}
+    if getattr(sys, "frozen", False):
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        log.info("_child_env: frozen child is its own instance")
+    else:
+        log.debug("_child_env: not frozen")
+    return env
+
+
+def macos_reopen_pump() -> _MacReopen | None:
+    """The pump that turns a later double-click into a window, or None.
+
+    Finder will not start a second process of a windowed app while one
+    process of that bundle is still the app.  After the window exits, the
+    daemon is that process, so the double-click never arrives as a new
+    ``TRCC gui`` — Launch Services hands it to this process and, with nobody
+    answering, reports that the application is not open any more.  Only a
+    frozen Mac build is that bundle.  A failure here still serves: the panel
+    does not depend on the window being reopenable.
+    """
+    if sys.platform != "darwin" or not getattr(sys, "frozen", False):
+        log.debug("macos_reopen_pump: not a frozen Mac app")
+        return None
+    try:
+        return _MacReopen()
+    except Exception as exc:
+        log.warning("macos_reopen_pump: %s: %s — a double-click cannot open "
+                    "the window", type(exc).__name__, exc)
+        return None
+
+
+def _spawn_gui_from_daemon() -> None:
+    """Start the window as its own process, attached to this daemon.
+
+    Direct exec of ``gui``.  ``open`` of the bundle would come back here as
+    another reopen.  The new process finds this daemon and attaches; it does
+    not start a second one, and it does not blank the panel.
+    """
+    cmd = [sys.executable, "gui"]
+    log.info("_spawn_gui_from_daemon: %s", " ".join(cmd))
+    subprocess.Popen(
+        cmd,
+        env=_child_env(),
+        cwd="/",
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        close_fds=True,
+        creationflags=_detached_flags(),
+    )
+
+
+class _MacReopen:
+    """Main-thread pump for Finder's reopen of a frozen Mac app.
+
+    One wait replaces the daemon loop's idle join.  A timeout is silence:
+    this fires twice a second for the life of the process.  ``oapp`` is
+    acknowledged and does not start a window — that event is our own launch,
+    and the process that spawned us is already the window.  ``rapp`` starts
+    one.
+    """
+
+    def __init__(self) -> None:
+        import ctypes
+        log.info("_MacReopen: installing a handler for Finder's reopen")
+        self._deaf = False
+        self._opened_at = 0.0
+        self._ae = ctypes.CDLL(_AE_FRAMEWORK)
+        self._hi = ctypes.CDLL(_HI_FRAMEWORK)
+        handler = ctypes.CFUNCTYPE(
+            ctypes.c_int16, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        # Kept on self: a callback that only a local holds is freed, and the
+        # next event crashes the process that owns the panel.
+        self._on_oapp = handler(self._acknowledge)
+        self._on_rapp = handler(self._reopen)
+        install = self._ae.AEInstallEventHandler
+        install.argtypes = [
+            ctypes.c_uint32, ctypes.c_uint32, handler, ctypes.c_void_p,
+            ctypes.c_uint8]
+        install.restype = ctypes.c_int16
+        # AEProcessEvent is HIToolbox.  AE.framework does not export it, and
+        # looking it up there kills this process before it serves.
+        process = self._hi.AEProcessEvent
+        process.argtypes = [ctypes.c_void_p]
+        process.restype = ctypes.c_int32
+        release = self._hi.ReleaseEvent
+        release.argtypes = [ctypes.c_void_p]
+        release.restype = ctypes.c_int32
+
+        class _EventTypeSpec(ctypes.Structure):
+            _fields_ = [("eventClass", ctypes.c_uint32),
+                        ("eventKind", ctypes.c_uint32)]
+
+        # POINTER(this struct), not c_void_p: byref() of the spec matches the
+        # former and is rejected by the latter.  The throwaway that received
+        # the reopen used this exact type.
+        receive = self._hi.ReceiveNextEvent
+        receive.argtypes = [
+            ctypes.c_ulong, ctypes.POINTER(_EventTypeSpec), ctypes.c_double,
+            ctypes.c_uint8, ctypes.POINTER(ctypes.c_void_p)]
+        receive.restype = ctypes.c_int32
+        self._spec = _EventTypeSpec(_EPPC, _APPLE_EVENT)
+        for event_id, callback in ((_OAPP, self._on_oapp), (_RAPP, self._on_rapp)):
+            err = install(_AEVT, event_id, callback, None, 0)
+            if err:
+                raise OSError(f"AEInstallEventHandler returned {err}")
+        log.info("_MacReopen: a double-click will open the window")
+
+    def _acknowledge(self, _event: object, _reply: object, _refcon: object) -> int:
+        log.info("_MacReopen._acknowledge: this process is already the app")
+        return 0
+
+    def _reopen(self, _event: object, _reply: object, _refcon: object) -> int:
+        log.info("_MacReopen._reopen: Finder asked to open the window")
+        try:
+            self._open_window()
+        except Exception as exc:
+            log.warning("_MacReopen._reopen: %s: %s", type(exc).__name__, exc)
+        return 0
+
+    def _open_window(self) -> None:
+        now = time.monotonic()
+        if now - self._opened_at < _REOPEN_GAP_S:
+            log.info("_MacReopen._open_window: a window was just started")
+            return
+        self._opened_at = now
+        log.info("_MacReopen._open_window: starting the window")
+        _spawn_gui_from_daemon()
+
+    def wait(self, timeout: float) -> None:
+        """Drain one Apple Event, or return when *timeout* seconds pass.
+
+        Timeouts are not logged.  A broken pump is retired after the first
+        failure so the daemon loop keeps serving the panel.
+        """
+        import ctypes
+        # Retired after one failure.  Still wait out the interval: this is
+        # the daemon loop's only pause, and returning at once would spin it.
+        if self._deaf:
+            time.sleep(timeout)
+            return
+        try:
+            event = ctypes.c_void_p()
+            status = int(self._hi.ReceiveNextEvent(
+                1, ctypes.byref(self._spec), float(timeout), 1,
+                ctypes.byref(event)))
+            if status == _EVENT_LOOP_TIMED_OUT:
+                return
+            if status != 0 or not event.value:
+                log.warning("_MacReopen.wait: ReceiveNextEvent returned %s",
+                            status)
+                return
+            dispatched = int(self._hi.AEProcessEvent(event))
+            self._hi.ReleaseEvent(event)
+        except Exception as exc:
+            self._deaf = True
+            log.warning("_MacReopen.wait: stopped listening (%s: %s)",
+                        type(exc).__name__, exc)
+            return
+        if dispatched == 0:
+            log.debug("_MacReopen.wait: delivered one event")
+        elif dispatched == _EVENT_NOT_HANDLED:
+            log.debug("_MacReopen.wait: an event this process does not handle")
+        else:
+            log.warning("_MacReopen.wait: AEProcessEvent returned %s", dispatched)
 
 
 # =========================================================================
@@ -219,11 +463,10 @@ def ensure_daemon(*, timeout: float = _START_TIMEOUT_S,
             return answered
     cmd = _daemon_spawn_cmd()
     log.info("Spawning the shared App: %s", " ".join(cmd))
-    # Strip the daemon-mode flag from the child's env so the spawned daemon
-    # can't inherit it and try to proxy to itself — it builds the App
-    # in-process via run_daemon → _build_local_app regardless (#162).
-    from ._boot import _ENV_FLAG
-    child_env = {k: v for k, v in os.environ.items() if k != _ENV_FLAG}
+    # ``_child_env`` strips the daemon-mode flag so the child can't proxy to
+    # itself (#162), and marks a frozen child as its own instance so it
+    # outlives this window.
+    child_env = _child_env()
     # cwd="/", as daemons do: otherwise the App inherits whatever directory the
     # FIRST UI was started from — holding it open (an unmountable USB stick)
     # and resolving anything relative against it for its whole life.
@@ -438,19 +681,22 @@ def _daemon_spawn_cmd() -> list[str]:
 
     The running interpreter, not the first ``trcc`` on PATH: with two installs
     (pipx + a distro package), a UI could start a daemon of the other one --
-    and with a version check, replace it forever.  A frozen build (Windows,
-    macOS) has no ``-m``.  On Windows it is the installed ``trcc-gui.exe``,
-    the windowed twin of ``trcc.exe`` beside it: a console exe would open a
-    terminal window for the App's whole life.  macOS keeps the console-script
-    lookup until the daemon is verified there.
+    and with a version check, replace it forever.  A frozen build has no
+    ``-m``.  On Windows the windowed twin is ``trcc-gui.exe``.  On macOS the
+    one ``TRCC`` binary is the App, started as ``TRCC daemon``.
     """
     log.debug("_daemon_spawn_cmd: frozen=%s", getattr(sys, "frozen", False))
     if not getattr(sys, "frozen", False):
         return [sys.executable, "-m", "trcc", "daemon"]
+    # A frozen build has no ``-m``.  On Windows the windowed twin is
+    # ``trcc-gui.exe`` beside the console exe: a console exe would open a
+    # terminal for the App's whole life.  Everywhere else — the Mac app is
+    # one binary named ``TRCC`` — this executable is the App, and ``daemon``
+    # is a real subcommand.  ``which("trcc")`` can be a different install,
+    # and ``-m`` is not a Python flag once the file is frozen.
     windowed = Path(sys.executable).with_name("trcc-gui.exe")
     if sys.platform == "win32" and windowed.is_file():
         return [str(windowed), "daemon"]
-    from shutil import which
-    if (trcc_bin := which("trcc")) is not None:
-        return [trcc_bin, "daemon"]
-    return [sys.executable, "-m", "trcc", "daemon"]
+    log.info("_daemon_spawn_cmd: frozen %s -> %s daemon",
+             sys.platform, sys.executable)
+    return [sys.executable, "daemon"]

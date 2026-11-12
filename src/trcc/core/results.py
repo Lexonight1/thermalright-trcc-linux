@@ -99,6 +99,14 @@ class DisconnectResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class PanelOutputResult(Result):
+    """Whether the LCD picture is being sent.  ``enabled`` is the App's flag
+    after the command, which can differ from what was asked when a restore
+    could not run."""
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class SendResult(Result):
     key: str = ""
     bytes_sent: int = 0

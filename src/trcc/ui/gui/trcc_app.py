@@ -48,11 +48,13 @@ from ...core.commands import (
     ListGpus,
     ListLanguages,
     ListModules,
+    PanelOutput,
     ProbeVideoDuration,
     ReadSensors,
     SetGpuDevice,
     SetHddEnabled,
     SetLanguage,
+    SetPanelOutput,
     SetRefreshInterval,
 )
 from ...core.events import (
@@ -308,8 +310,13 @@ class TRCCApp(QMainWindow):
         self.uc_about._autostart = autostart_state
         self.uc_about.startup_btn.setChecked(autostart_state)
 
-        # System tray — controller built above; show it now.
-        self._tray.install()
+        # System tray — controller built above; show it now.  The check is
+        # the App's, so a second window opens agreeing with the first.
+        self._tray.set_display_handler(self._set_lcd_display)
+        shown = self._app.dispatch(PanelOutput())
+        self._tray.install(display_on=shown.enabled)
+        self._bus.panel_output_changed.connect(
+            self._on_lcd_display, type=qconn)
 
         # Raise-existing-window (second launch) — see ``raise_requested``.
         # QueuedConnection: the emit comes from SingleInstance's accept thread,
@@ -318,6 +325,20 @@ class TRCCApp(QMainWindow):
             self._on_raise_requested,
             type=Qt.ConnectionType.QueuedConnection,
         )
+
+    def _set_lcd_display(self, enabled: bool) -> None:
+        """Tray check: show the saved picture, or blank the panel and hold it."""
+        log.info("_set_lcd_display: %s", enabled)
+        result = self._app.dispatch(SetPanelOutput(enabled=enabled))
+        if not result.ok:
+            log.warning("_set_lcd_display: %s", result.message)
+        self._tray.show_lcd_display(result.enabled)
+
+    def _on_lcd_display(self, event: object) -> None:
+        """Another window, or this one's own command, moved the switch."""
+        enabled = bool(getattr(event, "enabled", True))
+        log.info("_on_lcd_display: %s", enabled)
+        self._tray.show_lcd_display(enabled)
 
     def _on_raise_requested(self) -> None:
         """Surface the window for a second ``trcc gui`` launch.

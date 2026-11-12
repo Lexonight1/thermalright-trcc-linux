@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**178 total: 128 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**180 total: 129 Commands and 51 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -224,6 +224,14 @@ Per-device LCD state snapshot — what settings.for_device holds.
 Every attached device — the answer to "what is here right now?".
 
 *Query* → `DevicesListResult`
+
+Takes no arguments.
+
+### `PanelOutput`
+
+Whether the LCD picture is on.  The tray reads this when it opens, so a second window matches the first.
+
+*Query* → `PanelOutputResult`
 
 Takes no arguments.
 
@@ -542,6 +550,16 @@ Replace the user-overlay layer wholesale.
 |---|---|---|
 | `key` | `str` | yes |
 | `elements` | `tuple[dict, Ellipsis]` | no |
+
+### `SetPanelOutput`
+
+Show or hide the picture on every connected LCD.
+
+*Command* → `PanelOutputResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `enabled` | `bool` | no |
 
 ### `SetScreencastRegion`
 

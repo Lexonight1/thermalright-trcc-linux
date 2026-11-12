@@ -218,14 +218,27 @@ class DaemonUI(UserInterface, key="daemon"):
         """
         log.info("DaemonUI.run: serving until shutdown")
         server, serving = self._server, self._serving
+        # Finder will not start a second copy of a frozen Mac app while this
+        # process is that app.  A double-click after the window has closed
+        # arrives here, and the pump starts the window against this daemon.
+        # Anywhere else the pump is None and the wait is a join.  The import
+        # stays in the method: ``trcc.daemon`` is a heavy import, and every
+        # other face shares this module.
+        from ..daemon import macos_reopen_pump
+        reopen = macos_reopen_pump()
         try:
-            # A timed join, so a stop signal still runs on this main thread --
+            # A timed wait, so a stop signal still runs on this main thread --
             # and is read HERE: the handler only sets the flag, and the
             # shutdown (locks, joins, socket writes, log lines) runs below,
-            # in ordinary code, never inside the handler.
+            # in ordinary code, never inside the handler.  Apple Events are
+            # delivered on this thread; the pump has to be here, not on the
+            # accept thread.
             while (serving is not None and serving.is_alive()
                    and not self._stop_requested):
-                serving.join(0.5)
+                if reopen is not None:
+                    reopen.wait(0.5)
+                else:
+                    serving.join(0.5)
         finally:
             if server is not None:
                 server.shutdown()

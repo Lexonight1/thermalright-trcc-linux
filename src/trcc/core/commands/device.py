@@ -34,6 +34,7 @@ from ..events import (
     MaskVisibilityChanged,
     OrientationChanged,
     OverlayChanged,
+    PanelOutputChanged,
     ScreencastStarted,
     ScreencastStopped,
     SplitModeChanged,
@@ -103,6 +104,7 @@ from ..results import (
     OverlayElementResult,
     OverlayLayoutResult,
     OverlayResult,
+    PanelOutputResult,
     PauseVideoResult,
     PreviewResult,
     PreviewSizeResult,
@@ -804,6 +806,83 @@ class SleepDevice(Command[SendResult]):
             return SendResult(ok=False, key=self.key, bytes_sent=0,
                               connected=True,
                               message=f"cannot blank {self.key}: {e}")
+
+
+def _lcd_keys(app: App) -> list[str]:
+    """Connected panels that draw a picture.  LEDs are not the LCD switch."""
+    keys = [
+        key for key, device in app.devices.items()
+        if device.is_connected and not device.is_led
+        and Capability.FRAME_RENDER in device.info.capabilities
+    ]
+    log.debug("_lcd_keys: %s", keys)
+    return keys
+
+
+@dataclass(frozen=True, slots=True)
+class PanelOutput(Query[PanelOutputResult]):
+    """Whether the LCD picture is on.  The tray reads this when it opens,
+    so a second window matches the first."""
+
+    def execute(self, app: App) -> PanelOutputResult:
+        enabled = app.panel_output
+        log.debug("PanelOutput: enabled=%s", enabled)
+        return PanelOutputResult(
+            ok=True, enabled=enabled,
+            message="LCD display on" if enabled else "LCD display off",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SetPanelOutput(Command[PanelOutputResult]):
+    """Show or hide the picture on every connected LCD.
+
+    Off sends :class:`SleepDevice` — a black frame, and the panel is held so
+    the render loop does not paint over it.  On sends
+    :class:`RestoreDeviceState`, which puts the saved display back.  The App
+    keeps running either way.  Closing the window does not call this; the
+    tray's Exit, and ``trcc kill``, are what stop the App.
+
+    A panel that connects while the picture is off is blanked by
+    ``App._prime`` and stays dark until this is turned back on.
+    """
+    enabled: bool = True
+
+    def execute(self, app: App) -> PanelOutputResult:
+        from .theme import RestoreDeviceState
+
+        log.info("SetPanelOutput: enabled=%s", self.enabled)
+        app.panel_output = self.enabled
+        failed: list[str] = []
+        keys = _lcd_keys(app)
+        for key in keys:
+            if self.enabled:
+                result = app.dispatch(RestoreDeviceState(key=key))
+            else:
+                result = app.dispatch(SleepDevice(key=key))
+            if not result.ok:
+                log.warning("SetPanelOutput: %s %s — %s", key,
+                            "restore" if self.enabled else "sleep",
+                            result.message)
+                failed.append(key)
+        enabled = self.enabled
+        if enabled and failed and len(failed) == len(keys):
+            log.warning("SetPanelOutput: every restore failed — leaving the "
+                        "picture off")
+            app.panel_output = False
+            enabled = False
+        app.events.publish(PanelOutputChanged(enabled=enabled))
+        verb = "on" if enabled else "off"
+        if failed and enabled == self.enabled:
+            return PanelOutputResult(
+                ok=False, enabled=enabled,
+                message=f"LCD display {verb}; failed: {', '.join(failed)}",
+            )
+        n = len(keys)
+        return PanelOutputResult(
+            ok=True, enabled=enabled,
+            message=f"LCD display {verb} ({n} panel{'s' if n != 1 else ''})",
+        )
 
 
 @dataclass(frozen=True, slots=True)
