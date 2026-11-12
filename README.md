@@ -407,6 +407,7 @@ These folks didn't just report a problem — they opened the editor and sent a f
 - **[@elsiedotcafe](https://github.com/elsiedotcafe)** — [#123](https://github.com/Lexonight1/thermalright-trcc-linux/pull/123): pinned the PySide6 package to a stable source so the build stops breaking.
 - **[@PourrezJ](https://github.com/PourrezJ)** — [#313](https://github.com/Lexonight1/thermalright-trcc-linux/pull/313): found, on his own 320x240 panel, that SCSI FBL 51 panels take big-endian colour — the same fix, made independently, that shipped in v9.10.5.
 - **[@alan7383](https://github.com/alan7383)** — [#271](https://github.com/Lexonight1/thermalright-trcc-linux/pull/271): confirmed the Phantom Spirit 120 Vision EVO, and found the bulk-panel screencast, video-override and reboot-surviving `.zt` fixes that shipped from his PR.
+- **[@ocarinal](https://github.com/ocarinal)** — [#291](https://github.com/Lexonight1/thermalright-trcc-linux/issues/291): diagnosed, with patches, why a picked overlay font never reached the renderer and why a picked video ignored its fit mode; re-measured against main when the first font fix missed, and confirmed every fix on two panels.
 
 Thank you all — genuinely. PRs are always welcome, and you'll land right here.
 
