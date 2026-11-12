@@ -169,6 +169,20 @@ class PyUsbBulkTransport(BulkTransport):
         try:
             usb.util.claim_interface(self._device, USB_INTERFACE)
         except usb.core.USBError as e:
+            # macOS denies the claim (errno 13) while still letting
+            # get_active_configuration succeed, so the EACCES branch
+            # above never runs.  PermissionError_ is a TransportError:
+            # ConnectDevice then retries a HID-report panel on hidapi,
+            # which the logged-in user can open.  A bulk panel has no
+            # such retry and the same error names sudo.
+            if e.errno == _ERRNO_EACCES:
+                log.warning(
+                    "%04X:%04X: claim_interface denied (errno %s)",
+                    self._vid, self._pid, e.errno,
+                )
+                raise PermissionError_(
+                    f"USB access denied for {self._vid:04X}:{self._pid:04X}"
+                ) from e
             if e.errno != _ERRNO_EBUSY:
                 raise
             if detach_blocked:

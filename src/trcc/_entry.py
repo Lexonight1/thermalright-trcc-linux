@@ -33,8 +33,82 @@ def put_bundled_tools_on_path() -> str | None:
     return here
 
 
+def without_launch_services_psn(args: list[str]) -> list[str]:
+    """Drop ``-psn_*`` tokens older Launch Services passed to a double-clicked app.
+
+    They are not options of ours.  Left in place, ``with_default_gui`` would
+    treat one as a ``gui`` argument and the windowed app would exit on it.
+    """
+    import logging
+
+    kept = [arg for arg in args if not arg.startswith("-psn_")]
+    if len(kept) != len(args):
+        logging.getLogger(__name__).info(
+            "without_launch_services_psn: dropped %s",
+            [arg for arg in args if arg.startswith("-psn_")])
+    return kept
+
+
+def has_a_console(stdout: object | None = None) -> bool:
+    """Whether this process can show the CLI help on a terminal.
+
+    A Finder launch of a windowed app has no console: ``stdout`` is missing
+    or is not a tty, so the help text is invisible and the process just
+    exits.  A terminal run of the same binary is a tty.  Pass *stdout* to
+    test a stream; the default reads ``sys.stdout``, which itself may be
+    ``None``.
+    """
+    import logging
+    import sys
+
+    log = logging.getLogger(__name__)
+    stream = sys.stdout if stdout is None else stdout
+    if stream is None:
+        log.info("has_a_console: no stdout")
+        return False
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        log.info("has_a_console: stdout cannot say whether it is a terminal")
+        return False
+    try:
+        tty = bool(isatty())
+    except OSError as exc:
+        log.info("has_a_console: isatty failed: %s", exc)
+        return False
+    log.info("has_a_console: %s", tty)
+    return tty
+
+
+def argv_for_this_executable(
+    args: list[str], *, executable: str, frozen: bool, platform: str,
+    console: bool,
+) -> list[str]:
+    """The arguments this process should run.
+
+    ``trcc-gui*`` is the Windows windowed twin of ``trcc.exe``: ``gui`` unless
+    a subcommand is already named.  The Mac app has one binary, named
+    ``TRCC`` — a case-insensitive volume cannot also hold ``trcc`` — so a
+    Finder launch (frozen, no console, no subcommand) takes the same default.
+    A terminal run of that binary keeps the CLI, and ``python -m trcc`` is
+    not frozen, so it is left alone.  ``kill``, ``daemon``, ``version`` and
+    ``--version`` stay themselves.
+    """
+    import logging
+    from pathlib import Path
+
+    log = logging.getLogger(__name__)
+    cleaned = without_launch_services_psn(args) if platform == "darwin" else list(args)
+    name = Path(executable).name.lower()
+    windowed_twin = name.startswith("trcc-gui")
+    mac_app = frozen and platform == "darwin" and not console
+    chosen = with_default_gui(cleaned) if windowed_twin or mac_app else cleaned
+    log.info("argv_for_this_executable: frozen=%s platform=%s console=%s "
+             "name=%s %s -> %s", frozen, platform, console, name, args, chosen)
+    return chosen
+
+
 def with_default_gui(args: list[str]) -> list[str]:
-    """*args* for ``trcc-gui.exe``: ``gui`` when they name no subcommand.
+    """*args* for a windowed launch: ``gui`` when they name no subcommand.
 
     The GUI exe is the CLI with ``gui`` as its default.  It used to insert
     ``gui`` FIRST whenever the first argument was an option, so

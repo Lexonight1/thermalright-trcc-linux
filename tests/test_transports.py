@@ -464,6 +464,41 @@ class _DriverDevice:
         self.calls.append(f"attach {i}")
 
 
+def test_claim_denied_on_macos_is_a_permission_error(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """macOS lets a user read the configuration and then denies the claim.
+
+    The denial is errno 13, not EBUSY, and it used to escape as a raw
+    USBError.  ConnectDevice only retries the HID-report transport when
+    the failure is a TransportError, so the panel that hidapi can open
+    as the logged-in user never got that retry.
+    """
+    import usb.core
+    import usb.util
+
+    from trcc.adapters.device import transport as t
+    from trcc.core.errors import PermissionError_
+
+    class _Cfg:
+        bConfigurationValue = 1
+
+    class _Dev:
+        def is_kernel_driver_active(self, i: int) -> bool:
+            raise NotImplementedError
+
+        def get_active_configuration(self) -> _Cfg:
+            return _Cfg()
+
+    monkeypatch.setattr(t, "usb_find", lambda **_kwargs: _Dev())
+
+    def _deny(dev: object, interface: int) -> None:
+        raise usb.core.USBError("Access denied", errno=13)
+
+    monkeypatch.setattr(usb.util, "claim_interface", _deny)
+    with pytest.raises(PermissionError_, match="USB access denied for 0416:5302"):
+        t.PyUsbBulkTransport(0x0416, 0x5302).open()
+
+
 def test_close_hands_back_the_kernel_drivers_it_took(
         monkeypatch: pytest.MonkeyPatch) -> None:
     """A vid:pid match is all the scan checks: a foreign device sharing one

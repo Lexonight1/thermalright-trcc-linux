@@ -212,6 +212,10 @@ class App(CommandBus, ModuleServices):
         # theme load or LED settings change.  In memory only — a restart, like
         # a reconnect, gives the panel back to its saved theme (#306).
         self.held: set[str] = set()
+        # The tray's "Display on LCD".  Off blanks every panel and holds it
+        # so the render loop does not paint over the black frame.  In memory
+        # only — the next launch shows the saved display again.
+        self.panel_output: bool = True
         # Per-device LED runtime counters — populated lazily by RenderLed,
         # cleared by DisconnectDevice.  Not persisted — these are tick
         # phase counters, not user prefs.
@@ -1896,24 +1900,34 @@ class App(CommandBus, ModuleServices):
     def _prime(self, key: str) -> None:
         """Show *key*'s saved display if the panel shows nothing.
 
-        The automatic restore, so it never overrides: a panel with an active
-        theme, or held by a pushed frame, is left alone.  The lock makes the
-        blank check and the restore one step — ``DataInstalled`` arrives on the
-        install worker while the coldplug primes on the caller's thread.
+        When the LCD picture is switched off, blank the panel instead of
+        restoring it.  The automatic restore never overrides: a panel with an
+        active theme, or held by a pushed frame, is left alone.  The lock
+        makes the blank check and the restore one step — ``DataInstalled``
+        arrives on the install worker while the coldplug primes on the
+        caller's thread.
         """
-        from .core.commands import RestoreDeviceState
+        from .core.commands import RestoreDeviceState, SleepDevice
         with self._prime_lock:
             device = self.devices.get(key)
             # What is restored is a rendered display, so only a device that
             # draws frames has one — not "anything that is not an LED".
             draws = (device is not None
                      and Capability.FRAME_RENDER in device.info.capabilities)
-            if (device is None or not device.is_connected or not draws
-                    or key in self.active_themes or key in self.held):
-                log.debug("_prime: %s skipped (connected=%s frames=%s "
-                          "active=%s held=%s)", key, device is not None
-                          and device.is_connected, draws,
-                          key in self.active_themes, key in self.held)
+            if device is None or not device.is_connected or not draws:
+                log.debug("_prime: %s skipped (connected=%s frames=%s)",
+                          key, device is not None and device.is_connected, draws)
+                return
+            if not self.panel_output:
+                if key in self.held:
+                    log.info("_prime: %s stays dark — LCD display is off", key)
+                    return
+                log.info("_prime: %s LCD display is off — blanking it", key)
+                self.dispatch(SleepDevice(key=key))
+                return
+            if key in self.active_themes or key in self.held:
+                log.debug("_prime: %s skipped (active=%s held=%s)",
+                          key, key in self.active_themes, key in self.held)
                 return
             log.info("_prime: %s is blank — restoring its saved display", key)
             self.dispatch(RestoreDeviceState(key=key))

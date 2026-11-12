@@ -18,13 +18,12 @@ Three checks
    without the user explicitly approving the binary in System
    Settings → Privacy & Security.
 
-3. **Privileges**: is the process running as root?  Per Apple's
-   developer forums, a CLI tool **cannot** hold the
-   ``com.apple.vm.device-access`` entitlement (no provisioning
-   profile), so libusb can only detach the kernel mass-storage driver
-   when running as root.  The setup wizard either tells the user to
-   re-run with ``sudo`` or, if they're shipping a signed app bundle,
-   to open it via Finder once so Gatekeeper marks it trusted.
+3. **Privileges**: running as the logged-in user is the normal case.
+   Sensor readings (SMC, the HID sensor hub, IOReport) and HID-report
+   panels do not need root and do not need a Developer ID certificate.
+   A mass-storage SCSI panel is the exception: capturing it from
+   libusb needs root, because ``com.apple.vm.device-access`` is a
+   managed entitlement Apple grants to VM apps only.
 
 Exit codes::
 
@@ -82,12 +81,15 @@ def install(dry_run: bool = False) -> int:
     else:
         print(f"  [OK]  no quarantine attribute on {quarantined_target}")
 
-    # ── Check 3: root for libusb kernel-detach ─────────────────────
+    # ── Check 3: root is not required for sensors or HID panels ──
     if os.geteuid() == 0:
-        print("  [OK]  running as root — libusb can detach mass-storage")
+        print("  [OK]  running as root")
     else:
-        print("  [!]   running as user — libusb can't detach the kernel umass driver")
-        issues.append("privileges")
+        print("  [OK]  running as the logged-in user")
+        print("        Sensors (SMC, HID hub, IOReport) and HID-report panels")
+        print("        do not need root or a Developer ID certificate.")
+        print("        A mass-storage SCSI panel still needs administrator")
+        print("        rights to capture the USB device.")
 
     if not issues:
         print("\n  Every macOS check passed. 🍻")
@@ -110,16 +112,6 @@ def install(dry_run: bool = False) -> int:
         print("      For a permanent fix, the project owner needs an Apple")
         print("      Developer ID + notarization (~$99/year).")
 
-    if "privileges" in issues:
-        print()
-        print("    Privileges — CLI tools can't hold USB entitlements without a")
-        print("    provisioning profile, so libusb's kernel-detach needs root.")
-        print(f"      Re-run with sudo:  sudo {binary} ...")
-        print()
-        print("    Or, for the GUI app from a signed .app bundle, the")
-        print("    com.apple.security.device.usb entitlement on the bundle")
-        print("    avoids the sudo step.  Bundle is signed when produced from")
-        print("    a Developer ID account; CI builds today are not signed.")
     return 1
 
 

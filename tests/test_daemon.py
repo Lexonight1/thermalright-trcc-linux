@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -29,6 +31,9 @@ def test_ensure_daemon_strips_daemon_flag_from_child_env(
     env = popen.call_args.kwargs["env"]
     assert _ENV_FLAG not in env          # the flag is stripped from the child
     assert "PATH" in env                 # the rest of the environment survives
+    # A source run is not a PyInstaller worker.  Setting the reset variable
+    # here would be a lie, and a frozen test below is the one that requires it.
+    assert "PYINSTALLER_RESET_ENVIRONMENT" not in env
 
 
 def test_run_daemon_starts_metrics_loop_and_pops_flag(
@@ -162,6 +167,271 @@ def test_a_ui_starts_a_daemon_of_its_own_install(
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/trcc")
 
     assert daemon._daemon_spawn_cmd() == [sys.executable, "-m", "trcc", "daemon"]
+
+
+def test_a_frozen_mac_app_starts_itself(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """The Mac app is one binary.  ``-m`` is not a Python flag there, and
+    ``which trcc`` can be a different install.
+
+    MUTATION CHECK: prefer ``which("trcc")`` again, or append ``-m trcc``."""
+    import sys
+    exe = tmp_path / "TRCC"
+    exe.touch()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr("shutil.which", lambda _name: "/usr/local/bin/trcc")
+
+    assert daemon._daemon_spawn_cmd() == [str(exe), "daemon"]
+
+
+def test_a_frozen_mac_daemon_leaves_the_dock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The daemon is a second launch of ``TRCC.app``.  Without this it takes
+    a Dock tile that has no window.
+
+    The process id is two UInt32s, ``{0, kCurrentProcess}``.  A pair of
+    ``unsigned long`` fields is 16 bytes on arm64 and is read as ``{0, 0}``.
+
+    MUTATION CHECK: widen the fields to ``c_ulong`` — the size stops being 8."""
+    import ctypes
+    import sys
+
+    seen: list[tuple[int, int, int, int]] = []
+
+    class _Lib:
+        def __init__(self) -> None:
+            def transform(psn: Any, kind: int) -> int:
+                body = psn._obj
+                seen.append((
+                    kind,
+                    int(body.highLongOfPSN),
+                    int(body.lowLongOfPSN),
+                    ctypes.sizeof(body),
+                ))
+                return 0
+
+            self.TransformProcessType = transform
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(ctypes, "CDLL", lambda _path: _Lib())
+
+    daemon._background_on_macos()
+
+    assert seen == [(2, 0, 2, 8)]
+
+
+def test_an_ordinary_process_does_not_touch_launch_services(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    import ctypes
+    import sys
+
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr(ctypes, "CDLL", lambda _path: pytest.fail("CDLL"))
+
+    daemon._background_on_macos()
+    assert daemon.macos_reopen_pump() is None
+
+
+def test_a_frozen_child_is_its_own_instance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PyInstaller runs a child of a frozen app as a worker of that app
+    unless ``PYINSTALLER_RESET_ENVIRONMENT=1``.  The worker dies with the
+    window, and the panel dies with it.
+
+    MUTATION CHECK: stop setting the variable."""
+    import sys
+
+    monkeypatch.setenv(_ENV_FLAG, "1")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(ipc, "daemon_running", lambda: False)
+    monkeypatch.setattr(ipc, "wait_for_daemon", lambda timeout: True)
+
+    with mock.patch.object(daemon.subprocess, "Popen") as popen:
+        daemon.ensure_daemon(timeout=0.1)
+
+    env = popen.call_args.kwargs["env"]
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert _ENV_FLAG not in env
+
+
+class _Fn:
+    """A callable that accepts ``argtypes`` / ``restype``, as a ctypes
+    function does.  A bound method refuses those attributes, and the pump
+    sets them before the first call."""
+
+    def __init__(self, fn: Any) -> None:
+        self._fn = fn
+
+    def __call__(self, *args: Any) -> Any:
+        return self._fn(*args)
+
+
+class _Carbon:
+    """Stand-in for AE.framework and HIToolbox.  Records the handlers and
+    delivers one ``rapp`` per ``ReceiveNextEvent``."""
+
+    def __init__(self) -> None:
+        self.installed: list[tuple[int, int]] = []
+        self.handlers: dict[int, Any] = {}
+        self.released = 0
+        self.AEInstallEventHandler = _Fn(self._install)
+        self.ReceiveNextEvent = _Fn(self._receive)
+        self.AEProcessEvent = _Fn(self._process)
+        self.ReleaseEvent = _Fn(self._release)
+
+    def _install(self, event_class: int, event_id: int, handler: Any,
+                 _refcon: object, _system: int) -> int:
+        self.installed.append((int(event_class), int(event_id)))
+        self.handlers[int(event_id)] = handler
+        return 0
+
+    def _receive(self, _count: int, _spec: object, _timeout: float,
+                 _pull: int, event_out: Any) -> int:
+        event_out._obj.value = 1
+        return 0
+
+    def _process(self, _event: object) -> int:
+        self.handlers[daemon._RAPP](None, None, None)
+        return 0
+
+    def _release(self, _event: object) -> int:
+        self.released += 1
+        return 0
+
+
+def test_a_reopen_starts_the_window_and_the_launch_does_not(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Finder's second double-click is ``rapp``.  The daemon's own start is
+    ``oapp`` and must not open another window — the process that spawned the
+    daemon is already the window.
+
+    The pump is fed a fake Carbon.  Calling the real one would background
+    this process and block in ``ReceiveNextEvent``.
+
+    MUTATION CHECK: handle ``oapp`` with the reopen callback, or drop the
+    reset variable on the window's environment."""
+    import ctypes
+    import subprocess
+    import sys
+
+    carbon = _Carbon()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(ctypes, "CDLL", lambda _path: carbon)
+
+    with mock.patch.object(daemon.subprocess, "Popen") as popen:
+        pump = daemon.macos_reopen_pump()
+        assert pump is not None
+        carbon.handlers[daemon._OAPP](None, None, None)
+        assert popen.call_count == 0
+        pump.wait(0.5)
+        pump.wait(0.5)
+        assert popen.call_count == 1
+        pump._opened_at = 0.0
+        pump.wait(0.5)
+
+    assert carbon.installed == [
+        (daemon._AEVT, daemon._OAPP), (daemon._AEVT, daemon._RAPP)]
+    assert carbon.released == 3
+    assert popen.call_count == 2
+    argv, kwargs = popen.call_args.args, popen.call_args.kwargs
+    assert argv[0] == [sys.executable, "gui"]
+    assert kwargs["cwd"] == "/"
+    assert kwargs["start_new_session"] is True
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert kwargs["close_fds"] is True
+    assert kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+
+
+def test_a_failed_reopen_handler_still_lets_the_daemon_serve(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The panel must not depend on Finder's event.  A missing symbol or a
+    refused handler is a warning and no pump, not an exit.
+
+    MUTATION CHECK: let the exception leave ``macos_reopen_pump``."""
+    import ctypes
+    import sys
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    def missing(_path: str) -> Any:
+        raise OSError("framework not available")
+
+    monkeypatch.setattr(ctypes, "CDLL", missing)
+    assert daemon.macos_reopen_pump() is None
+
+    refused = _Carbon()
+    refused.AEInstallEventHandler = _Fn(lambda *_args: -50)
+    monkeypatch.setattr(ctypes, "CDLL", lambda _path: refused)
+    assert daemon.macos_reopen_pump() is None
+
+
+def test_a_deaf_pump_waits_instead_of_spinning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pump is the daemon loop's only pause.  After it gives up it has
+    to keep waiting out the interval, or the loop spins for the life of
+    the panel.
+
+    MUTATION CHECK: return immediately once ``_deaf`` is set."""
+    import ctypes
+    import sys
+
+    def broken(*_args: object) -> int:
+        raise RuntimeError("queue broken")
+
+    carbon = _Carbon()
+    carbon.ReceiveNextEvent = _Fn(broken)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(ctypes, "CDLL", lambda _path: carbon)
+    slept: list[float] = []
+    monkeypatch.setattr(daemon.time, "sleep", slept.append)
+
+    pump = daemon.macos_reopen_pump()
+    assert pump is not None
+    pump.wait(0.5)
+    assert slept == []
+    pump.wait(0.5)
+    assert slept == [0.5]
+
+
+def test_the_daemon_loop_drains_a_reopen(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The accept thread cannot see Apple Events.  The main loop's wait is
+    the pump, and only the pump, when there is one.
+
+    MUTATION CHECK: keep ``serving.join`` when a pump is installed."""
+    from trcc.ui._uis import DaemonUI
+
+    pump = mock.MagicMock()
+    monkeypatch.setattr(daemon, "macos_reopen_pump", lambda: pump)
+    face = DaemonUI()
+    face._server = mock.MagicMock()
+    serving = mock.MagicMock()
+    serving.is_alive.side_effect = [True, False]
+    face._serving = serving
+
+    assert face.run() == 0
+    pump.wait.assert_called_once_with(0.5)
+    serving.join.assert_not_called()
+    face._server.shutdown.assert_called_once()
+
+
+def test_the_daemon_loop_joins_when_nothing_reopens(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Linux, Windows, and a source run have no Carbon queue to drain."""
+    from trcc.ui._uis import DaemonUI
+
+    monkeypatch.setattr(daemon, "macos_reopen_pump", lambda: None)
+    face = DaemonUI()
+    face._server = mock.MagicMock()
+    serving = mock.MagicMock()
+    serving.is_alive.side_effect = [True, False]
+    face._serving = serving
+
+    assert face.run() == 0
+    serving.join.assert_called_once_with(0.5)
 
 
 # =========================================================================

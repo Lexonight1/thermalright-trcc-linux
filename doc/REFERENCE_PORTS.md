@@ -11,8 +11,8 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | port | implement | inherit | implementations |
 |---|---|---|---|
 | [`BaseSendTask`](#basesendtask) | 1 | 4 | 5 |
-| [`Command`](#command) | 1 | 1 | 178 |
-| [`CpuSource`](#cpusource) | 1 | 5 | 11 |
+| [`Command`](#command) | 1 | 1 | 180 |
+| [`CpuSource`](#cpusource) | 1 | 5 | 12 |
 | [`DataInstaller`](#datainstaller) | 1 | 0 | 1 |
 | [`HttpFetcher`](#httpfetcher) | 1 | 0 | 2 |
 | [`MetricsPort`](#metricsport) | 1 | 0 | 1 |
@@ -21,7 +21,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`ModuleQuery`](#modulequery) | 1 | 0 | 6 |
 | [`NetworkPort`](#networkport) | 1 | 0 | 1 |
 | [`PasswordPort`](#passwordport) | 1 | 0 | 1 |
-| [`Query`](#query) | 1 | 0 | 50 |
+| [`Query`](#query) | 1 | 0 | 51 |
 | [`ReadingsPort`](#readingsport) | 1 | 0 | 1 |
 | [`ScreenCapture`](#screencapture) | 1 | 1 | 4 |
 | [`SignatureChecker`](#signaturechecker) | 1 | 0 | 1 |
@@ -35,7 +35,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`FrameSource`](#framesource) | 2 | 0 | 3 |
 | [`FramesPort`](#framesport) | 2 | 0 | 1 |
 | [`GpuPort`](#gpuport) | 2 | 0 | 1 |
-| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 25 |
+| [`IdentifiedSource`](#identifiedsource) | 2 | 0 | 26 |
 | [`Layer`](#layer) | 2 | 0 | 9 |
 | [`LedSource`](#ledsource) | 2 | 0 | 1 |
 | [`LightsPort`](#lightsport) | 2 | 0 | 1 |
@@ -58,7 +58,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`DramSource`](#dramsource) | 3 | 0 | 1 |
 | [`FanSource`](#fansource) | 3 | 2 | 4 |
 | [`FilesPort`](#filesport) | 3 | 0 | 1 |
-| [`GpuSource`](#gpusource) | 3 | 10 | 14 |
+| [`GpuSource`](#gpusource) | 3 | 10 | 15 |
 | [`HotplugMonitor`](#hotplugmonitor) | 3 | 0 | 5 |
 | [`IpcChannel`](#ipcchannel) | 3 | 1 | 2 |
 | [`ModuleDevices`](#moduledevices) | 3 | 0 | 4 |
@@ -138,7 +138,7 @@ execute(app: 'App') -> R_co
 
 **You inherit (1):** `refusal`
 
-**Implementations (178):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearInset` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallFullFfmpeg` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `MarkFirstRunDone` · `ModuleIcon` · `OpenRgbPorts` · `PauseVideo` · `PlaceModule` · `PlayVideo` · `PlayVisual` · `PreviewClip` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetInset` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `ShowBackground` · `SleepDevice` · `StartScreencast` · `StopClipPreview` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickClipPreview` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UnlockModuleDevices` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
+**Implementations (180):** `AddOverlayElement` · `AdvanceSlideshow` · `ApplyMask` · `BlinkAuraHeader` · `BrowseModules` · `BuildPreview` · `CaptureSourceFrame` · `CheckForUpdate` · `ClearInset` · `ClearModuleSource` · `ConfigureSlideshow` · `ConnectDevice` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeleteOverlayElement` · `DeleteTheme` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `DisableAutostart` · `DisconnectDevice` · `DiscoverDevices` · `DownloadCloudTheme` · `EnableAutostart` · `EnableLedTestMode` · `EnableOverlay` · `EnsureConnected` · `EnsureDataDownload` · `ExportCurrentTheme` · `ExportDcTheme` · `ExportOverlay` · `ExportTheme` · `ExportVideoClip` · `GenerateDebugReport` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `ImportTheme` · `InitializeLed` · `InstallFullFfmpeg` · `InstallModule` · `InstallModuleFolder` · `KeepAliveLoop` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `LoadCloudTheme` · `LoadImage` · `LoadTheme` · `LoadVideo` · `MarkFirstRunDone` · `ModuleIcon` · `OpenRgbPorts` · `PanelOutput` · `PauseVideo` · `PlaceModule` · `PlayVideo` · `PlayVisual` · `PreviewClip` · `PreviewSize` · `ProbeVideoDuration` · `ProvideApiTls` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `RefreshAutostart` · `RememberColor` · `RemoveModule` · `RenderAndSend` · `RenderDcStandalone` · `RenderLed` · `ResetDevice` · `ResolveOverlay` · `ResolveThemeDirectories` · `RestoreDeviceState` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `RunQuickstart` · `RunSetup` · `RunUpgrade` · `SaveTheme` · `ScanRgbLights` · `SeekVideo` · `SelectZone` · `SendColor` · `SendFrame` · `SendImage` · `SendScreencastFrame` · `SetAuraEffect` · `SetAuraLeds` · `SetBackground` · `SetBackgroundMode` · `SetBrightness` · `SetClockFormat` · `SetDateFormat` · `SetDeveloperMode` · `SetDiskDevice` · `SetFitMode` · `SetGameMode` · `SetGpuDevice` · `SetHddEnabled` · `SetInset` · `SetLanguage` · `SetLedBrightness` · `SetLedColor` · `SetLedColors` · `SetLedLoadSource` · `SetLedMode` · `SetLedTempSource` · `SetLedZoneBrightness` · `SetLedZoneColor` · `SetLedZoneMode` · `SetLedZoneSync` · `SetLedZoneSyncInterval` · `SetLedZoneSyncZones` · `SetLinkedColor` · `SetMaskPosition` · `SetMaskVisible` · `SetMediaPlayer` · `SetMemoryRatio` · `SetModuleEnabled` · `SetOrientation` · `SetOverlayBackground` · `SetOverlayConfig` · `SetPanelOutput` · `SetRamEffect` · `SetRamLighting` · `SetRefreshInterval` · `SetRgbFollow` · `SetScreencastRegion` · `SetSensorDashboard` · `SetSlideshow` · `SetSplitMode` · `SetTempUnit` · `SetTimeFormat` · `SetVisualCenter` · `SetVisualPicture` · `SetVisualSettings` · `SetWeekStart` · `ShowBackground` · `SleepDevice` · `StartScreencast` · `StopClipPreview` · `StopDaemon` · `StopScreencast` · `StopVideo` · `TickClipPreview` · `TickDisplay` · `TickGameMode` · `ToggleLed` · `ToggleVideo` · `UnlockModuleDevices` · `UpdateOverlayElement` · `UpdateStatus` · `UploadBootAnimation` · `UploadCustomMask` · `VideoStatus` · `VisualTile`
 
 ## CpuSource
 
@@ -154,7 +154,7 @@ name() -> str
 
 **You inherit (5):** `freq` · `power` · `temp` · `temp_label` · `usage`
 
-**Implementations (11):** `CpuSourceChain` · `HwinfoCpu` · `HwmonCpu` · `LhmCpu` · `MacosHidCpu` · `PawnioCpu` · `PowermetricsCpu` · `PsutilCpu` · `SmcCpu` · `SysctlCpu` · `WmiAcpiCpu`
+**Implementations (12):** `CpuSourceChain` · `HwinfoCpu` · `HwmonCpu` · `IOReportCpu` · `LhmCpu` · `MacosHidCpu` · `PawnioCpu` · `PowermetricsCpu` · `PsutilCpu` · `SmcCpu` · `SysctlCpu` · `WmiAcpiCpu`
 
 ## DataInstaller
 
@@ -282,7 +282,7 @@ A question.  Answers, and changes nothing.
 execute(app: 'App') -> R_co
 ```
 
-**Implementations (50):** `BrowseModules` · `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `ModuleIcon` · `OpenRgbPorts` · `PreviewSize` · `ProbeVideoDuration` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `ResolveOverlay` · `ResolveThemeDirectories` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `UpdateStatus` · `VideoStatus` · `VisualTile`
+**Implementations (51):** `BrowseModules` · `BuildPreview` · `CheckForUpdate` · `ControlCenterSnapshot` · `CurrentFrame` · `DaemonStatus` · `DeviceCanvas` · `DeviceConnectionIssues` · `DeviceState` · `GetAutostartStatus` · `GetFirstRunStatus` · `GetPaths` · `GetPlatformInfo` · `GetSensorDashboard` · `LcdSnapshot` · `LedSnapshot` · `ListCloudThemes` · `ListDevices` · `ListDiskSensors` · `ListDisks` · `ListFans` · `ListFonts` · `ListGpus` · `ListLanguages` · `ListLedModes` · `ListLedStyles` · `ListMasks` · `ListMemorySlots` · `ListModules` · `ListSensors` · `ListThemes` · `ListVisuals` · `ListWebThemes` · `ModuleIcon` · `OpenRgbPorts` · `PanelOutput` · `PreviewSize` · `ProbeVideoDuration` · `RamLighting` · `ReadModuleFolder` · `ReadSensors` · `RecentColors` · `ResolveOverlay` · `ResolveThemeDirectories` · `RgbFollow` · `RgbLights` · `RunDoctor` · `RunHealthCheck` · `UpdateStatus` · `VideoStatus` · `VisualTile`
 
 ## ReadingsPort
 
@@ -496,7 +496,7 @@ key() -> str
 name() -> str
 ```
 
-**Implementations (25):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SuperIoFan` · `SuperIoTemp` · `SysctlFan` · `WindowsDisk` · `WmiVideoControllerGpu`
+**Implementations (26):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `HwmonDisk` · `HwmonDram` · `HwmonFan` · `HwmonVoltage` · `IOReportGpu` · `IgclGpu` · `IntelGpu` · `LhmDisk` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `PsutilBoardTemp` · `SmcFan` · `SmcGpu` · `SuperIoFan` · `SuperIoTemp` · `SysctlFan` · `WindowsDisk` · `WmiVideoControllerGpu`
 
 ## Layer
 
@@ -875,7 +875,7 @@ name() -> str
 
 **You inherit (10):** `clock` · `fan` · `fan_rpm` · `hotspot` · `mem_temp` · `power` · `temp` · `usage` · `vram_total` · `vram_used`
 
-**Implementations (14):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `IgclGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
+**Implementations (15):** `AdlGpu` · `AmdGpu` · `D3dkmtGpu` · `GpuSourceChain` · `HwinfoGpu` · `IOReportGpu` · `IgclGpu` · `IntelGpu` · `LhmGpu` · `MacosHidGpu` · `NouveauGpu` · `NvidiaGpu` · `PowermetricsGpu` · `SmcGpu` · `WmiVideoControllerGpu`
 
 ## HotplugMonitor
 

@@ -31,9 +31,11 @@ from ...core.commands import (
     GetPlatformInfo,
     ListModules,
     MarkFirstRunDone,
+    PanelOutput,
     RefreshAutostart,
     SetBackground,
     SetMediaPlayer,
+    SetPanelOutput,
 )
 from ...core.logs import per_frame
 from ...core.models import MediaKind
@@ -204,7 +206,24 @@ class MainWindow(QMainWindow):
             # instead of ``app.platform``, which an AppProxy does not have.
             icon=icon,
         )
-        self._tray.install()
+        self._tray.set_display_handler(self._set_lcd_display)
+        shown = self._app.dispatch(PanelOutput())
+        self._tray.install(display_on=shown.enabled)
+        self._bus.panel_output_changed.connect(self._on_lcd_display, type=qconn)
+
+    def _set_lcd_display(self, enabled: bool) -> None:
+        """Tray check: show the saved picture, or blank the panel and hold it."""
+        log.info("_set_lcd_display: %s", enabled)
+        result = self._app.dispatch(SetPanelOutput(enabled=enabled))
+        if not result.ok:
+            log.warning("_set_lcd_display: %s", result.message)
+        self._tray.show_lcd_display(result.enabled)
+
+    def _on_lcd_display(self, event: object) -> None:
+        """Another window, or this one's own command, moved the switch."""
+        enabled = bool(getattr(event, "enabled", True))
+        log.info("_on_lcd_display: %s", enabled)
+        self._tray.show_lcd_display(enabled)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._tray.intercept_close(event):

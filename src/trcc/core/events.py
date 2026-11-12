@@ -570,6 +570,13 @@ class SystemResumed(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class PanelOutputChanged(Event):
+    """The LCD picture was turned on or off.  The App stays up either way —
+    this is the tray's switch, not ``trcc kill``."""
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class AppStopping(Event):
     """The App is stopping ON PURPOSE -- ``trcc kill``, SIGTERM, or a newer
     version replacing it.  Quitting TRCC quits every open UI.

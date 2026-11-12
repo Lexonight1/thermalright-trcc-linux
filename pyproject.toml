@@ -92,12 +92,15 @@ dependencies = [
     # pip-channel install where the card was present but the reader was never
     # importable because the [nvidia] extra wasn't pulled.
     "nvidia-ml-py>=11.0.0",
-    # HID output-report transport (hidapi/hidraw).  A core Linux dependency, not
-    # an extra: some firmware only accepts frames as HID output reports and
-    # ignores libusb bulk writes entirely — the Frozen Warframe SE bcdDevice
-    # 4.07 is blank without it (#228).  Off the Windows path (libusb serves the
-    # HID panels there); Linux selects it per-fingerprint via DeviceQuirks.
-    "hidapi>=0.14.0; sys_platform == 'linux'",
+    # HID output-report transport (hidapi).  A core dependency on Linux and
+    # macOS, not an extra: some firmware only accepts frames as HID output
+    # reports and ignores libusb bulk writes entirely — the Frozen Warframe
+    # SE bcdDevice 4.07 is blank without it (#228).  On macOS that same
+    # firmware is also the path that does not need root: libusb cannot
+    # capture the device without it, and hidapi opens the HID interface as
+    # the logged-in user.  Off the Windows path (libusb serves the HID
+    # panels there).
+    "hidapi>=0.14.0; sys_platform == 'linux' or sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

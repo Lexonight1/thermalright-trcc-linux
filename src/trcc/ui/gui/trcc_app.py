@@ -48,11 +48,13 @@ from ...core.commands import (
     ListGpus,
     ListLanguages,
     ListModules,
+    PanelOutput,
     ProbeVideoDuration,
     ReadSensors,
     SetGpuDevice,
     SetHddEnabled,
     SetLanguage,
+    SetPanelOutput,
     SetRefreshInterval,
 )
 from ...core.events import (
@@ -214,12 +216,6 @@ class TRCCApp(QMainWindow):
         # settings.active_gpu) — no GUI-local hook needed.
         self._decorated = decorated
         self._drag_pos: Any = None
-        # System tray (shared TrayController): a window-close hides to the
-        # tray and keeps the LCD running; Exit quits.  ``install()`` runs below.
-        _tray_icon = Path(__file__).resolve().parents[2] / 'assets' / 'icons' / 'trcc.png'
-        self._tray = TrayController(
-            self, icon=QIcon(str(_tray_icon)) if _tray_icon.exists() else QIcon(),
-        )
         self._data_dir = Path(platform_info.user_content_dir)
 
         self.setWindowTitle("TRCC-Linux - Thermalright LCD Control Center")
@@ -308,8 +304,7 @@ class TRCCApp(QMainWindow):
         self.uc_about._autostart = autostart_state
         self.uc_about.startup_btn.setChecked(autostart_state)
 
-        # System tray — controller built above; show it now.
-        self._tray.install()
+        self._install_tray(qconn)
 
         # Raise-existing-window (second launch) — see ``raise_requested``.
         # QueuedConnection: the emit comes from SingleInstance's accept thread,
@@ -318,6 +313,37 @@ class TRCCApp(QMainWindow):
             self._on_raise_requested,
             type=Qt.ConnectionType.QueuedConnection,
         )
+
+    def _install_tray(self, qconn: Qt.ConnectionType) -> None:
+        """Build the tray and show the App's current LCD switch.
+
+        A window-close hides to the tray and keeps the LCD running; Exit
+        quits.  The check is the App's, so a second window opens agreeing
+        with the first.
+        """
+        icon_path = Path(__file__).resolve().parents[2] / 'assets' / 'icons' / 'trcc.png'
+        self._tray = TrayController(
+            self, icon=QIcon(str(icon_path)) if icon_path.exists() else QIcon(),
+        )
+        self._tray.set_display_handler(self._set_lcd_display)
+        shown = self._app.dispatch(PanelOutput())
+        log.info("_install_tray: display_on=%s", shown.enabled)
+        self._tray.install(display_on=shown.enabled)
+        self._bus.panel_output_changed.connect(self._on_lcd_display, type=qconn)
+
+    def _set_lcd_display(self, enabled: bool) -> None:
+        """Tray check: show the saved picture, or blank the panel and hold it."""
+        log.info("_set_lcd_display: %s", enabled)
+        result = self._app.dispatch(SetPanelOutput(enabled=enabled))
+        if not result.ok:
+            log.warning("_set_lcd_display: %s", result.message)
+        self._tray.show_lcd_display(result.enabled)
+
+    def _on_lcd_display(self, event: object) -> None:
+        """Another window, or this one's own command, moved the switch."""
+        enabled = bool(getattr(event, "enabled", True))
+        log.info("_on_lcd_display: %s", enabled)
+        self._tray.show_lcd_display(enabled)
 
     def _on_raise_requested(self) -> None:
         """Surface the window for a second ``trcc gui`` launch.
