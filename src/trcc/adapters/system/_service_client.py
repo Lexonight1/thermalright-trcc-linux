@@ -169,8 +169,14 @@ class ServiceSuperIo:
             self._client = connect_service()
         try:
             reply, _ = self._client.call({"op": "superio.sample"})
-        except OSError:
-            # Gone or refused: the next tick connects afresh.
+        except OSError as e:
+            if isinstance(e, ServiceError) and not e.gone:
+                # The service answered -- the hardware there failed, a busy
+                # ISA bus most often: the connection is fine, keep it.
+                frame_log.debug("ServiceSuperIo.sample: answered no -- %s", e)
+                raise
+            # Gone: the next tick connects afresh.
+            log.debug("ServiceSuperIo.sample: connection lost -- %s", e)
             self._client.close()
             self._client = None
             raise

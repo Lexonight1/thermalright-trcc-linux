@@ -14,6 +14,7 @@ from contextlib import contextmanager, nullcontext
 import pytest
 
 from trcc.adapters.sensors._pawnio import (
+    BUS_BUSY,
     IOCTL_EXECUTE,
     IOCTL_LOAD,
     PawnIoError,
@@ -247,3 +248,73 @@ def test_doctor_never_ends_on_an_empty_reason(monkeypatch) -> None:
     assert result.message == ("No CPU temperature or power from PawnIO: PawnIO "
                               "reads the CPU, but its package temperature is "
                               "not valid yet")
+
+
+# ── #340: another monitor holding Access_PCI ─────────────────────────────────
+
+_BUSY = PawnIoError(BUS_BUSY, "the PCI bus is busy -- another monitor holds "
+                              "Global\\Access_PCI")
+
+
+def _amd_with_a_bus(device: _FakePawnIo, busy: list[bool]) -> PawnioCpu:
+    """An AMD CPU whose ``Access_PCI`` another monitor holds while *busy[0]*."""
+    @contextmanager
+    def bus() -> Iterator[None]:
+        if busy[0]:
+            raise _BUSY
+        yield
+
+    return PawnioCpu(
+        open_module=lambda file: PawnIoModule(file.encode(), name=file,
+                                              device=device),
+        pci_bus=lambda: bus)
+
+
+def test_a_busy_pci_bus_keeps_the_last_tctl_and_a_free_one_reads_again() -> None:
+    """#340: the temperature blinked off for every tick another monitor held
+    the bus.  LibreHardwareMonitor keeps the value it had; so does TRCC, for as
+    long as the bus stays busy -- any limit would be a blink.
+
+    MUTATION CHECK: ``return package.temp()`` in PawnioCpu.temp -> [None] * 25."""
+    device, busy = _FakePawnIo("AMDFamily17.bin", RYZEN), [False]
+    cpu = _amd_with_a_bus(device, busy)
+    assert cpu.temp() == 55.0
+    busy[0] = True
+    device.registers[("ioctl_read_smn", 0x59800)] = 600 << 21      # 75 degC
+    assert [cpu.temp() for _ in range(25)] == [55.0] * 25
+    busy[0] = False
+    assert cpu.temp() == 75.0
+
+
+def test_a_monitor_that_keeps_the_bus_is_named_once(caplog) -> None:
+    """A report must show a monitor that never lets go -- once, not per tick.
+
+    MUTATION CHECK: ``busy >= self.WARN_AFTER`` in HeldThroughBusy.read -> 16."""
+    device, busy = _FakePawnIo("AMDFamily17.bin", RYZEN), [False]
+    cpu = _amd_with_a_bus(device, busy)
+    cpu.temp()
+    busy[0] = True
+    with caplog.at_level(logging.WARNING, logger="trcc.adapters.sensors._pawnio"):
+        for _ in range(25):
+            cpu.temp()
+    assert [r.getMessage() for r in caplog.records] == [
+        "PawnioCpu.temp: 10 busy reads in a row -- the PCI bus is busy -- another "
+        "monitor holds Global\\Access_PCI; showing the last reading until it is free"]
+
+
+def test_a_busy_bus_before_any_reading_is_no_reading() -> None:
+    """Nothing read yet means nothing to hold: the chain falls through."""
+    cpu = _amd_with_a_bus(_FakePawnIo("AMDFamily17.bin", RYZEN), [True])
+    assert cpu.temp() is None
+
+
+def test_a_refused_read_after_a_good_one_is_still_no_reading() -> None:
+    """Only a busy bus is held through.  A driver that refuses the register
+    has no reading to give, and saying the old one would be a lie.
+
+    MUTATION CHECK: hold every OSError in HeldThroughBusy.read -> 55.0."""
+    device, busy = _FakePawnIo("AMDFamily17.bin", RYZEN), [False]
+    cpu = _amd_with_a_bus(device, busy)
+    assert cpu.temp() == 55.0
+    device.fail_reads = True
+    assert cpu.temp() is None

@@ -42,7 +42,7 @@ from ._cpu_registers import (
     intel_package_temp,
     intel_tjmax,
 )
-from ._pawnio import PawnIoError, PawnIoModule, PciBusLock
+from ._pawnio import HeldThroughBusy, PawnIoError, PawnIoModule, PciBusLock
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -157,6 +157,8 @@ class PawnioCpu(CpuSource):
         self._pci_bus = pci_bus
         self._package: _IntelPackage | _AmdPackage | None = None
         self._settled = False
+        #: The AMD Tctl read waits on ``Access_PCI`` (#340).
+        self._temp: HeldThroughBusy[float | None] = HeldThroughBusy("PawnioCpu.temp")
         #: Why there is no reading -- for ``trcc doctor``; empty when there is.
         self.reason = ""
 
@@ -219,7 +221,7 @@ class PawnioCpu(CpuSource):
         if package is None:
             return None
         try:
-            return package.temp()
+            return self._temp.read(package.temp)
         except PawnIoError:
             recurring_failure(log, "PawnioCpu.temp: read failed")
             return None

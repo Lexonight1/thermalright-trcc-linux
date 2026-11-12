@@ -15,8 +15,9 @@ from typing import Any
 import pytest
 
 from trcc.adapters.device.scsi_lcd import ScsiLcd
-from trcc.adapters.sensors._pawnio import PawnIoModule
+from trcc.adapters.sensors._pawnio import BUS_BUSY, PawnIoError, PawnIoModule
 from trcc.adapters.sensors._pawnio_cpu import PawnioCpu
+from trcc.adapters.sensors._superio import SuperIoBoard
 from trcc.adapters.system import _service_client
 from trcc.adapters.system._service_broker import (
     PrivilegedBroker,
@@ -26,6 +27,7 @@ from trcc.adapters.system._service_broker import (
 from trcc.adapters.system._service_client import (
     NOT_RUNNING,
     ServiceScsiTransport,
+    ServiceSuperIo,
     open_service_module,
 )
 from trcc.core.errors import TransportError
@@ -228,3 +230,48 @@ class _Null:
 
     def __exit__(self, *exc: object) -> None:
         return None
+
+
+class _BusyBoard:
+    """The service's Super I/O reader: one good sample, then a held ISA bus."""
+
+    SAMPLE = {"chips": [{"slot": 0, "chip": "NCT6798D", "fans": [1250],
+                         "temps": {"SYSTIN": 34}}]}
+
+    def __init__(self, opened: list[int]) -> None:
+        opened.append(1)
+        self.calls = 0
+
+    def sample(self) -> dict[str, Any]:
+        self.calls += 1
+        if self.calls > 1:
+            raise PawnIoError(BUS_BUSY, "the ISA bus is busy -- another "
+                                        "monitor holds Global\\Access_ISABUS.HTP.Method")
+        return self.SAMPLE
+
+    def close(self) -> None:
+        pass
+
+
+def test_a_busy_isa_bus_in_the_service_keeps_the_connection_and_the_fans(
+        monkeypatch) -> None:
+    """#340 across the pipe.  The busy code must survive the service for the
+    board to hold its last sample, and the client must not hang up on an
+    answer: every reconnect opened a new reader in the service, which finds the
+    chip again -- keying a Super I/O once per busy tick.
+
+    MUTATION CHECK: drop the ``not e.gone`` branch in ServiceSuperIo.sample ->
+    opened == [1, 1] over 2 sockets (measured): the busy tick hangs up, and the
+    next one opens a second reader, whose first sample is good."""
+    opened: list[int] = []
+    service = _Service(PrivilegedBroker(
+        version="t", find_drive=lambda v, p, u: None, open_scsi=lambda p: None,
+        open_module=lambda name: None, open_superio=lambda: _BusyBoard(opened)))
+    monkeypatch.setattr(_service_client, "connect_service", service.connect)
+    now = [0.0]
+    board = SuperIoBoard(ServiceSuperIo().sample, clock=lambda: now[0])
+    seen = []
+    for t in (0.0, 1.0, 2.0):
+        now[0] = t
+        seen.append(board.latest())
+    assert (seen, opened, len(service.sockets)) == ([_BusyBoard.SAMPLE] * 3, [1], 1)

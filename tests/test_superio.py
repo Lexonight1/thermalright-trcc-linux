@@ -22,7 +22,8 @@ import pytest
 
 from trcc.adapters.sensors import _superio as sio
 from trcc.adapters.sensors import windows as win
-from trcc.adapters.system._service_broker import PrivilegedBroker, Session
+from trcc.adapters.sensors._pawnio import BUS_BUSY, PawnIoError
+from trcc.adapters.system._service_broker import PrivilegedBroker, ServiceError, Session
 
 _BASE = 0x290
 
@@ -312,11 +313,62 @@ def test_no_reader_or_no_chip_is_no_sources() -> None:
     assert sio.discover_superio(_reader(_FakeChip(slot_ids={})).sample) == ([], [])
 
 
-def test_a_busy_bus_is_a_tick_without_readings() -> None:
+def test_a_busy_bus_before_any_sample_is_a_tick_without_readings() -> None:
     def busy() -> dict[str, Any]:
-        raise OSError("the ISA bus is busy")
+        raise PawnIoError(BUS_BUSY, "the ISA bus is busy")
 
     assert sio.SuperIoBoard(busy).latest() == {}
+
+
+_SAMPLE = {"chips": [{"slot": 0, "chip": "NCT6798D", "fans": [1250, 0, 0, 640],
+                      "temps": {"SYSTIN": 34}}]}
+
+
+def _board(sample: Any) -> tuple[sio.SuperIoBoard, list[float]]:
+    """A board on a clock the test moves -- every move past the TTL samples."""
+    now = [0.0]
+    return sio.SuperIoBoard(sample, clock=lambda: now[0]), now
+
+
+@pytest.mark.parametrize("busy", [
+    PawnIoError(BUS_BUSY, "the ISA bus is busy"),
+    ServiceError("the ISA bus is busy", BUS_BUSY),          # across the service
+], ids=["direct", "service"])
+def test_a_busy_bus_after_a_sample_keeps_that_sample(busy: OSError) -> None:
+    """#340's other half: every fan and board input blinked off with it.
+
+    MUTATION CHECK: ``self._latest = self._sample()`` in SuperIoBoard.latest."""
+    answers: list[Any] = [_SAMPLE, busy, busy]
+
+    def sample() -> dict[str, Any]:
+        answer = answers.pop(0)
+        if isinstance(answer, OSError):
+            raise answer
+        return answer
+
+    board, now = _board(sample)
+    seen = []
+    for t in (0.0, 1.0, 2.0):
+        now[0] = t
+        seen.append(board.latest())
+    assert seen == [_SAMPLE] * 3
+
+
+def test_a_lost_service_after_a_sample_is_no_readings() -> None:
+    """A failure that is not a busy bus -- the service gone -- empties the
+    board as before: there is no reading to hold."""
+    answers: list[Any] = [_SAMPLE, OSError("the service is gone")]
+
+    def sample() -> dict[str, Any]:
+        answer = answers.pop(0)
+        if isinstance(answer, OSError):
+            raise answer
+        return answer
+
+    board, now = _board(sample)
+    assert board.latest() == _SAMPLE
+    now[0] = 1.0
+    assert board.latest() == {}
 
 
 # ── ITE ──────────────────────────────────────────────────────────────────────

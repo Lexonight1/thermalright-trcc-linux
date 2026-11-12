@@ -52,6 +52,7 @@ from ...core.ports import BoardTempSource, FanSource
 from ._nct668x import CHIPS as NCT668X_CHIPS
 from ._nct668x import ID_MASK as NCT668X_ID_MASK
 from ._nct668x import Nct668xMonitor
+from ._pawnio import HeldThroughBusy
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
@@ -740,6 +741,8 @@ class SuperIoBoard:
         self._lock = threading.Lock()
         self._at = -1e9
         self._latest: dict[str, Any] = {}
+        #: The ISA bus another monitor holds keeps the last sample (#340).
+        self._held: HeldThroughBusy[dict[str, Any]] = HeldThroughBusy("SuperIoBoard")
 
     def latest(self) -> dict[str, Any]:
         with self._lock:
@@ -747,10 +750,10 @@ class SuperIoBoard:
             if now - self._at >= _SAMPLE_TTL_S:
                 self._at = now
                 try:
-                    self._latest = self._sample()
+                    self._latest = self._held.read(self._sample)
                 except OSError as e:
-                    # The bus busy past its wait, or the service gone: this
-                    # tick has no board readings; the next one asks again.
+                    # The service gone, or the bus busy before any sample:
+                    # this tick has no board readings; the next one asks again.
                     frame_log.debug("SuperIoBoard.latest: %s", e)
                     self._latest = {}
             latest = self._latest

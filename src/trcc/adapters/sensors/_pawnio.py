@@ -35,10 +35,11 @@ from __future__ import annotations
 import logging
 import struct
 import sys
+import threading
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 from ...core.logs import per_frame
 
@@ -263,6 +264,11 @@ class PawnIoModule:
         self.close()
 
 
+#: ``WAIT_TIMEOUT``: another monitor held the bus past TRCC's wait.  The code a
+#: :class:`PawnIoError` carries for it, here or across TRCC's service.
+BUS_BUSY = 0x102
+
+
 class _BusLock:
     """A named mutex monitoring tools hold around one bus, so two of them never
     interleave an index/data pair on it.  LibreHardwareMonitor, HWiNFO and
@@ -272,7 +278,6 @@ class _BusLock:
     NAME: ClassVar[str]
     WAIT_MS: ClassVar[int]
     BUS: ClassVar[str]
-    _WAIT_TIMEOUT = 0x102
 
     _k32: Any                       # set in __init__ behind a sys.platform gate
     _handle: Any
@@ -302,8 +307,8 @@ class _BusLock:
         it past the wait, so this tick skips rather than interleaves."""
         frame_log.debug("%s.held: waiting %d ms", type(self).__name__, self.WAIT_MS)
         if self._k32.WaitForSingleObject(self._handle,
-                                         self.WAIT_MS) == self._WAIT_TIMEOUT:
-            raise PawnIoError(self._WAIT_TIMEOUT,
+                                         self.WAIT_MS) == BUS_BUSY:
+            raise PawnIoError(BUS_BUSY,
                               f"the {self.BUS} is busy -- another monitor holds "
                               f"{self.NAME}")
         try:
@@ -330,3 +335,69 @@ class IsaBusLock(_BusLock):
     NAME = "Global\\Access_ISABUS.HTP.Method"
     WAIT_MS = 100
     BUS = "ISA bus"
+
+
+def bus_busy(error: OSError) -> bool:
+    """Whether *error* is a bus another monitor held past the wait -- raised
+    here, or reported by TRCC's service, which carries the same code."""
+    busy = getattr(error, "code", None) == BUS_BUSY
+    frame_log.debug("bus_busy: %s -> %s", error, busy)
+    return busy
+
+
+T = TypeVar("T")
+
+
+class HeldThroughBusy(Generic[T]):
+    """The last good reading, answered again while another monitor holds the bus.
+
+    LibreHardwareMonitor skips a read when ``WaitPciBus(10)`` times out, and its
+    sensor keeps the value it had (``Amd17Cpu.cs``).  TRCC answered nothing, so
+    the panel's CPU temperature blinked off for a tick whenever another monitor
+    held ``Access_PCI`` (#340).  Only a busy bus is held through: any other
+    failure still raises, because then the reading really is gone -- and so does
+    a busy bus before any read has succeeded, when there is nothing to hold.
+
+    No limit on how long: a limit is a blink, sooner or later.  A monitor that
+    keeps the bus for :attr:`WARN_AFTER` reads in a row is named once, at
+    WARNING, so a report shows it.  The poll thread and ``discover()`` read the
+    same source, hence the lock.
+    """
+
+    WARN_AFTER = 10
+
+    def __init__(self, what: str) -> None:
+        log.debug("HeldThroughBusy.__init__: %s", what)
+        self._what = what
+        #: The last reading, boxed: None means none yet, not a None reading.
+        self._last: tuple[T] | None = None
+        self._busy = 0
+        self._lock = threading.Lock()
+
+    def read(self, read: Callable[[], T]) -> T:
+        """*read*'s answer -- or, while the bus is busy, the last one it gave."""
+        try:
+            value = read()
+        except OSError as e:
+            if not bus_busy(e):
+                raise
+            with self._lock:
+                self._busy += 1
+                busy, last = self._busy, self._last
+            if busy == self.WARN_AFTER:
+                log.warning("%s: %d busy reads in a row -- %s; showing the last "
+                            "reading until it is free", self._what, busy, e)
+            if last is None:
+                frame_log.debug("%s: busy before any reading -- nothing to hold",
+                                self._what)
+                raise
+            frame_log.debug("%s: busy (%d in a row) -- holding %s", self._what,
+                            busy, last[0])
+            return last[0]
+        with self._lock:
+            freed, self._busy = self._busy, 0
+            self._last = (value,)
+        if freed >= self.WARN_AFTER:
+            log.info("%s: bus free again after %d busy reads", self._what, freed)
+        frame_log.debug("%s: read %s", self._what, value)
+        return value
