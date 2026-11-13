@@ -10,6 +10,7 @@ import pytest
 
 from trcc.app import App
 from trcc.core.commands import ConnectDevice, DeviceConnectionIssues
+from trcc.core.errors import DeviceNotFoundError
 from trcc.core.results import ConnectResult
 from trcc.ui._errors import format_device_error
 
@@ -23,10 +24,14 @@ def test_note_clear_and_query(fake_platform) -> None:
     assert app.connection_issues() == []
 
 
+def _not_found(*_args: object, **_kwargs: object) -> None:
+    raise DeviceNotFoundError("no such product")
+
+
 def test_detach_clears_issue(fake_platform) -> None:
     app = App(fake_platform)
-    app.note_connect_issue(ConnectResult(ok=False, key="dead:beef", message="x"))
-    app.detach("dead:beef")
+    app.note_connect_issue(ConnectResult(ok=False, key="87cd:70db", message="x"))
+    app.detach("87cd:70db")
     assert app.connection_issues() == []
 
 
@@ -36,13 +41,15 @@ def test_connect_failure_recorded_and_queryable(
     app = App(fake_platform)
     monkeypatch.setattr(app.platform, "check_permissions", lambda: ["NEEDS-X"])
 
-    # Unknown key → attach raises DeviceNotFoundError → recorded.
-    app.dispatch(ConnectDevice(key="dead:beef"))
+    # attach raises DeviceNotFoundError → recorded.  An unknown key no longer
+    # reaches attach (Settings refuses it first), so force it.
+    monkeypatch.setattr(app, "attach", _not_found)
+    app.dispatch(ConnectDevice(key="87cd:70db"))
 
     result = app.dispatch(DeviceConnectionIssues())
     assert result.ok is True
     assert len(result.issues) == 1
-    assert result.issues[0].key == "dead:beef"
+    assert result.issues[0].key == "87cd:70db"
     assert result.issues[0].hints == ["NEEDS-X"]
 
 

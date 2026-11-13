@@ -11,6 +11,7 @@ import pytest
 
 from trcc.app import App
 from trcc.core.commands import ConnectDevice
+from trcc.core.errors import DeviceNotFoundError
 from trcc.core.events import ErrorOccurred
 from trcc.core.results import ConnectResult
 
@@ -18,6 +19,10 @@ from trcc.core.results import ConnectResult
 def test_models_default_to_empty_hints() -> None:
     assert ErrorOccurred(message="x").hints == []
     assert ConnectResult(ok=False, key="k", message="m").hints == []
+
+
+def _not_found(*_args: object, **_kwargs: object) -> None:
+    raise DeviceNotFoundError("no such product")
 
 
 def test_connect_failure_carries_platform_hints(
@@ -30,8 +35,10 @@ def test_connect_failure_carries_platform_hints(
     captured: list[ErrorOccurred] = []
     app.events.subscribe(ErrorOccurred, captured.append)
 
-    # An unknown key → app.attach raises DeviceNotFoundError → the failure path.
-    result = app.dispatch(ConnectDevice(key="dead:beef"))
+    # attach raises DeviceNotFoundError → the failure path.  An unknown key
+    # no longer reaches attach (Settings refuses it first), so force it.
+    monkeypatch.setattr(app, "attach", _not_found)
+    result = app.dispatch(ConnectDevice(key="87cd:70db"))
 
     assert result.ok is False
     assert result.hints == ["NEEDS-ELEVATION"]          # sync channel

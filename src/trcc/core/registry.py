@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 
 from .logs import per_frame
-from .models import Kind, ProductInfo, Wire
+from .models import Kind, ProductInfo, Wire, is_device_key, parse_device_key
 
 log = logging.getLogger(__name__)
 # ``find_product`` is a dict lookup that a lost panel's video asks every frame
@@ -198,6 +198,19 @@ def find_product(vid: int, pid: int) -> ProductInfo | None:
     """Look up a product by VID/PID, or None if unknown."""
     frame_log.debug("find_product: vid=%04x pid=%04x", vid, pid)
     return ALL_DEVICES.get((vid, pid))
+
+
+def names_a_product(key: str) -> bool:
+    """Whether *key* is a device key whose vid:pid is a product TRCC drives.
+
+    The one answer to "is this a device?".  ``App.attach`` refused an unknown
+    vid:pid while Settings checked only the key's shape, so ``dead:beef``
+    typed into any UI got a brightness, an overlay and a theme saved for a
+    device that cannot exist -- and ``ok`` back from 34 Commands (2026-11-13).
+    """
+    found = is_device_key(key) and find_product(*parse_device_key(key)[:2]) is not None
+    frame_log.debug("names_a_product: %r -> %s", key, found)
+    return found
 
 
 def products_by_wire(wire: Wire) -> list[ProductInfo]:

@@ -246,7 +246,7 @@ def test_a_brand_new_key_still_seeds_from_the_global_formats(tmp_path) -> None:
     st = _settings(tmp_path)
     st.set_global_temp_unit("F")
 
-    fresh = st.for_device("dead:beef@1-9")
+    fresh = st.for_device("87cd:70db@1-9")
     assert fresh.temp_unit == "F"
 
 

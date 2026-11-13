@@ -90,20 +90,25 @@ def test_reset_cycles_the_device_and_restores_its_display(tmp_path) -> None:
     assert "restored" in result.message
 
 
+def _gone(*_args: object, **_kwargs: object) -> None:
+    from trcc.core.errors import TransportError
+    raise TransportError("the panel did not answer")
+
+
 def test_reset_reports_failure_when_the_device_does_not_come_back(
-    _trcc_app, fake_platform,
+    _trcc_app, fake_platform, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A device that cannot reconnect must NOT report a successful reset.
 
     The old command could not fail this way — it only detached — so a reset
-    that left nothing attached still said ok.  Driven with a stub device that
-    ``FakePlatform`` cannot re-attach, which is exactly that case.
+    that left nothing attached still said ok.  Driven with a stub device whose
+    re-attach fails, which is exactly that case.
     """
     from trcc.core.commands import ResetDevice
     from trcc.core.models import Kind, ProductInfo, Wire
 
     info = ProductInfo(
-        vid=0xdead, pid=0xbeef,
+        vid=0x87cd, pid=0x70db,
         vendor="Test", product="Stub",
         wire=Wire.BULK, kind=Kind.LCD,
         native_resolution=(320, 320),
@@ -120,12 +125,13 @@ def test_reset_reports_failure_when_the_device_does_not_come_back(
             self.is_connected = False
 
     _trcc_app.devices[info.key] = _StubDevice(info)
+    monkeypatch.setattr(_trcc_app, "attach", _gone)
 
-    result = _trcc_app.dispatch(ResetDevice(key="dead:beef"))
+    result = _trcc_app.dispatch(ResetDevice(key=info.key))
 
     assert result.ok is False
     assert "did not come back" in result.message
-    assert "dead:beef" not in _trcc_app.devices
+    assert info.key not in _trcc_app.devices
 
 
 def test_reset_device_when_not_attached(_trcc_app) -> None:

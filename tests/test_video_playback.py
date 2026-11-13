@@ -455,7 +455,7 @@ def test_stop_video_publishes_event_only_when_was_playing(
 
 def test_stop_video_idempotent_on_unattached_device(app: App) -> None:
     """StopVideo on an unattached device succeeds (no transport touched)."""
-    result = app.dispatch(StopVideo(key="dead:beef"))
+    result = app.dispatch(StopVideo(key="87cd:70db"))
     assert result.ok is True
 
 

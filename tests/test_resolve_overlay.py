@@ -169,10 +169,10 @@ def test_no_theme_is_ok_and_empty(app: App) -> None:
     assert layout.theme_name == ""
 
 
-def test_unknown_device_is_ok_not_a_failure(app: App) -> None:
+def test_an_unattached_device_is_ok_not_a_failure(app: App) -> None:
     """Overlay layout is a settings concern, not a device-attachment one —
     and ok=False escalates to WARNING on every poll."""
-    layout = app.dispatch(ResolveOverlay(key="dead:beef"))
+    layout = app.dispatch(ResolveOverlay(key="87cd:70db"))
 
     assert layout.ok
     assert layout.elements == []

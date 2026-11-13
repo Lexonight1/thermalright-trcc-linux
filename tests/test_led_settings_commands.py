@@ -385,7 +385,7 @@ def test_led_snapshot_reports_each_zones_own_state(tmp_path: Path) -> None:
     from trcc.core.led_models import LEDMode
 
     app = _app(tmp_path)
-    key = "0416:1234"
+    key = "0416:8001"
     # Zones must exist before one can be written — the setters range-check.
     app.settings.set_led_zone_count(key, 2)
     app.dispatch(SetLedZoneMode(key=key, zone=0, mode=LEDMode.BREATHING))
@@ -408,7 +408,7 @@ def test_led_snapshot_reports_the_carousel_mask(tmp_path: Path) -> None:
     from trcc.core.commands import LedSnapshot, SetLedZoneSyncZones
 
     app = _app(tmp_path)
-    key = "0416:1234"
+    key = "0416:8001"
     app.dispatch(SetLedZoneSyncZones(key=key, zones=(True, False, True)))
 
     snap = app.dispatch(LedSnapshot(key=key))
