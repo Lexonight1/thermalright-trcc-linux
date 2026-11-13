@@ -295,16 +295,6 @@ def persist_user_mask_dc(app: App, key: str) -> None:
         log.warning("persist_user_mask_dc: write failed (%s)", e)
 
 
-_UPGRADE_COMMANDS: dict[str, tuple[str, ...]] = {
-    "dnf":          ("sudo", "dnf", "upgrade", "-y", "trcc-linux"),
-    "apt":          ("sudo", "apt", "upgrade", "-y", "trcc-linux"),
-    "pacman":       ("sudo", "pacman", "-Syu", "--noconfirm", "trcc-linux"),
-    "zypper":       ("sudo", "zypper", "update", "-y", "trcc-linux"),
-    "xbps-install": ("sudo", "xbps-install", "-u", "trcc-linux"),
-    "apk":          ("sudo", "apk", "upgrade", "trcc-linux"),
-}
-
-
 def _require_connected_device(app: App, key: str, *, level: int) -> Any:
     """Fetch a connected device by key, or raise.
 
