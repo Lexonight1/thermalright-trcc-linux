@@ -820,6 +820,49 @@ def pytest_runtest_call(item: pytest.Item) -> Iterator[None]:
     return result
 
 
+#: The real clock, taken at import: tests script ``time.monotonic``.
+_MONOTONIC = __import__("time").monotonic
+#: How long a test's background work may take to settle after it.
+_SETTLE_S = 10.0
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item: pytest.Item) -> Iterator[None]:
+    """After pytest-qt's last event pass: this test's background work is done.
+
+    pytest-qt processes Qt events once more after every fixture has torn down
+    (``pytestqt/plugin.py``, ``pytest_runtest_teardown``).  An answer delivered
+    THERE can start new background work -- the Visualizer's tile chain did,
+    forever, under a refusal -- and no fixture is left to wait for it: it ran
+    during the NEXT test and logged into that test's capture (CI 3.14,
+    2026-11-12; reproduced 3 runs in 3).  ``_no_background_thread_outlives_
+    its_test`` cannot see it either: it is already running when the next test
+    takes its snapshot.
+
+    So, outermost: wait for the workers, deliver their answers, and again,
+    until nothing runs.  Work that never settles fails THIS test, by name,
+    instead of a random later one.  Only where Qt was loaded.
+    """
+    result = yield
+    background = sys.modules.get("trcc.ui.qt_background")
+    if background is None:
+        return result
+    from PySide6.QtCore import QCoreApplication
+
+    deadline = _MONOTONIC() + _SETTLE_S
+    running: list[str] = []
+    while _MONOTONIC() < deadline:
+        background.drain(max(0.0, deadline - _MONOTONIC()))
+        if (qt := QCoreApplication.instance()) is not None:
+            qt.processEvents()
+        with background._workers_lock:
+            running = sorted(w.name for w in background._workers)
+        if not running:
+            return result
+    pytest.fail(f"this test left background work that never settled in "
+                f"{_SETTLE_S:g} s: {running}", pytrace=False)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _home_is_never_the_real_one_at_any_scope(
     tmp_path_factory: pytest.TempPathFactory,
