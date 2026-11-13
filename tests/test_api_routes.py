@@ -128,9 +128,39 @@ def api_client(fake_platform: FakePlatform) -> Iterator[TestClient]:
 # =========================================================================
 
 
+def test_root_lists_exactly_the_routes_the_app_serves(
+    api_client: TestClient,
+) -> None:
+    """``GET /`` names every route the app serves, and nothing else.
+
+    Both directions, because each one caught a real drift: the list was
+    hand-written, named 28 of 165 routes, and two of the 28
+    (``/theme/export``, ``/theme/import``) did not exist.
+    """
+    from fastapi.routing import APIRoute, APIWebSocketRoute
+    from starlette.routing import Route
+
+    from trcc.ui.api.main import api_routes
+
+    # Not ``app.routes``: from FastAPI 0.141 it holds one pathless
+    # placeholder per included router, and the routers' routes are not there.
+    routes = api_routes(cast(FastAPI, api_client.app))
+    sockets = {("WS", r.path) for r in routes if isinstance(r, APIWebSocketRoute)}
+    api_routes = {(m, r.path) for r in routes if isinstance(r, APIRoute)
+                  for m in r.methods or ()}
+    # Any HTTP route at all -- FastAPI's own /docs and /openapi.json too.
+    any_route = {(m, r.path) for r in routes if isinstance(r, Route)
+                 for m in r.methods or ()}
+    listed = [tuple(e.split(maxsplit=1))
+              for e in api_client.get("/").json()["endpoints"]]
+    assert len(listed) == len(set(listed)), "an endpoint is listed twice"
+    assert set(listed) - any_route - sockets == set(), "listed, not served"
+    assert (api_routes | sockets) - set(listed) == set(), "served, not listed"
+
+
 def test_root_returns_endpoint_directory(api_client: TestClient) -> None:
-    """``GET /`` lists every documented endpoint — proves the app
-    constructs + every router included successfully."""
+    """``GET /`` answers with the API's name, version and the canonical
+    routes."""
     resp = api_client.get("/")
     assert resp.status_code == 200
     body = resp.json()

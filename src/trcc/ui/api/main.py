@@ -26,7 +26,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIWebSocketRoute
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Route
 
 from ...__version__ import __version__
 from ...core.commands import GetPaths
@@ -235,41 +237,28 @@ def pair_device(code: str) -> dict | JSONResponse:
     return {"success": True, "token": _api_token}
 
 
-def root() -> dict:
-    log.debug("root")
+def root(request: Request) -> dict:
+    """The API's name, version and every endpoint it serves.
+
+    Read from the app's own routes (:func:`api_routes`, not ``app.routes``,
+    which a FastAPI from 0.141 leaves without the routers' routes), so the
+    list cannot name a route that is not there or miss one that is.  It was
+    a hand-written list until 2026-11-13: 28 of 165 routes, two of which
+    (``/theme/export``, ``/theme/import``) did not exist."""
+    endpoints: list[str] = []
+    for route in api_routes(request.app):
+        if isinstance(route, APIWebSocketRoute):
+            endpoints.append(f"WS   {route.path}")
+        elif isinstance(route, Route):
+            # HEAD is Starlette's implicit twin of each GET.
+            endpoints.extend(f"{method:4} {route.path}"
+                             for method in sorted(route.methods or ())
+                             if method != "HEAD")
+    log.debug("root: %d endpoints", len(endpoints))
     return {
         "name": "TRCC API",
         "version": __version__,
-        "endpoints": [
-            "GET  /devices",
-            "POST /devices/{key}/connect",
-            "POST /devices/{key}/disconnect",
-            "POST /devices/{key}/display/orientation",
-            "POST /devices/{key}/display/brightness",
-            "POST /devices/{key}/display/theme",
-            "POST /devices/{key}/display/color",
-            "POST /devices/{key}/display/fit-mode",
-            "POST /devices/{key}/display/overlay",
-            "POST /devices/{key}/display/split-mode",
-            "POST /devices/{key}/display/mask",
-            "POST /devices/{key}/display/mask-position",
-            "POST /devices/{key}/display/mask-visible",
-            "POST /devices/{key}/display/play-video",
-            "POST /devices/{key}/display/stop-video",
-            "POST /devices/{key}/display/tick",
-            "POST /devices/{key}/led/colors",
-            "POST /devices/{key}/led/render",
-            "GET  /system/info",
-            "GET  /system/sensors",
-            "POST /system/setup",
-            "POST /config/temp-unit",
-            "POST /config/language",
-            "POST /config/gpu",
-            "POST /config/refresh-interval",
-            "POST /theme/save",
-            "POST /theme/export",
-            "POST /theme/import",
-        ],
+        "endpoints": endpoints,
     }
 
 

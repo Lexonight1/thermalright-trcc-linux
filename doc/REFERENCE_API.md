@@ -217,7 +217,7 @@ Interactive docs are served at `/docs` while the API is running.
 
 | Endpoint | Returns | Description |
 |---|---|---|
-| `GET /` | `dict` | — |
+| `GET /` | `dict` | The API's name, version and every endpoint it serves. |
 | `GET /health` | `dict` | Liveness probe — always reachable, no auth required. |
 | `POST /pair` | — | Exchange the terminal pairing code for the persistent API token. |
 
