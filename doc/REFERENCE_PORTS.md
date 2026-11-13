@@ -103,7 +103,7 @@ Ordered **cheapest to extend first** — the ports at the top are where this cod
 | [`BaseOS`](#baseos) | 12 | 19 | 8 |
 | [`Renderer`](#renderer) | 14 | 9 | 1 |
 | [`Platform`](#platform) | 25 | 11 | 8 |
-| [`ContentStore`](#contentstore) | 33 | 0 | 1 |
+| [`ContentStore`](#contentstore) | 34 | 0 | 1 |
 | [`ModuleServices`](#moduleservices) | 39 | 0 | 1 |
 
 ---
@@ -1731,7 +1731,7 @@ worker_thread_context() -> AbstractContextManager[None]
 
 Where themes, masks, backgrounds and capture configs are kept.
 
-**You implement (33):**
+**You implement (34):**
 
 ```python
 background_config(ref: 'str') -> dict[str, Any] | None
@@ -1751,6 +1751,7 @@ mask_path(theme: 'Theme') -> Path | None
 media_player_uri(theme: 'Theme') -> str | None
 module_background(theme: 'Theme') -> tuple[str, str, dict[str, Any]] | None
 move_theme(theme_dir: 'Path', into: 'Path') -> Path
+overlay_elements(path: 'Path') -> builtins.list[dict]
 preview_path(theme: 'Theme') -> Path | None
 resolve_ref(ref: 'str') -> Path | None
 screencast_region(theme: 'Theme') -> tuple[int, int, int, int, bool] | None

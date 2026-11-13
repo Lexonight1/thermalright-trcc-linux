@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -2487,34 +2488,99 @@ class LoadImage(Command[ThemeResult]):
             )
         return app.dispatch(LoadTheme(key=self.key, path=theme_dir))
 
+#: How one metric element is written in shorthand -- the CLI's ``--metric``.
+METRIC_SPEC_USAGE = (
+    "metric spec: 'metric_key:x,y[:color[:size]]' — e.g. "
+    "'cpu:temp:160,90:#ff8800:24'.  color defaults to '#ffffff', "
+    "size defaults to 16."
+)
+
+#: The coords field, and the only part of a metric spec shaped like this.
+#: Anchoring on it is what makes the parse work: a metric key is itself
+#: colon-namespaced (``cpu:temp``, ``gpu:0:temp``), so counting colons from
+#: either end cannot find the boundary.
+_COORDS_RE = re.compile(r"-?\d+\s*,\s*-?\d+")
+
+
+def metric_element(spec: str) -> dict[str, Any]:
+    """One metric overlay element from its shorthand; ``ValueError`` if bad.
+
+    Grammar: ``metric_key:x,y[:color[:size]]`` where **metric_key may contain
+    colons** — every real sensor key does (``cpu:temp``, ``gpu:0:temp``).
+
+    This used to ``split(":")`` and take ``parts[0]`` as the key, so
+    ``cpu:temp:160,90`` parsed the key as ``cpu`` and the coords as ``temp``.
+    That made ``--metric`` unusable with any actual sensor, including the
+    example printed in the command's own ``--help`` (#286).
+
+    Splitting from the right instead — the fix the reporter found — works only
+    when both optional fields are supplied; ``cpu:temp:160,90`` still breaks.
+    So the boundary is located by SHAPE: coords is the first field matching
+    ``x,y``, everything before it is the key, everything after is
+    ``[color[, size]]``.  That holds for any number of colons on either side.
+    """
+    log.debug("metric_element: spec=%s", spec)
+    parts = spec.split(":")
+    idx = next((i for i, part in enumerate(parts)
+                if _COORDS_RE.fullmatch(part.strip())), None)
+    if idx is None or idx == 0:
+        raise ValueError(f"Invalid metric spec {spec!r}; {METRIC_SPEC_USAGE}")
+    coords = parts[idx]
+    rest = parts[idx + 1:]
+    try:
+        x_str, y_str = coords.split(",")
+        x, y = int(x_str), int(y_str)
+    except (ValueError, IndexError) as e:
+        raise ValueError(
+            f"Invalid coords in {spec!r}; expected 'x,y' got {coords!r}") from e
+    color = rest[0] if rest else "#ffffff"
+    if color and not color.startswith("#"):
+        color = f"#{color}"
+    try:
+        size = int(rest[1]) if len(rest) >= 2 else 16
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid size in {spec!r}; expected int got {rest[1]!r}") from e
+    return {"type": "metric", "metric": ":".join(parts[:idx]),
+            "x": x, "y": y, "color": color, "size": size}
+
+
 @dataclass(frozen=True, slots=True)
 class CreateTheme(Command[CreateThemeResult]):
     """Show a background, with an optional mask and overlay, in one step.
 
     A picture becomes a one-image theme (``LoadImage``), so the panel starts
     clean.  A video plays over the CURRENT theme (``PlayVideo``), whose mask
-    and overlay stay unless *mask* or *elements* replace them.  Then the mask,
-    stored in the user's mask library under its file's name and shown
+    and overlay stay unless *mask* or the overlay replace them.  Then the
+    mask, stored in the user's mask library under its file's name and shown
     (``UploadCustomMask``), then the overlay (``SetOverlayConfig``,
-    ``EnableOverlay``).
+    ``EnableOverlay``): the *overlay* file's elements, then one per *metrics*
+    shorthand (:data:`METRIC_SPEC_USAGE`).  Neither leaves the overlay as it is.
 
-    The first step that refuses ends it, with that step's message; the steps
-    before it stay done.  Each step gates and connects its device itself, as
+    Every UI passes its inputs as given; they are read here, before the panel
+    changes, so bad input changes nothing.  After that the first step that
+    refuses ends it, with that step's message; the steps before it stay done.  Each step gates and connects its device itself, as
     it does when dispatched on its own.  ``reads`` names the given files the
     panel still reads, so a caller that staged them deletes only the rest.
     """
     key: str
     background: Path
     mask: Path | None = None
-    #: Overlay elements, each a flat dict as ``SetOverlayConfig`` takes them;
-    #: None leaves the overlay as it is.
-    elements: tuple[dict, ...] | None = None
+    #: A JSON file, ``{"elements": [...]}``, each a flat dict as
+    #: ``SetOverlayConfig`` takes them.
+    overlay: Path | None = None
+    #: Metric elements in shorthand, added after the file's.
+    metrics: tuple[str, ...] = ()
 
     def execute(self, app: App) -> CreateThemeResult:
-        log.info("CreateTheme: key=%s background=%s mask=%s elements=%s",
-                 self.key, self.background.name,
+        log.info("CreateTheme: key=%s background=%s mask=%s overlay=%s "
+                 "metrics=%s", self.key, self.background.name,
                  self.mask.name if self.mask else None,
-                 None if self.elements is None else len(self.elements))
+                 self.overlay.name if self.overlay else None, self.metrics)
+        try:
+            elements = self._layout(app)
+        except (ValueError, ThemeError) as e:
+            return self._failed(str(e), [])
         animated = MEDIA.kind_of(self.background) is MediaKind.ANIMATED
         reads: list[Path] = []
         shown = app.dispatch(
@@ -2529,9 +2595,9 @@ class CreateTheme(Command[CreateThemeResult]):
                                                    source=self.mask))
             if not masked.ok:
                 return self._failed(masked.message, reads)
-        if self.elements is not None:
+        if elements is not None:
             laid = app.dispatch(SetOverlayConfig(key=self.key,
-                                                 elements=self.elements))
+                                                 elements=elements))
             if not laid.ok:
                 return self._failed(laid.message, reads)
             app.dispatch(EnableOverlay(key=self.key, enabled=True))
@@ -2546,6 +2612,19 @@ class CreateTheme(Command[CreateThemeResult]):
             message=(f"Theme created from {self.background.name} "
                      f"({'video' if animated else 'image'}, {width}x{height})"),
         )
+
+    def _layout(self, app: App) -> tuple[dict, ...] | None:
+        """The overlay to set, or None to leave it; ``ValueError`` (a metric)
+        or ``ThemeError`` (the file) if bad."""
+        if self.overlay is None and not self.metrics:
+            log.debug("CreateTheme._layout: no overlay given")
+            return None
+        from_file = (app.themes.overlay_elements(self.overlay)
+                     if self.overlay is not None else [])
+        layout = (*from_file, *map(metric_element, self.metrics))
+        log.debug("CreateTheme._layout: %d from the file, %d metric(s)",
+                  len(from_file), len(self.metrics))
+        return layout
 
     def _failed(self, message: str, reads: list[Path]) -> CreateThemeResult:
         """A refused step's message, with the files the panel reads by then."""

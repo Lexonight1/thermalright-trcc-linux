@@ -6,6 +6,7 @@ the upload handling.  These pin what the Command reports, above all
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,13 @@ import pytest
 
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, CreateTheme, ListMasks, LoadImage
+from trcc.core.commands import (
+    ConnectDevice,
+    CreateTheme,
+    ListMasks,
+    LoadImage,
+    ResolveOverlay,
+)
 from trcc.ipc import decode_command, encode_command
 from trcc.services.media import MediaService, Playback
 
@@ -21,6 +28,12 @@ from .mock_platform import MockPlatform
 
 _KEY = "0402:3922"
 _TEXT = {"id": "t1", "type": "text", "x": 10, "y": 20, "text": "hi"}
+
+
+def _overlay_file(folder: Path, *elements: dict) -> Path:
+    path = folder / "overlay.json"
+    path.write_text(json.dumps({"elements": list(elements)}))
+    return path
 
 
 @pytest.fixture
@@ -80,13 +93,14 @@ def test_a_picture_is_copied_so_nothing_given_is_still_read(
 
 
 def test_a_video_mask_and_overlay_are_all_shown_and_kept(
-    panel: App, png: Path, themed_video: Path,
+    panel: App, png: Path, themed_video: Path, tmp_path: Path,
 ) -> None:
     """The mask goes to the user's mask library under its file's name, as a
     mask uploaded from any UI does, so the panel reads that copy -- and every
     GUI's mask browser lists it."""
     result = panel.dispatch(CreateTheme(key=_KEY, background=themed_video,
-                                        mask=png, elements=(_TEXT,)))
+                                        mask=png,
+                                        overlay=_overlay_file(tmp_path, _TEXT)))
 
     assert result.ok, result.message
     assert result.animated is True
@@ -112,20 +126,69 @@ def test_a_refused_mask_still_names_the_video_that_plays(
 
 
 def test_a_refused_overlay_ends_it_with_that_steps_message(
-    panel: App, png: Path,
+    panel: App, png: Path, tmp_path: Path,
 ) -> None:
     result = panel.dispatch(CreateTheme(
         key=_KEY, background=png, mask=png,
-        elements=({"id": "b", "type": "bogus"},)))
+        overlay=_overlay_file(tmp_path, {"id": "b", "type": "bogus"})))
 
     assert result.ok is False
     assert result.message == "Invalid element type 'bogus'"
     assert result.reads == ()
 
 
+def test_the_file_and_the_shorthand_make_one_overlay(
+    panel: App, png: Path, tmp_path: Path,
+) -> None:
+    """The file's elements first, then one per metric shorthand -- replacing
+    the layout, so nothing from before stays."""
+    result = panel.dispatch(CreateTheme(
+        key=_KEY, background=png, overlay=_overlay_file(tmp_path, _TEXT),
+        metrics=("cpu:temp:160,90:#ff8800:24", "gpu:0:temp:1,2")))
+
+    assert result.ok, result.message
+    shown = panel.dispatch(ResolveOverlay(key=_KEY)).elements
+    assert [(e.type, e.text, e.metric, e.x, e.y, e.color, e.size)
+            for e in shown] == [
+        ("text", "hi", "", 10, 20, "#ffffff", 16),
+        ("metric", "", "cpu:temp", 160, 90, "#ff8800", 24),
+        ("metric", "", "gpu:0:temp", 1, 2, "#ffffff", 16),
+    ]
+
+
+@pytest.mark.parametrize(("overlay", "metrics", "message"), [
+    (b"{nope", (), "invalid overlay JSON: Expecting property name enclosed in "
+                   "double quotes: line 1 column 2 (char 1)"),
+    (b"[]", (), "overlay JSON must be an object"),
+    (b'{"elements": 3}', (), "overlay JSON 'elements' must be a list of "
+                            "element dicts"),
+    (None, ("cpu:temp",), "Invalid metric spec 'cpu:temp'; metric spec: "
+                          "'metric_key:x,y[:color[:size]]' — e.g. "
+                          "'cpu:temp:160,90:#ff8800:24'.  color defaults to "
+                          "'#ffffff', size defaults to 16."),
+])
+def test_bad_overlay_input_is_refused_before_the_panel_changes(
+    panel: App, png: Path, tmp_path: Path,
+    overlay: bytes | None, metrics: tuple[str, ...], message: str,
+) -> None:
+    """Read first, then show: a typo in the overlay must not leave the panel
+    on a new background with the old overlay."""
+    path = None
+    if overlay is not None:
+        path = tmp_path / "overlay.json"
+        path.write_bytes(overlay)
+    before = panel.settings.for_device(_KEY).current_theme
+
+    result = panel.dispatch(CreateTheme(key=_KEY, background=png, overlay=path,
+                                        metrics=metrics))
+
+    assert (result.ok, result.message, result.reads) == (False, message, ())
+    assert panel.settings.for_device(_KEY).current_theme == before
+
+
 def test_it_crosses_the_socket_whole(tmp_path: Path) -> None:
-    """A Path, a None and a tuple of dicts all survive the IPC envelope."""
+    """Paths, a None and a tuple of strings all survive the IPC envelope."""
     sent = CreateTheme(key=_KEY, background=tmp_path / "bg.png", mask=None,
-                       elements=(_TEXT,))
+                       overlay=tmp_path / "o.json", metrics=("cpu:temp:1,2",))
 
     assert decode_command(encode_command(sent)) == sent

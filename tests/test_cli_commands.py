@@ -1711,22 +1711,21 @@ def test_metric_spec_keeps_colons_in_the_metric_key(
     as `cpu` and the coords as `temp` — making --metric unusable with every
     real sensor, the documented example included.
     """
-    from trcc.ui.cli.theme import _parse_metric_spec
+    from trcc.core.commands.theme import metric_element
 
-    assert _parse_metric_spec(spec) == {
-        "metric": metric, "x": x, "y": y, "color": color, "size": size,
+    assert metric_element(spec) == {
+        "type": "metric", "metric": metric, "x": x, "y": y, "color": color,
+        "size": size,
     }
 
 
 @pytest.mark.parametrize("spec", ["bogus", "cpu:temp", "cpu:temp:notcoords", ""])
 def test_metric_spec_still_rejects_garbage(spec: str) -> None:
     """Locating coords by shape must not make the parser accept anything."""
-    import typer
+    from trcc.core.commands.theme import metric_element
 
-    from trcc.ui.cli.theme import _parse_metric_spec
-
-    with pytest.raises(typer.BadParameter):
-        _parse_metric_spec(spec)
+    with pytest.raises(ValueError, match="Invalid metric spec"):
+        metric_element(spec)
 
 
 # ── #228 / #267: a one-shot command on a panel that blanks when frames stop ──

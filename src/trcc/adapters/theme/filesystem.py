@@ -389,6 +389,22 @@ class FileContentStore(ContentStore):
                  "name" if name is not None else "content", dest_dir, ref)
         return ref
 
+    def overlay_elements(self, path: Path) -> list[dict]:
+        log.debug("overlay_elements: %s", path.name)
+        try:
+            config = json.loads(path.read_bytes())
+        except OSError as e:
+            raise ThemeError(f"cannot read overlay {path.name}: {e}") from e
+        except ValueError as e:
+            raise ThemeError(f"invalid overlay JSON: {e}") from e
+        if not isinstance(config, dict):
+            raise ThemeError("overlay JSON must be an object")
+        elements = config.get("elements", [])
+        if not isinstance(elements, list):
+            raise ThemeError(
+                "overlay JSON 'elements' must be a list of element dicts")
+        return [e for e in elements if isinstance(e, dict)]
+
     def resolve_ref(self, ref: str) -> Path | None:
         """Resolve a ref minted by a ``store_*`` method back to a path."""
         log.debug("resolve_ref: %r", ref)

@@ -1,7 +1,6 @@
 """/devices/{key}/display router — orientation, brightness, theme."""
 from __future__ import annotations
 
-import json
 import logging
 import shutil
 import uuid
@@ -799,26 +798,6 @@ class _Staged:
         return path
 
 
-def _overlay_elements(overlay: UploadFile | None) -> tuple[dict, ...] | None:
-    """The ``elements`` of an uploaded overlay JSON; None when none was sent."""
-    if overlay is None or overlay.file is None:
-        log.debug("_overlay_elements: no overlay uploaded")
-        return None
-    try:
-        overlay_config = json.loads(overlay.file.read())
-    except (json.JSONDecodeError, ValueError) as e:
-        raise HTTPException(400, f"invalid overlay JSON: {e}") from e
-    if not isinstance(overlay_config, dict):
-        raise HTTPException(400, "overlay JSON must be an object")
-    raw_elements = overlay_config.get("elements", [])
-    if not isinstance(raw_elements, list):
-        raise HTTPException(
-            400, "overlay JSON 'elements' must be a list of element dicts")
-    elements = tuple(e for e in raw_elements if isinstance(e, dict))
-    log.debug("_overlay_elements: %d element(s)", len(elements))
-    return elements
-
-
 @router.post("/create-theme", response_model=CreateThemeResponse)
 async def create_theme(
     key: str,
@@ -882,11 +861,12 @@ async def create_theme(
                 )
             mask_path = staged.named(mask, mask_suffix, "mask")
 
-        overlay_elements = _overlay_elements(overlay)
+        overlay_path = (staged.file(overlay, ".json")
+                        if overlay is not None and overlay.file is not None
+                        else None)
 
         created = request.app.state.trcc.dispatch(CreateTheme(
-            key=key, background=bg_path, mask=mask_path,
-            elements=overlay_elements,
+            key=key, background=bg_path, mask=mask_path, overlay=overlay_path,
         ))
         reads = created.reads
         http_error_if_failed(created)

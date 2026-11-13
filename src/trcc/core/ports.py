@@ -1835,6 +1835,14 @@ class ContentStore(ABC):
         """
 
     @abstractmethod
+    def overlay_elements(self, path: Path) -> builtins.list[dict]:
+        """The elements of an overlay file a user gave, ``{"elements": [...]}``.
+
+        Entries that are not objects are skipped.  Raises ``ThemeError`` when
+        the file cannot be read or is not that shape.
+        """
+
+    @abstractmethod
     def is_theme_dir(self, path: Path) -> bool:
         """True iff *path* is a directory carrying a theme config.
 

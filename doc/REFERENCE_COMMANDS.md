@@ -717,7 +717,8 @@ Show a background, with an optional mask and overlay, in one step.
 | `key` | `str` | yes |
 | `background` | `Path` | yes |
 | `mask` | `Path | None` | no |
-| `elements` | `tuple[dict, Ellipsis] | None` | no |
+| `overlay` | `Path | None` | no |
+| `metrics` | `tuple[str, Ellipsis]` | no |
 
 ### `DeleteTheme`
 

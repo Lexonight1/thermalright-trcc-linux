@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import TypedDict
 
@@ -26,23 +25,10 @@ from ...core.commands import (
     SaveTheme,
     UploadCustomMask,
 )
+from ...core.commands.theme import METRIC_SPEC_USAGE, metric_element
 from ._ctx import DeviceKey, get_app, resolution_for
 
 log = logging.getLogger(__name__)
-
-_METRIC_USAGE = (
-    "metric spec: 'metric_key:x,y[:color[:size]]' — e.g. "
-    "'cpu:temp:160,90:#ff8800:24'.  color defaults to '#ffffff', "
-    "size defaults to 16."
-)
-
-
-#: The coords field, and the only part of a ``--metric`` spec shaped like this.
-#: Anchoring on it is what makes the parse work: a metric key is itself
-#: colon-namespaced (``cpu:temp``, ``gpu:0:temp``), so counting colons from
-#: either end cannot find the boundary.
-_COORDS_RE = re.compile(r"-?\d+\s*,\s*-?\d+")
-
 
 class _MetricSpec(TypedDict):
     """One ``--metric`` argument, as AddOverlayElement takes it."""
@@ -55,55 +41,15 @@ class _MetricSpec(TypedDict):
 
 
 def _parse_metric_spec(spec: str) -> _MetricSpec:
-    """Parse a ``--metric`` arg into kwargs for AddOverlayElement.
-
-    Grammar: ``metric_key:x,y[:color[:size]]`` where **metric_key may contain
-    colons** — every real sensor key does (``cpu:temp``, ``gpu:0:temp``).
-
-    This used to ``split(":")`` and take ``parts[0]`` as the key, so
-    ``cpu:temp:160,90`` parsed the key as ``cpu`` and the coords as ``temp``.
-    That made ``--metric`` unusable with any actual sensor, including the
-    example printed in the command's own ``--help`` (#286).
-
-    Splitting from the right instead — the fix the reporter found — works only
-    when both optional fields are supplied; ``cpu:temp:160,90`` still breaks.
-    So the boundary is located by SHAPE: coords is the first field matching
-    ``x,y``, everything before it is the key, everything after is
-    ``[color[, size]]``.  That holds for any number of colons on either side.
-    """
+    """A ``--metric`` arg as AddOverlayElement kwargs -- the grammar is the
+    App's (``metric_element``); a bad spec is a usage error here."""
     log.debug("_parse_metric_spec: spec=%s", spec)
-    parts = spec.split(":")
-    idx = next((i for i, part in enumerate(parts)
-                if _COORDS_RE.fullmatch(part.strip())), None)
-    if idx is None or idx == 0:
-        raise typer.BadParameter(
-            f"Invalid metric spec {spec!r}; {_METRIC_USAGE}",
-        )
-    metric_key = ":".join(parts[:idx])
-    coords = parts[idx]
-    rest = parts[idx + 1:]
     try:
-        x_str, y_str = coords.split(",")
-        x, y = int(x_str), int(y_str)
-    except (ValueError, IndexError) as e:
-        raise typer.BadParameter(
-            f"Invalid coords in {spec!r}; expected 'x,y' got {coords!r}",
-        ) from e
-    color = rest[0] if rest else "#ffffff"
-    if color and not color.startswith("#"):
-        color = f"#{color}"
-    try:
-        size = int(rest[1]) if len(rest) >= 2 else 16
+        element = metric_element(spec)
     except ValueError as e:
-        raise typer.BadParameter(
-            f"Invalid size in {spec!r}; expected int got {rest[1]!r}",
-        ) from e
-    return {
-        "metric": metric_key,
-        "x": x, "y": y,
-        "color": color,
-        "size": size,
-    }
+        raise typer.BadParameter(str(e)) from e
+    return {"metric": element["metric"], "x": element["x"], "y": element["y"],
+            "color": element["color"], "size": element["size"]}
 
 app = typer.Typer(
     help="Save / export / import themes.",
@@ -150,7 +96,7 @@ def create(
         help="Optional mask PNG to overlay (custom_<name>/01.png)",
     ),
     metric: list[str] = typer.Option(
-        [], "--metric", "-m", help=f"Overlay {_METRIC_USAGE}  Repeatable.",
+        [], "--metric", "-m", help=f"Overlay {METRIC_SPEC_USAGE}  Repeatable.",
     ),
 ) -> None:
     """One-shot theme builder: bg + optional mask + overlay metrics → save.
