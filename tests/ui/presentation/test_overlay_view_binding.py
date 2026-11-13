@@ -148,14 +148,13 @@ def test_the_weekday_tile_speaks_the_windows_language(qtbot, monkeypatch) -> Non
     from trcc.ui.settings_panel.overlay_grid import OverlayGridPanel
 
     asked: list[Any] = []
-    real = tile_module.format_metric
+    real = tile_module.compute_clock
 
-    def spy(metric: str, value: float, **kw: Any) -> str:
-        if metric == "weekday":
-            asked.append(kw.get("lang"))
-        return real(metric, value, **kw)
+    def spy(language: str = "en", **kw: Any) -> dict[str, str]:
+        asked.append(language)
+        return real(language, **kw)
 
-    monkeypatch.setattr(tile_module, "format_metric", spy)
+    monkeypatch.setattr(tile_module, "compute_clock", spy)
     grid = OverlayGridPanel(skin=gui_skin())
     qtbot.addWidget(grid)
     grid.add_element(OverlayElementConfig(mode=OverlayMode.WEEKDAY))

@@ -20,8 +20,10 @@ from ...core.models import (
     SUB_METRICS,
     OverlayElementConfig,
     OverlayMode,
-    format_metric,
 )
+from ...core.models import DATE_FORMATS as DATE_PATTERNS
+from ...core.models import TIME_FORMATS as TIME_PATTERNS
+from ...services._clock import clock_text, compute_clock
 from ..presentation.sensor_display import source_label
 from .settings_layout import (
     CELL_NAME_ROW,
@@ -110,6 +112,16 @@ class OverlayElementWidget(QWidget):
                   self.index, self._lang, lang)
         self._lang = lang
         self.update()
+
+    def _clock_text(self, source: str, pattern: str = "") -> str:
+        """What the panel draws for this clock tile, now: the panel's own rule
+        (:func:`clock_text`), in *pattern* and the window's language.
+
+        No pattern -- a format index the table lacks -- draws the default, as
+        the panel does for an element with no pattern of its own."""
+        frame_log.debug("_clock_text: index=%d %s %r lang=%s",
+                        self.index, source, pattern, self._lang)
+        return clock_text(source, pattern, compute_clock(self._lang))
 
     def set_selected(self, selected):
         # Logged on a CHANGE only: the grid re-applies every cell's state on
@@ -260,19 +272,19 @@ class OverlayElementWidget(QWidget):
             elif mode == OverlayMode.TIME:
                 # Windows: label1+label3 hidden, only label2 visible --
                 # the text the panel draws, so the two never disagree
-                text = format_metric("time", 0, time_format=self.config.mode_sub)
                 painter.setPen(QColor(color_str))
-                self._draw_value(painter, text)
+                self._draw_value(painter, self._clock_text(
+                    "time", TIME_PATTERNS.get(self.config.mode_sub, "")))
             elif mode == OverlayMode.DATE:
                 # Windows: label1+label3 hidden, only label2 visible
-                text = format_metric("date", 0, date_format=self.config.mode_sub)
                 painter.setPen(QColor(color_str))
-                self._draw_value(painter, text)
+                self._draw_value(painter, self._clock_text(
+                    "date", DATE_PATTERNS.get(self.config.mode_sub, "")))
             elif mode == OverlayMode.WEEKDAY:
                 # Windows: label1+label3 hidden, only label2 visible --
                 # the panel's weekday, in the window's language
                 painter.setPen(QColor(color_str))
-                self._draw_value(painter, format_metric("weekday", 0, lang=self._lang))
+                self._draw_value(painter, self._clock_text("weekday"))
             elif mode == OverlayMode.CUSTOM:
                 # Windows: label1+label3 hidden, label2.Text = myText
                 painter.setPen(QColor(color_str))

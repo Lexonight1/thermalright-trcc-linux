@@ -4,12 +4,12 @@
 how many methods a class carries and is therefore blind to what those methods
 CONTAIN: ``uc_led_control._setup_ui`` is **585 lines** and no gate in this repo
 had an opinion about it.  ``class_census`` also walks ``ClassDef`` only, so a
-module-level function is outside its scope entirely — and ``format_metric``
-(30 decisions) and ``ipc._coerce`` are both module-level.
+module-level function is outside its scope entirely — and ``ipc._coerce``
+(25 decisions) is module-level, as ``format_metric`` (30) was.
 
 **Two ratchets, because the axes are not substitutes.**  Measured 2026-09-19,
 five functions trip both; 22 are only long and 2 are only branchy.  A length
-gate cannot see ``format_metric`` at 70 lines with 30 decisions, and a decision
+gate could not see ``format_metric`` at 70 lines with 30 decisions, and a decision
 gate cannot see the 585-line builder with 16.  ``dev/tools/function_census.py``
 documents what counts as a decision and why a comprehension counts as its loop
 and nothing more.
@@ -100,7 +100,12 @@ MAX_LONG_FUNCTIONS = 2
 #: handshake so the Result's own defaults say "not asked yet".  Every field
 #: of 432 answers identical: all 144 catalogued variants, each unattached,
 #: attached and connected.
-MAX_BRANCHY_FUNCTIONS = 3
+#: 3 -> 2 on 2026-11-13: ``format_metric`` (30 decisions) deleted, not split.
+#: 26 of its decisions had no caller since #301 (2026-10-09) moved the tiles
+#: to ``services.overlay.metric_text``; the clock tiles now draw with the
+#: panel's own ``clock_text``.  36 tile grabs (17 tiles at two frozen moments)
+#: identical, every pixel.
+MAX_BRANCHY_FUNCTIONS = 2
 
 #: Passed explicitly so each gate's meaning lives HERE, not in the tool.
 LINE_THRESHOLD = 140
@@ -126,7 +131,8 @@ def test_no_new_branchy_functions() -> None:
         f"{len(found) - MAX_BRANCHY_FUNCTIONS} new function(s) at or over "
         f"{DECISION_THRESHOLD} decisions — every one is a path someone has to "
         "reason about and test.  If the branches are dispatching on a VALUE, "
-        "the fix is a table, not a helper (`format_metric` is that shape):\n"
+        "the fix is a table, not a helper -- but first ask whether every branch "
+        "still has a caller (`format_metric`'s 26 dead arms did not):\n"
         + "\n".join(f"  {f}" for f in found)
     )
 
@@ -232,7 +238,7 @@ def test_selftest_a_long_body_with_no_branches_is_caught(tmp_path: Path) -> None
 
 
 def test_selftest_a_short_dense_body_is_caught(tmp_path: Path) -> None:
-    """The ``format_metric`` shape: 70 lines, 30 decisions.
+    """The shape ``format_metric`` had: 70 lines, 30 decisions.
 
     The counterpart of the test above — a length gate alone cannot see it.
     """
@@ -246,8 +252,8 @@ def test_selftest_a_short_dense_body_is_caught(tmp_path: Path) -> None:
 def test_selftest_module_level_functions_are_weighed(tmp_path: Path) -> None:
     """``class_census`` walks ClassDef and cannot see these at all.
 
-    ``format_metric`` and ``ipc._coerce`` are both module-level, and both are
-    on the decision list.
+    ``ipc._coerce`` is module-level and on the decision list, as
+    ``format_metric`` was until it was deleted (2026-11-13).
     """
     root = _module(tmp_path, "top", """
         def loose(x):

@@ -14,8 +14,9 @@ only branchy, 5 are both.
 
 * **lines** — a function you cannot hold in your head.  ``LoadTheme.execute``
   at 342.
-* **decisions** — paths you must reason about and test.  ``format_metric`` is
-  **70 lines with 30 decisions**, and a length gate cannot see it at all.
+* **decisions** — paths you must reason about and test.  ``format_metric`` was
+  **70 lines with 30 decisions** (deleted 2026-11-13), and a length gate could
+  not see it at all.
 
 A length gate alone misses the densest logic; a decision gate alone misses the
 585-line builders.  Neither is a superset, so both are reported.

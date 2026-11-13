@@ -14,7 +14,6 @@ from typing import Any, ClassVar, Literal
 
 from ._safe import is_under
 from .factory import FallBackTo, Registry
-from .i18n import weekdays
 from .logs import per_frame
 
 log = logging.getLogger(__name__)
@@ -2432,63 +2431,6 @@ def celsius_to_fahrenheit(celsius: float) -> float:
     """Convert °C to °F."""
     log.debug("celsius_to_fahrenheit: celsius=%s", celsius)
     return celsius * 9 / 5 + 32
-
-
-def format_metric(
-    metric: str,
-    value: float,
-    time_format: int = 0,
-    date_format: int = 0,
-    temp_unit: int = 0,
-    lang: str | None = None,
-) -> str:
-    """Format a metric value for display (matches Windows TRCC).
-
-    Ported from legacy ``trcc.core.models.sensor.format_metric``.
-    Used by the legacy-style overlay editor in next/ to render
-    preview text inside each grid cell.
-    """
-    log.debug("format_metric: metric=%s value=%s", metric, value)
-    from datetime import datetime as _dt
-
-    if metric == "date":
-        return format_clock(DATE_FORMATS.get(date_format, DATE_FORMATS[0]),
-                            _dt.now())
-    if metric == "time":
-        return format_clock(TIME_FORMATS.get(time_format, TIME_FORMATS[0]),
-                            _dt.now())
-    if metric == "weekday":
-        return weekdays(lang or "en")[_dt.now().weekday()]
-    if metric == "day_of_week":
-        return weekdays(lang or "en")[int(value)]
-    if metric.startswith(("time_", "date_")):
-        return f"{int(value):02d}"
-    if "temp" in metric:
-        suffix = "°F" if temp_unit == 1 else "°C"
-        return f"{value:.0f}{suffix}"
-    if "percent" in metric or "usage" in metric or "activity" in metric:
-        return f"{value:.0f}%"
-    if "freq" in metric or "clock" in metric:
-        if value >= 1000:
-            return f"{value / 1000:.1f}GHz"
-        return f"{value:.0f}MHz"
-    if metric in ("disk_read", "disk_write"):
-        return f"{value:.1f}MB/s"
-    if metric in ("net_up", "net_down"):
-        if value >= 1024:
-            return f"{value / 1024:.1f}MB/s"
-        return f"{value:.0f}KB/s"
-    if metric in ("net_total_up", "net_total_down"):
-        if value >= 1024:
-            return f"{value / 1024:.1f}GB"
-        return f"{value:.0f}MB"
-    if metric.startswith("fan_"):
-        return f"{value:.0f}RPM"
-    if metric == "mem_available":
-        if value >= 1024:
-            return f"{value / 1024:.1f}GB"
-        return f"{value:.0f}MB"
-    return f"{value:.1f}"
 
 
 # =========================================================================
