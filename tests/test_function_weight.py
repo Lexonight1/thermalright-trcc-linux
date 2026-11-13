@@ -69,7 +69,10 @@ import function_census  # noqa: E402
 #: failure arms share ``_failed``; who the cooler is (``_identify``) and its
 #: first boot + artwork (``_prepare_data``) are steps.  Every ConnectDevice
 #: log line in 82 test files identical before and after (8685 lines).
-MAX_LONG_FUNCTIONS = 6
+#: 6 -> 5 the same day: ``PlayVideo.play`` (156 lines) -- the file guards
+#: (``_unplayable``), the decode size, and what the UIs are told
+#: (``_announce``) are steps; one ``_failed`` for its six failure results.
+MAX_LONG_FUNCTIONS = 5
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.

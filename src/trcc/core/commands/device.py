@@ -142,6 +142,7 @@ from ._helpers import (
 
 if TYPE_CHECKING:
     from ...app import App
+    from ...services.media import Playback
     from ..ports import Device
 
 from ..logs import per_frame
@@ -1366,88 +1367,20 @@ class PlayVideo(Command[VideoResult]):
         """Show the video on the panel, choosing nothing."""
         log.info("PlayVideo.play: key=%s path=%s fps=%d",
                  self.key, self.path, self.fps)
-        if MEDIA.kind_of(self.path) is not MediaKind.ANIMATED:
-            log.warning(
-                "PlayVideo.execute: unsupported extension %r (allowed=%s)",
-                self.path.suffix, sorted(MEDIA.exts(MediaKind.ANIMATED)),
-            )
-            return VideoResult(
-                ok=False, key=self.key, path=str(self.path),
-                message=(f"unsupported video extension {self.path.suffix!r} "
-                         f"(expected one of {sorted(MEDIA.exts(MediaKind.ANIMATED))})"),
-            )
-        if not self.path.exists():
-            log.warning("PlayVideo.execute: path does not exist: %s",
-                        self.path)
-            return VideoResult(
-                ok=False, key=self.key, path=str(self.path),
-                message=f"video does not exist: {self.path}",
-            )
-        if not self.path.is_file():
-            log.warning("PlayVideo.execute: path is not a regular file: %s",
-                        self.path)
-            return VideoResult(
-                ok=False, key=self.key, path=str(self.path),
-                message=f"video path is not a regular file: {self.path}",
-            )
-
+        if why := self._unplayable():
+            return self._failed(why)
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
             log.warning("PlayVideo.execute: device %s not found: %s",
                         self.key, e)
-            return VideoResult(ok=False, key=self.key, path=str(self.path),
-                                message=str(e))
+            return self._failed(str(e))
         if why := _lacks(app, self.key, Capability.FRAME_RENDER):
-            return VideoResult(ok=False, key=self.key, path=str(self.path),
-                               message=why)
+            return self._failed(why)
         if why := _theme_under_background(app, self.key):
-            return VideoResult(ok=False, key=self.key, path=str(self.path),
-                               message=why)
+            return self._failed(why)
 
-        if device.profile is not None:
-            canvas_size = device.profile.resolution
-        else:
-            canvas_size = device.info.native_resolution
-        # Decode at the ORIENTED canvas — at 90/270 the render composes a
-        # portrait canvas (``DisplayService._compose_geometry``), so a portrait
-        # cloud video (web/480854) must decode to 480x854, not the native
-        # landscape, or it gets squished into the wrong aspect. Same swap rule
-        # the whole orientation pipeline keys on.
-        orientation = app.settings.for_device(self.key).orientation
-        canvas_size = oriented_resolution(canvas_size, orientation)
-
-        # The user's videos decode at NATIVE so the render pipeline's
-        # fit-mode (width / height / stretch) actually has something to
-        # scale.  Program / cloud assets under ``data_dir`` are pre-authored
-        # at the device's canvas resolution, so they keep the canvas-size
-        # decode (no rescale work for ffmpeg, and ``.zt`` is fixed-size by
-        # format).  A file picked from anywhere else is the user's too — it
-        # used to decode at canvas size and play stretched (#291).
-        #
-        # ``Paths.is_user_content`` is the ONE place that question is
-        # answered — the render path asks it too, to choose between
-        # fit_mode and the canvas-sized native-or-black rule, and the two
-        # have to agree about the same file.  ``.zt`` is excluded here and
-        # only here: it is authored at canvas and rejects a native decode.
-        is_user_asset = False
-        if self.path.suffix.lower() != ".zt":
-            try:
-                is_user_asset = app.platform.paths().is_user_content(self.path)
-            except (OSError, AttributeError):
-                # ``user_content_dir`` lookup or resolve failed (broken
-                # platform paths, missing dir).  Default to canvas-size
-                # decode so we never block playback over a probe failure.
-                is_user_asset = False
-        decode_size: tuple[int, int] | None = (
-            None if is_user_asset else canvas_size
-        )
-        log.info(
-            "PlayVideo.execute: target_size=%s (profile=%s, user_asset=%s)",
-            "native" if decode_size is None else f"{decode_size[0]}x{decode_size[1]}",
-            device.profile is not None, is_user_asset,
-        )
-
+        canvas_size, decode_size = self._decode_size(app, device)
         try:
             playback = app.media.load_video(
                 device_key=self.key, path=self.path, size=decode_size,
@@ -1466,22 +1399,91 @@ class PlayVideo(Command[VideoResult]):
             app.events.publish(ErrorOccurred(
                 message=str(e), kind="video", key=self.key,
             ))
-            return VideoResult(ok=False, key=self.key, path=str(self.path),
-                                message=str(e))
+            return self._failed(str(e))
 
         # The choice is recorded by ``execute`` once this LOADS -- the
         # Command's, not its callers' (each UI once wrote it itself, and over
         # the daemon that crashed, #249).  A theme's own video records none.
-
         # Bust the scene cache so the next render picks up the override.
         _invalidate_scene(app, self.key)
+        return self._announce(app, playback)
 
-        # Animated-vs-static gate: ffmpeg decoded exactly one frame, so this
-        # "video"/gif is NOT animated.  Render it ONCE via BackgroundChanged
-        # and do NOT publish VideoStarted, so the GUI never starts the 15fps
-        # animation timer for a static background.  Restores the legacy
-        # PIL frame-count check (lost in the PIL→ffmpeg refactor) using
-        # ffmpeg's own decode count.
+    def _failed(self, message: str) -> VideoResult:
+        """The one shape of a video that does not play."""
+        log.debug("PlayVideo %s: -> not played %r", self.key, message)
+        return VideoResult(ok=False, key=self.key, path=str(self.path),
+                           message=message)
+
+    def _unplayable(self) -> str | None:
+        """Why the file itself cannot play -- not a video, not there, not a
+        regular file -- or None."""
+        if MEDIA.kind_of(self.path) is not MediaKind.ANIMATED:
+            allowed = sorted(MEDIA.exts(MediaKind.ANIMATED))
+            log.warning(
+                "PlayVideo.execute: unsupported extension %r (allowed=%s)",
+                self.path.suffix, allowed,
+            )
+            return (f"unsupported video extension {self.path.suffix!r} "
+                    f"(expected one of {allowed})")
+        if not self.path.exists():
+            log.warning("PlayVideo.execute: path does not exist: %s",
+                        self.path)
+            return f"video does not exist: {self.path}"
+        if not self.path.is_file():
+            log.warning("PlayVideo.execute: path is not a regular file: %s",
+                        self.path)
+            return f"video path is not a regular file: {self.path}"
+        return None
+
+    def _decode_size(
+        self, app: App, device: Device,
+    ) -> tuple[tuple[int, int], tuple[int, int] | None]:
+        """The panel's canvas, and the size to decode at -- None for native.
+
+        The canvas is ORIENTED: at 90/270 the render composes a portrait
+        canvas (``DisplayService._compose_geometry``), so a portrait cloud
+        video (web/480854) decodes to 480x854, not squished into the native
+        landscape.
+
+        The user's videos decode at NATIVE, so the fit mode (width / height /
+        stretch) has something to scale; a file picked from anywhere outside
+        the program's data is the user's too -- it played stretched (#291).
+        Program and cloud assets are authored at the canvas and keep the
+        canvas decode.  ``Paths.is_user_content`` is the ONE place that is
+        answered -- the render asks it too, and the two must agree.  ``.zt``
+        is excluded here only: it is canvas-sized by format and rejects a
+        native decode."""
+        if device.profile is not None:
+            canvas_size = device.profile.resolution
+        else:
+            canvas_size = device.info.native_resolution
+        orientation = app.settings.for_device(self.key).orientation
+        canvas_size = oriented_resolution(canvas_size, orientation)
+        is_user_asset = False
+        if self.path.suffix.lower() != ".zt":
+            try:
+                is_user_asset = app.platform.paths().is_user_content(self.path)
+            except (OSError, AttributeError):
+                # Broken platform paths or a missing dir: decode at the
+                # canvas rather than block playback over a probe failure.
+                is_user_asset = False
+        decode_size: tuple[int, int] | None = (
+            None if is_user_asset else canvas_size
+        )
+        log.info(
+            "PlayVideo.execute: target_size=%s (profile=%s, user_asset=%s)",
+            "native" if decode_size is None else f"{decode_size[0]}x{decode_size[1]}",
+            device.profile is not None, is_user_asset,
+        )
+        return canvas_size, decode_size
+
+    def _announce(self, app: App, playback: Playback) -> VideoResult:
+        """Tell the UIs what loaded.  One decoded frame is a still, not a
+        video: it renders ONCE through ``BackgroundChanged`` and publishes no
+        ``VideoStarted``, so no UI starts an animation timer for it -- the
+        legacy frame-count check, on ffmpeg's own count.  Otherwise
+        ``VideoStarted`` carries the cadence (``Playback.interval_ms`` owns
+        the 1000/fps clamp, so TickDisplay reports the same one)."""
         if playback.frame_count <= 1:
             log.info(
                 "PlayVideo.execute: %s is a STATIC single-frame background "
@@ -1495,10 +1497,6 @@ class PlayVideo(Command[VideoResult]):
                 frame_count=1,
                 message=f"static background (1 frame): {self.path.name}",
             )
-
-        # Per-frame interval derived from playback fps — handler observer
-        # uses this to start the Qt animation timer.  ``Playback.interval_ms``
-        # owns the 1000/fps clamp so TickDisplay reports the same cadence.
         fps = getattr(playback, "fps", 0) or 30
         interval_ms = playback.interval_ms
         log.info(
@@ -1506,7 +1504,6 @@ class PlayVideo(Command[VideoResult]):
             "(interval=%dms, VideoStarted published)",
             playback.frame_count, fps, interval_ms,
         )
-
         app.events.publish(VideoStarted(
             key=self.key, path=str(self.path),
             frame_count=playback.frame_count,
