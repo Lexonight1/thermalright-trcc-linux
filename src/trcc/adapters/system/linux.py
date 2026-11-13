@@ -22,6 +22,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -463,6 +464,25 @@ class LinuxFamily:
 
 
 
+#: The rpm families' tools -- Fedora, EL and Fedora Atomic name the same ones.
+#: Advised by BINARY PATH, not package name.  Both shared names are wrong here
+#: and both fail in a way that looks like success:
+#:   p7zip  -> 7zip-standalone, ships ['7za'] and NO 7z
+#:   ffmpeg -> not in stock Fedora at all (that is RPM Fusion)
+#: A corrected NAME only trades one wrong answer for another, because which
+#: package owns the binary depends on the user's repos:
+#:   /usr/bin/ffmpeg  stock -> ffmpeg-free  ·  +RPM Fusion -> ffmpeg
+#: On RHEL/Rocky/Alma both are EPEL-only (el9/el10_2/el10_3).  Measured on
+#: Fedora CoreOS 45 (2026-11-12): ``rpm-ostree install /usr/bin/7z`` -> 7zip.
+#: Read-only: three records share it.
+_RPM_PACKAGES: Mapping[str, str] = MappingProxyType({
+    "pynvml": "python3-pynvml",
+    "7z": "/usr/bin/7z",
+    "ffmpeg": "/usr/bin/ffmpeg",
+    # By name: Fedora ships it in /usr/bin, EL in /usr/sbin (AppStream).
+    "sensors-detect": "lm_sensors",
+})
+
 #: Probe order, first match wins.  Preserved exactly from the class tuple it
 #: replaced: it is NOT definition order, and a machine with two managers gets
 #: the first listed.
@@ -474,19 +494,7 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
         # built for this Fedora, as doc/GUIDE_INSTALL.md does.
         package_upgrade=(f"sudo dnf install {RELEASES_URL}/download/"
                          "trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm"),
-        # Advised by BINARY PATH, not package name.  Both shared names are
-        # wrong here and both fail in a way that looks like success:
-        #   p7zip  -> 7zip-standalone, ships ['7za'] and NO 7z
-        #   ffmpeg -> not in stock Fedora at all (that is RPM Fusion)
-        # A corrected NAME only trades one wrong answer for another, because
-        # which package owns the binary depends on the user's repos:
-        #   /usr/bin/ffmpeg  stock -> ffmpeg-free  ·  +RPM Fusion -> ffmpeg
-        # On RHEL/Rocky/Alma both are EPEL-only (el9/el10_2/el10_3).
-        packages={"pynvml": "python3-pynvml",
-                  "7z": "/usr/bin/7z",
-                  "ffmpeg": "/usr/bin/ffmpeg",
-                  # By name: Fedora ships it in /usr/bin, EL in /usr/sbin.
-                  "sensors-detect": "lm_sensors"},
+        packages=_RPM_PACKAGES,
         # Stock ffmpeg-free cannot decode HEVC (measured 2026-11-05, Fedora
         # 42 and 44: "no decoder found for: hevc").  RPM Fusion's own two
         # steps, rpmfusion.org/Configuration and /Howto/Multimedia.
@@ -557,10 +565,7 @@ _FAMILIES: tuple[LinuxFamily, ...] = (
 _EL_FAMILY = LinuxFamily(
     name="EL-family", manager="dnf",
     install_cmd="sudo dnf install {pkg}",
-    packages={"pynvml": "python3-pynvml",
-              "7z": "/usr/bin/7z",
-              "ffmpeg": "/usr/bin/ffmpeg",
-              "sensors-detect": "lm_sensors"},     # AppStream, /usr/sbin
+    packages=_RPM_PACKAGES,
     # EPEL's ffmpeg-free leaves out HEVC as Fedora's does.  RPM Fusion's EL
     # repo (rpmfusion.org/Configuration) and the same swap; measured on Rocky
     # 9 to play HEVC, 2026-11-05.  EPEL and CRB are already on wherever
@@ -583,10 +588,7 @@ _ATOMIC_FAMILY = LinuxFamily(
     install_cmd="rpm-ostree install {pkg} && systemctl reboot",
     package_upgrade=(f"rpm-ostree uninstall trcc-linux --install {RELEASES_URL}/download/"
                      "trcc-linux-latest.fc$(rpm -E %fedora).noarch.rpm && systemctl reboot"),
-    packages={"pynvml": "python3-pynvml",
-              "7z": "/usr/bin/7z",
-              "ffmpeg": "/usr/bin/ffmpeg",
-              "sensors-detect": "lm_sensors"},
+    packages=_RPM_PACKAGES,
 )
 
 #: Written at boot on an ostree-booted root (ostree-prepare-root); a tool that
