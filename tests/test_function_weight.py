@@ -57,7 +57,11 @@ import function_census  # noqa: E402
 #: over 51 lines.
 #: 10 -> 9 the same day: ``RenderLed.execute`` (220 lines) became guards,
 #: the frame (``_segment_mask`` / ``_segment_colors``) and ``_send``.
-MAX_LONG_FUNCTIONS = 9
+#: 9 -> 8 the same day: ``UCLedControl._setup_ui`` (584 lines, the longest in
+#: the tree) became FormLED's sections as ``_build_*`` steps, none over 75.
+#: Proved by every LED style's pixels + each widget's rect, visibility, text
+#: and creation (stacking) order, identical before and after.
+MAX_LONG_FUNCTIONS = 8
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.

@@ -141,7 +141,10 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: (src + tests + dev) since it was written; the module review
 #: (``dev/tools/review_module.py``) named it, holding the visualizer to a
 #: log line in every function.
-MAX_SILENT = 259
+#: 259 -> 257 on 2026-11-13: ``UCLedControl._setup_ui`` became its named
+#: ``_build_*`` steps and logs; its silent ``_lc2_text`` closure became the
+#: logged ``_lc2_word``.  Every new step was written with its line.
+MAX_SILENT = 257
 
 
 def test_logging_coverage_only_improves() -> None:
