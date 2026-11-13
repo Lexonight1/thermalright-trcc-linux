@@ -17,6 +17,7 @@ Pure-stdlib, no project imports.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,25 @@ def parse_hex(value: str) -> tuple[int, int, int, int]:
     raise ValueError(
         f"hex color must be #RRGGBB or #RRGGBBAA, got {value!r}"
     )
+
+
+def rgb_refusal(color: Sequence[int]) -> str | None:
+    """Why *color* is not an ``(r, g, b)`` of 0-255 channels, or None.
+
+    The one check.  Four copies of ``zip("rgb", color, strict=False)``
+    checked each channel's range and never the count, so ``()`` passed all
+    of them: two Commands then raised unpacking it, and two settings saved
+    it (2026-11-13).
+    """
+    if len(color) != 3:
+        why: str | None = (f"a colour is 3 channels (r, g, b), got "
+                           f"{len(color)}: {tuple(color)}")
+    else:
+        why = next((f"{label} channel out of range (0-255): {value}"
+                    for label, value in zip("rgb", color, strict=True)
+                    if not 0 <= value <= 255), None)
+    log.debug("rgb_refusal: %r -> %s", color, why)
+    return why
 
 
 def rgb_rows(rows: list[Any]) -> list[tuple[int, int, int]]:

@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from .._colors import rgb_refusal
 from ..errors import (
     DeviceNotConnectedError,
     DeviceNotFoundError,
@@ -555,12 +556,11 @@ class SetLedColor(Command[LedColorsResult]):
         if (why := _not_an_led(app, self.key)) is not None:
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
-        for label, value in zip("rgb", self.color, strict=False):
-            if not 0 <= value <= 255:
-                return LedColorsResult(
-                    ok=False, key=self.key, colors=[],
-                    message=f"{label} out of range (0-255): {value}",
-                )
+        if (why := rgb_refusal(self.color)) is not None:
+            log.warning("%s %s: refused %r -- %s", type(self).__name__,
+                        self.key, self.color, why)
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         r, g, b = self.color
         log.info("SetLedColor %s: #%02x%02x%02x", self.key, r, g, b)
         app.settings.set_led_color(self.key, self.color)
@@ -720,12 +720,11 @@ class SetLedZoneColor(Command[LedColorsResult]):
         if (why := _not_an_led(app, self.key)) is not None:
             return LedColorsResult(ok=False, key=self.key, colors=[],
                                    message=why)
-        for label, value in zip("rgb", self.color, strict=False):
-            if not 0 <= value <= 255:
-                return LedColorsResult(
-                    ok=False, key=self.key, colors=[],
-                    message=f"{label} out of range (0-255): {value}",
-                )
+        if (why := rgb_refusal(self.color)) is not None:
+            log.warning("%s %s: refused %r -- %s", type(self).__name__,
+                        self.key, self.color, why)
+            return LedColorsResult(ok=False, key=self.key, colors=[],
+                                   message=why)
         try:
             app.settings.set_led_zone(self.key, self.zone, color=self.color)
         except IndexError as e:

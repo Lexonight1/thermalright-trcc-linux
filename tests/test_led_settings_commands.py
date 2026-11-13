@@ -465,3 +465,57 @@ def test_the_gui_sends_the_carousel_interval_in_csharp_ticks(
     handler._on_carousel_interval_changed(2)
 
     assert sent == [SetLedZoneSyncInterval(key="0416:8001", ticks=12)]
+
+
+# ── A colour is three channels ───────────────────────────────────────
+# Four copies of ``zip("rgb", color, strict=False)`` checked each channel's
+# range and never the count: ``()`` raised out of dispatch from SetLedColor
+# and SetOverlayBackground, and RememberColor saved it (2026-11-13).  The
+# IPC socket hands a Command whatever list a script sends.
+
+_BAD_COLOURS = [(), (1, 2), (1, 2, 3, 4), (300, 0, 0)]
+
+
+@pytest.mark.parametrize(("color", "why"), [
+    ((1, 2, 3), None),
+    ((), "a colour is 3 channels (r, g, b), got 0: ()"),
+    ((1, 2, 3, 4), "a colour is 3 channels (r, g, b), got 4: (1, 2, 3, 4)"),
+    ((0, 256, 0), "g channel out of range (0-255): 256"),
+    ((0, 0, -1), "b channel out of range (0-255): -1"),
+])
+def test_rgb_refusal_names_what_is_wrong(color: tuple[int, ...],
+                                         why: str | None) -> None:
+    from trcc.core._colors import rgb_refusal
+
+    assert rgb_refusal(color) == why
+
+
+@pytest.mark.parametrize("color", _BAD_COLOURS, ids=str)
+@pytest.mark.parametrize("command", ["SetLedColor", "SetLedZoneColor",
+                                     "SetOverlayBackground", "RememberColor"])
+def test_every_colour_command_refuses_a_bad_colour_and_keeps_the_old(
+    tmp_path: Path, command: str, color: tuple[int, ...],
+) -> None:
+    from trcc.core import commands
+    from trcc.core._colors import rgb_refusal
+
+    app = _app(tmp_path)
+    app.settings.set_led_zone_count(_KEY, 1)
+    lcd = "0402:3922"
+    built = {"SetLedColor": {"key": _KEY},
+             "SetLedZoneColor": {"key": _KEY, "zone": 0},
+             "SetOverlayBackground": {"key": lcd},
+             "RememberColor": {"key": lcd}}[command]
+
+    def kept() -> object:
+        return (app.settings.for_led(_KEY).color,
+                [z.color for z in app.settings.for_led(_KEY).zones],
+                app.settings.for_device(lcd).overlay_background,
+                app.settings.for_device(lcd).recent_colors)
+
+    before = kept()
+    result = app.dispatch(getattr(commands, command)(color=color, **built))
+
+    assert result.ok is False
+    assert result.message == rgb_refusal(color)
+    assert kept() == before

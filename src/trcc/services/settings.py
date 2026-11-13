@@ -23,7 +23,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
-from ..core._colors import rgb_rows
+from ..core._colors import rgb_refusal, rgb_rows
 from ..core._safe import load_json_or_default
 from ..core.errors import ConfigError, NotADeviceKey
 from ..core.led_models import (
@@ -1089,11 +1089,8 @@ class Settings:
     ) -> None:
         """Set the solid-color background used when background_mode='color'."""
         log.info("set_overlay_background: key=%s color=%s", key, color)
-        for label, value in zip("rgb", color, strict=False):
-            if not 0 <= value <= 255:
-                raise ValueError(
-                    f"{label} channel out of range (0-255): {value}",
-                )
+        if (why := rgb_refusal(color)) is not None:
+            raise ValueError(why)
         with self._lock:
             self.for_device(key).overlay_background = color
             self._save()
@@ -1112,11 +1109,8 @@ class Settings:
         oldest -- ``UCXiTongXianShiBackupColorSave``'s shift register.  A
         repeat is kept, as the C# keeps it."""
         log.info("remember_color: key=%s color=%s", key, color)
-        for label, value in zip("rgb", color, strict=False):
-            if not 0 <= value <= 255:
-                raise ValueError(
-                    f"{label} channel out of range (0-255): {value}",
-                )
+        if (why := rgb_refusal(color)) is not None:
+            raise ValueError(why)
         with self._lock:
             device = self.for_device(key)
             device.recent_colors = [tuple(color), *device.recent_colors][
