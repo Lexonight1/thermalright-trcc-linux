@@ -55,11 +55,14 @@ import function_census  # noqa: E402
 #: 11 -> 10 on 2026-11-13: ``LoadTheme._load`` (451 lines) became the list of
 #: its named steps (activate, background choice, layout, masks, show), none
 #: over 51 lines.
-MAX_LONG_FUNCTIONS = 10
+#: 10 -> 9 the same day: ``RenderLed.execute`` (220 lines) became guards,
+#: the frame (``_segment_mask`` / ``_segment_colors``) and ``_send``.
+MAX_LONG_FUNCTIONS = 9
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.
-MAX_BRANCHY_FUNCTIONS = 6
+#: 6 -> 5 the same day: ``RenderLed.execute``, the same split.
+MAX_BRANCHY_FUNCTIONS = 5
 
 #: Passed explicitly so each gate's meaning lives HERE, not in the tool.
 LINE_THRESHOLD = 140

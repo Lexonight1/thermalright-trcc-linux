@@ -43,7 +43,7 @@ from ._helpers import (
 if TYPE_CHECKING:
     from ...app import App
     from ...core.led_models import LedDeviceSettings, LedStyle
-    from ...core.models import HardwareMetrics
+    from ...core.models import HardwareMetrics, TempUnit
     from ...services.led_segment import SegmentDisplay
 
 log = logging.getLogger(__name__)
@@ -242,22 +242,14 @@ class RenderLed(Command[LedColorsResult]):
 
     def execute(self, app: App) -> LedColorsResult:
         from ...services.led_effects import apply_brightness
-        from ...services.led_segment import compute_mask, get_display
-        from ...services.metrics_personalize import personalize_metrics
+        from ...services.led_segment import get_display
 
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
-            return LedColorsResult(
-                ok=False, key=self.key, colors=[],
-                message=str(e),
-            )
-
+            return self._failed(str(e))
         if not device.is_led:
-            return LedColorsResult(
-                ok=False, key=self.key, colors=[],
-                message=f"{self.key} is not an LED device",
-            )
+            return self._failed(f"{self.key} is not an LED device")
         if not device.is_connected:
             # Per-frame command (DEBUG) — not-connected here is a transient
             # race with disconnect, not a user mis-step; keep it off INFO.
@@ -267,165 +259,142 @@ class RenderLed(Command[LedColorsResult]):
                 f"{self.key} not connected — dispatch ConnectDevice first"
             )
         if device.led_handshake is None:
-            return LedColorsResult(
-                ok=False, key=self.key, colors=[],
-                message=f"{self.key} handshake incomplete — no style resolved",
-            )
-
+            return self._failed(
+                f"{self.key} handshake incomplete — no style resolved")
         style = device.led_handshake.style
         if style is None:
-            return LedColorsResult(
-                ok=False, key=self.key, colors=[],
-                message=(f"{self.key} firmware PM unknown — no style "
-                         "resolved; use SetLedColors instead"),
-            )
+            return self._failed(f"{self.key} firmware PM unknown — no style "
+                                "resolved; use SetLedColors instead")
 
         led_settings = app.settings.for_led(self.key)
         runtime = app.led_runtime.setdefault(self.key, LedRuntimeState())
-        device_settings = app.settings.for_device(self.key)
-
-        # One metrics source for the whole frame — the same RAW sample the
-        # MetricsLoop cached on its last broadcast (the steady values the GUI
-        # gauges observe, NOT a second divergent view).  RenderLed is dispatched
-        # ~7×/s by the 150 ms animation loop; re-polling the sensors every tick
-        # resampled instantaneous readings and made the displayed metric flicker
-        # ("sporadic metrics").  We read the cache so values step once per
-        # refresh interval and animation still advances on runtime counters.
-        # compute_mask reads metrics attributes (metrics.cpu_temp, …); the
-        # effects engine reads the flat dict for per-zone color sources.
+        temp_unit = app.settings.for_device(self.key).temp_unit
         current, metrics = self._frame_metrics(app)
-
-        # If the caller passed an explicit color, treat it as a STATIC
-        # diagnostic at full brightness (same shape RenderLed has always
-        # offered — "show this color as bright as the LEDs can go").
+        # An explicit colour is a STATIC diagnostic at full brightness -- "show
+        # this colour as bright as the LEDs can go" (CLI ``led color``).
         # Otherwise the engine reads everything off LedDeviceSettings.
-        explicit_color = self.color
-        effective_settings = (
-            replace(led_settings,
-                    mode=LEDMode.STATIC,
-                    color=explicit_color,
-                    brightness=100,
-                    test_mode=False)
-            if explicit_color is not None else led_settings
+        settings = (
+            replace(led_settings, mode=LEDMode.STATIC, color=self.color,
+                    brightness=100, test_mode=False)
+            if self.color is not None else led_settings
         )
-
-        # A multi-zone style's device shows its zones alone (FormLED.cs:10958
-        # multiplies each zone by ITS brightness and on/off; ``SendHidVal``
-        # applies nothing global for styles 2/7).  Set below.
-        zoned = False
         display = get_display(style)
         if display is None:
-            # Pure-RGB style (e.g. LF13): no segment digits — fill the panel's
-            # LEDs with the same effects engine and send a maskless frame.  The
-            # send/preview tail already handles an empty mask ("shows all"); the
-            # display is only ever needed for the segment mask.
+            # Pure-RGB style (e.g. LF13): no segment digits -- the engine fills
+            # the panel's LEDs and an empty mask lights them all.
             mask: list[bool] = []
             colors = app.led_effects.tick(
-                effective_settings, runtime, current,
+                settings, runtime, current,
                 led_count=LED_STYLES[style].led_count, key=self.key,
             )
+            zoned = False
             frame_log.debug("RenderLed %s: color-only fill (%d RGB LEDs)",
                       self.key, len(colors))
         else:
-            # Multi-zone styles (PA120/LF10) keep a per-zone colour/mode list;
-            # make sure it exists, sized to the wire's zones, so the per-zone
-            # render path runs.  ``set_led_zone_count`` is idempotent — a no-op
-            # once sized.  Nothing populated this before (#192), so the render
-            # always fell back to a single global colour and the zone buttons
-            # had no visible effect.
+            # A multi-zone style (PA120/LF10) keeps a colour/mode per zone,
+            # sized to the wire's zones FIRST, so this frame already renders
+            # them (#192).  Idempotent: a no-op once sized.
             zone_map = display.zone_led_map
-            if zone_map is not None and len(led_settings.zones) != len(zone_map):
+            if zone_map is not None and len(settings.zones) != len(zone_map):
                 app.settings.set_led_zone_count(self.key, len(zone_map))
-
-            # ── Segment phase (legacy ``_seg_phase``) ──
-            # ``phase`` chooses which metric *page* a multi-page segment display
-            # shows (C# LunBo) — CPU temp / CPU % / GPU temp / GPU %, etc.  The
-            # selector buttons persist the choice as ``selected_zone``; with the
-            # page carousel on (and not a select-all style) it rotates the
-            # enabled pages instead.  This is gated on the display actually
-            # having more than one page (``phase_count > 1``) — NOT on ``zones``
-            # being populated, which it never is for page-style devices (that
-            # was the bug: selecting a metric set ``selected_zone`` but the
-            # render ignored it and stayed stuck on page 0).  Single-page
-            # displays keep ``self.phase``.
-            phase = self._metric_page(
-                app, display, style, effective_settings, runtime)
-
-            # Personalize the RAW snapshot through the single conversion relay,
-            # using THIS device's unit — the device owns its °C/°F, so a future
-            # per-device toggle needs no plumbing change.  The cached snapshot
-            # stays raw precisely so each device converts with its own unit.
-            # compute_mask then only truncates (values are pre-converted) and
-            # lights the matching °C/°F label segment.
-            display_metrics = personalize_metrics(
-                metrics,
-                temp_unit=device_settings.temp_unit,
-                hdd_enabled=app.settings.app.hdd_enabled,
-            )
-            mask = compute_mask(
-                style, display_metrics, phase=phase,
-                temp_unit=device_settings.temp_unit,
-                # The LED's OWN clock format -- FormLED keeps isTimer24 per
-                # cooler (FormLED.cs:945, drawn at :3938).  This read the LCD
-                # overlay's time_format, so the cooler's own 12/24h button
-                # did nothing and the LCD's format command drove it instead.
-                is_24h=effective_settings.clock_24h,
-                week_sunday=effective_settings.week_sunday,
-                memory_ratio=effective_settings.memory_ratio,
-            )
-            segment_count = len(mask)
-
-            # ── Colors ──
-            # Multi-zone styles (PA120 / LF10 — those with a ``zone_led_map``)
-            # render each zone's own mode/color/brightness onto its mapped LED
-            # indices.  All other styles fill one global color list.  An EXPLICIT
-            # colour (CLI ``trcc led color`` diagnostic) overrides per-zone state
-            # — force that one colour on every LED at full brightness.
-            if (zone_map is not None and effective_settings.zones
-                    and explicit_color is None):
-                zoned = True
-                frame_log.debug("RenderLed %s: multi-zone fill (%d zones)",
-                          self.key, len(zone_map))
-                colors = app.led_effects.tick_multi_zone(
-                    effective_settings, runtime, current,
-                    zone_map=zone_map,
-                    metric_sources=display.zone_metric_sources,
-                    led_count=segment_count,
-                    zone_color_groups=display.zone_color_groups,
-                    key=self.key,
-                )
-            else:
-                colors = app.led_effects.tick(
-                    effective_settings, runtime, current,
-                    led_count=segment_count,
-                    color_groups=display.color_groups,
-                    key=self.key,
-                )
-
-            # Styles with a decoration strip (LF10/LF12) keep the strip's
-            # spatial rainbow but collapse each metric digit to one color so the
-            # number reads cohesively (#193) — a post-effect pass that leaves
-            # every non-digit LED on its per-LED spread.
-            # Not over live colours: there each LED shows the sender's pixel.
-            if (display.digit_groups is not None
-                    and app.live_led_colors(self.key, 1) is None):
-                colors = app.led_effects.cohere_digit_groups(
-                    colors, display.digit_groups,
-                )
-
-        # One writer: bake global brightness into the rendered signal so the
-        # device wire and the GUI preview observe one identical colour list.
-        # Not on a multi-zone style: tick_multi_zone has baked each zone's own
-        # brightness, and the global one is only what the panel shows.
-        # Explicit-colour diagnostics force brightness=100 via
-        # effective_settings, so this is a no-op there.
+            mask = self._segment_mask(
+                app, style, display, settings, runtime, metrics, temp_unit)
+            colors, zoned = self._segment_colors(
+                app, display, settings, runtime, current, len(mask))
+        # One writer: global brightness is baked into the signal, so the wire
+        # and the preview get one identical colour list.  Not on a multi-zone
+        # style: each zone's own brightness is already in, and the global one
+        # is only what the panel shows (FormLED.cs:10958).
         if not zoned:
-            colors = apply_brightness(colors, effective_settings.brightness)
+            colors = apply_brightness(colors, settings.brightness)
+        return self._send(app, style, settings, mask, colors, zoned)
 
+    def _failed(
+        self, message: str, colors: list[tuple[int, int, int]] | None = None,
+    ) -> LedColorsResult:
+        """The one shape of a frame that was not sent."""
+        frame_log.debug("RenderLed %s: -> not sent %r", self.key, message)
+        return LedColorsResult(ok=False, key=self.key, colors=colors or [],
+                               message=message)
+
+    def _segment_mask(
+        self, app: App, style: LedStyle, display: SegmentDisplay,
+        settings: LedDeviceSettings, runtime: LedRuntimeState,
+        metrics: HardwareMetrics, temp_unit: TempUnit,
+    ) -> list[bool]:
+        """The segments lit this frame: the readings of its metric page
+        (:meth:`_metric_page`), in THIS device's unit -- the cached sample
+        stays raw so each device converts with its own -- and the LED's OWN
+        clock format, as FormLED keeps isTimer24 per cooler (FormLED.cs:945,
+        drawn at :3938)."""
+        from ...services.led_segment import compute_mask
+        from ...services.metrics_personalize import personalize_metrics
+
+        phase = self._metric_page(app, display, style, settings, runtime)
+        readings = personalize_metrics(
+            metrics, temp_unit=temp_unit,
+            hdd_enabled=app.settings.app.hdd_enabled,
+        )
+        mask = compute_mask(
+            style, readings, phase=phase, temp_unit=temp_unit,
+            is_24h=settings.clock_24h,
+            week_sunday=settings.week_sunday,
+            memory_ratio=settings.memory_ratio,
+        )
+        frame_log.debug("RenderLed %s: page %d, %d segments",
+                        self.key, phase, len(mask))
+        return mask
+
+    def _segment_colors(
+        self, app: App, display: SegmentDisplay, settings: LedDeviceSettings,
+        runtime: LedRuntimeState, current: dict[str, float], count: int,
+    ) -> tuple[list[tuple[int, int, int]], bool]:
+        """The colour of every segment, and whether it is per zone.
+
+        A multi-zone style renders each zone's own mode, colour and brightness
+        onto its LEDs; every other style fills one colour list.  An explicit
+        colour overrides the zones.  Digits on a style with a decoration strip
+        (LF10/LF12) take one colour each so the number reads as one (#193),
+        except over live colours, where each LED shows the sender's pixel."""
+        zone_map = display.zone_led_map
+        zoned = False
+        if zone_map is not None and settings.zones and self.color is None:
+            zoned = True
+            frame_log.debug("RenderLed %s: multi-zone fill (%d zones)",
+                      self.key, len(zone_map))
+            colors = app.led_effects.tick_multi_zone(
+                settings, runtime, current,
+                zone_map=zone_map,
+                metric_sources=display.zone_metric_sources,
+                led_count=count,
+                zone_color_groups=display.zone_color_groups,
+                key=self.key,
+            )
+        else:
+            colors = app.led_effects.tick(
+                settings, runtime, current,
+                led_count=count,
+                color_groups=display.color_groups,
+                key=self.key,
+            )
+        if (display.digit_groups is not None
+                and app.live_led_colors(self.key, 1) is None):
+            colors = app.led_effects.cohere_digit_groups(
+                colors, display.digit_groups,
+            )
+        return colors, zoned
+
+    def _send(
+        self, app: App, style: LedStyle, settings: LedDeviceSettings,
+        mask: list[bool], colors: list[tuple[int, int, int]], zoned: bool,
+    ) -> LedColorsResult:
+        """Send the frame and show it: the preview gets ``payload.shown``, the
+        lit rule the wire itself sends, so the segment mask AND the off switch
+        darken both.  An empty mask (pure-RGB) lights every LED."""
         payload = LedPayload(
             colors=colors,
-            is_on=mask or None,   # empty mask (pure-RGB) → None → wire lights all
-            global_on=zoned or effective_settings.global_on,
+            is_on=mask or None,
+            global_on=zoned or settings.global_on,
         )
         try:
             ok = app.send(self.key, payload)
@@ -434,29 +403,22 @@ class RenderLed(Command[LedColorsResult]):
                 message=str(e), kind="transport", key=self.key,
             ))
             _publish_if_disconnect(app, self.key, e)
-            return LedColorsResult(
-                ok=False, key=self.key, colors=colors,
-                message=str(e),
-            )
-
+            return self._failed(str(e), colors)
         if ok:
             app.events.publish(LedColorsChanged(
                 key=self.key, color_count=len(colors),
                 colors=_rgb_tuples(colors),
             ))
-            # Same preview path as LCD: publish the rendered output on
-            # FrameSent so the GUI preview shows exactly what went to the
-            # device — ``payload.shown``, the lit rule the wire itself sends,
-            # so the segment mask AND the off switch darken both.
             app.events.publish(FrameSent(
                 key=self.key, bytes_sent=len(colors),
                 display_colors=payload.shown,
             ))
         rendered = (f"{sum(mask)}/{len(mask)} LEDs on" if mask
                     else f"{len(colors)} RGB LEDs")
+        frame_log.debug("RenderLed %s: sent=%s %s", self.key, ok, rendered)
         return LedColorsResult(
             ok=ok, key=self.key, colors=colors,
-            message=(f"Rendered {style.value} {effective_settings.mode.name} "
+            message=(f"Rendered {style.value} {settings.mode.name} "
                      f"({rendered})"
                      if ok else "LED send returned False"),
         )
