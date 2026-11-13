@@ -270,16 +270,19 @@ class FileContentStore(ContentStore):
         """A theme directory wrapping ONE file — an image or a video.
 
         ``LoadImage`` and ``LoadVideo`` turn an arbitrary file the user picked
-        into a minimal theme so it appears in ``theme list`` like any other and
-        the ordinary ``LoadTheme`` path can render it.  ``LoadVideo``'s own
+        into a minimal theme so the ordinary ``LoadTheme`` path can render it,
+        and a saved ``image:<name>`` resolves back to it.  It is NOT listed:
+        ``theme list`` reads the per-resolution theme folders, never
+        ``single-<kind>/`` (measured 2026-11-13).  The directory is named by
+        the source's stem, so the same file loaded again reuses it.  ``LoadVideo``'s own
         docstring called itself "conceptually parallel to LoadImage"; they had
         the same twenty lines each, and this is those lines.
 
         Yields the unit; the caller installs its one payload file.  The
         ``trcc.json`` marker is written LAST, on a clean exit — deliberately,
         because a payload that fails half-way then leaves a directory with no
-        marker, which ``_has_theme_marker`` skips, so a broken load never
-        shows up in the theme list.  An exception leaves that markerless
+        marker, which ``is_theme_dir`` refuses, so a broken load is never
+        taken for a theme.  An exception leaves that markerless
         directory behind exactly as the hand-written versions did.
         """
         if self._paths is None:

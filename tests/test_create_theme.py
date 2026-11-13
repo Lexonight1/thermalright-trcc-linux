@@ -388,3 +388,27 @@ def test_a_taken_name_is_a_409_the_client_can_retry(api: Any, png: Path) -> None
     assert taken.status_code == 409
     assert (taken.json()["target_exists"], taken.json()["theme_name"]) == (True, "mine")
     assert replaced.status_code == 200, replaced.text
+
+
+def test_an_uploaded_video_is_kept_while_the_panel_plays_it(
+    panel: App, themed_video: Path,
+) -> None:
+    """The staged upload is the file PlayVideo reads, so the cleanup keeps
+    it -- and, staged under its own name, its folder.  Removing the folder
+    would pull the clip out from under the panel."""
+    from trcc.ui.api.main import build_app
+
+    from .conftest import loopback_client
+
+    with loopback_client(build_app(trcc=panel)) as client:
+        done = client.post(f"/devices/{_KEY}/display/create-theme",
+                           files={"background": ("clip.mp4",
+                                                 themed_video.read_bytes(),
+                                                 "video/mp4")})
+
+    assert done.status_code == 200, done.text
+    playing = Path(panel.settings.for_device(_KEY).chosen_file or "")
+    uploads = panel.platform.paths().user_content_dir() / "uploads"
+    assert playing.name == "clip.mp4"
+    assert uploads in playing.parents
+    assert playing.read_bytes() == themed_video.read_bytes()

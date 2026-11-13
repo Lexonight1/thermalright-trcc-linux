@@ -1679,6 +1679,10 @@ def test_create_theme_keeps_only_what_a_command_still_reads(tmp_path: Path) -> N
     uploads = trcc.platform.paths().user_content_dir() / "uploads"
     library = trcc.platform.paths().user_mask_dir(320, 320)
     assert list(uploads.iterdir()) == []
+    # Filed under the upload's own name, as the CLI's file is: five uploads
+    # of bg.png made five single-image/<hex> copies before (2026-11-13).
+    single = trcc.platform.paths().user_content_dir() / "single-image"
+    assert sorted(d.name for d in single.iterdir()) == ["bg"]
     assert trcc.settings.for_device("0402:3922").mask_path == str(
         library / "custom_mask" / "01.png")
 

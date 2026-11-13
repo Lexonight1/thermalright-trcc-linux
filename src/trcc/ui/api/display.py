@@ -770,7 +770,8 @@ class _Staged:
 
     def named(self, upload: UploadFile, suffix: str, fallback: str) -> Path:
         """*upload* under its own name, in a fresh folder -- for a Command
-        that files it by that name (the mask library's ``custom_<name>``)."""
+        that files it by that name (the mask library's ``custom_<name>``, a
+        one-file theme's ``single-image/<name>``)."""
         folder = self._dir / uuid.uuid4().hex
         self._entries.append(folder)
         folder.mkdir()
@@ -780,10 +781,13 @@ class _Staged:
         return self._write(upload, folder / f"{stem}{suffix}")
 
     def discard(self, kept: tuple[str, ...]) -> None:
-        """Remove every entry but *kept*."""
+        """Remove every entry but *kept* -- and a folder holding one of them:
+        a ``named`` entry is its folder, and a video still playing is read
+        from inside it."""
         keep = {Path(p) for p in kept}
         for path in self._entries:
-            if path in keep:
+            if any(k == path or path in k.parents for k in keep):
+                log.debug("_Staged.discard: kept %s -- still read", path.name)
                 continue
             if path.is_dir():
                 shutil.rmtree(path)
@@ -863,7 +867,10 @@ async def create_theme(
                 f"(expected image {sorted(_CREATE_THEME_IMG_EXTS)} or "
                 f"video {sorted(_CREATE_THEME_VID_EXTS)})",
             )
-        bg_path = staged.file(background, bg_suffix)
+        # Under its own name: the one-file theme is filed by the source's stem,
+        # so a fresh hex name made a new single-image/<hex> per upload of the
+        # same picture.  Named, it lands where the CLI's would.
+        bg_path = staged.named(background, bg_suffix, "background")
 
         mask_path: Path | None = None
         if mask is not None and mask.file is not None:
