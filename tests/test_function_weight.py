@@ -52,10 +52,14 @@ import function_census  # noqa: E402
 #: lines) when its two Apply buttons gave way to one Command per control.
 #: 14 -> 13 on 2026-10-05: SaveTheme.execute, when the resolution of the live
 #: content moved to ``_composed_resolution``, shared with ExportCurrentTheme.
-MAX_LONG_FUNCTIONS = 11
+#: 11 -> 10 on 2026-11-13: ``LoadTheme._load`` (451 lines) became the list of
+#: its named steps (activate, background choice, layout, masks, show), none
+#: over 51 lines.
+MAX_LONG_FUNCTIONS = 10
 
 #: LOWER IT when a function comes off the list; never raise it.
-MAX_BRANCHY_FUNCTIONS = 7
+#: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.
+MAX_BRANCHY_FUNCTIONS = 6
 
 #: Passed explicitly so each gate's meaning lives HERE, not in the tool.
 LINE_THRESHOLD = 140
