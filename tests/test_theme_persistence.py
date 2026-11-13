@@ -7,6 +7,7 @@ called out.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import zipfile
 from pathlib import Path
@@ -364,6 +365,32 @@ def test_save_theme_flags_existing_then_overwrites(
         SaveTheme(key=_TEST_DEVICE_KEY, name="dupe", overwrite=True))
     assert overwritten.ok is True
     assert overwritten.target_exists is False
+
+
+def test_a_save_that_fails_mid_write_changes_nothing(
+    app: App, tmp_home: Path, user_theme_dir: Path,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A write failing inside the staging dir: the save reports it, says so in
+    the log, and leaves no theme on disk and the device's state as it was."""
+    source = _write_theme(tmp_home, "source")
+    app.active_themes[_TEST_DEVICE_KEY] = FileContentStore().load(source)
+    app.settings.set_mask_path(_TEST_DEVICE_KEY, "/masks/kept.png")
+
+    def disk_full(*_args: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(SaveTheme, "_write_thumbnail", disk_full)
+    with caplog.at_level(logging.WARNING, logger="trcc.core.commands.theme"):
+        result = app.dispatch(SaveTheme(key=_TEST_DEVICE_KEY, name="broken"))
+
+    assert (result.ok, result.message, result.target_exists) == (
+        False, "failed to save theme: disk full", False)
+    assert not (user_theme_dir / "broken").exists()
+    assert app.active_themes[_TEST_DEVICE_KEY].path == source
+    assert app.settings.for_device(_TEST_DEVICE_KEY).mask_path == "/masks/kept.png"
+    assert (f"SaveTheme: 'broken' not saved to {user_theme_dir / 'broken'}: "
+            "disk full") in [r.getMessage() for r in caplog.records]
 
 
 def test_save_theme_publishes_event(

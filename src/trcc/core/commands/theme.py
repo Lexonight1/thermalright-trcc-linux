@@ -862,36 +862,24 @@ class SaveTheme(Command[ThemeResult]):
                  self.key, self.name, self.overwrite)
         if not is_safe_user_name(self.name):
             log.warning("SaveTheme: rejected unsafe name %r", self.name)
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=self.name,
-                message=(f"invalid theme name {self.name!r} "
-                         "(no path separators, '..', leading '.', or NUL bytes)"),
-            )
-
+            return self._failed(
+                f"invalid theme name {self.name!r} "
+                "(no path separators, '..', leading '.', or NUL bytes)")
         theme = app.active_themes.get(self.key)
         if theme is None:
             log.warning("SaveTheme: no active theme for %s — refusing to save",
                         self.key)
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=self.name,
-                message=(f"no active theme for {self.key} — load one first"),
-            )
-
+            return self._failed(f"no active theme for {self.key} — load one first")
         device_settings = app.settings.for_device(self.key)
-        resolution = _composed_resolution(
-            app, self.key, theme, device_settings,
-        )
+        resolution = _composed_resolution(app, self.key, theme, device_settings)
         if resolution is None:
             log.warning(
                 "SaveTheme: cannot resolve resolution for %s "
                 "— device must be connected with a known profile",
                 self.key,
             )
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=self.name,
-                message=(f"cannot resolve resolution for {self.key} "
-                         "(connect the device first)"),
-            )
+            return self._failed(f"cannot resolve resolution for {self.key} "
+                                "(connect the device first)")
         w, h = resolution
 
         # A theme whose background a module draws is kept with that module:
@@ -914,18 +902,12 @@ class SaveTheme(Command[ThemeResult]):
         if (target.exists() or same_name) and not self.overwrite:
             log.info("SaveTheme: %r is taken (%s) — overwrite confirmation "
                      "needed", self.name, same_name or [target])
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=self.name,
-                target_exists=True,
-                message=f"A theme named {self.name!r} already exists.",
-            )
+            return self._failed(f"A theme named {self.name!r} already exists.",
+                                target_exists=True)
 
-        # Assemble into a staging dir that the store swaps over the target on
-        # a clean exit and discards on any failure.  The three hand-rolled
-        # try/except arms this replaces — create, assemble, finalize — each
-        # repeated ``rmtree(staging)`` and each returned its own wording for
-        # what is one outcome: the save did not happen and the previous theme
-        # is untouched.
+        # Assembled in a staging dir the store swaps over the target on a
+        # clean exit and discards on any failure: the save either happened,
+        # or the previous theme is untouched.
         try:
             with app.themes.stage(target) as staging:
                 manifest = self._build_manifest(
@@ -934,57 +916,16 @@ class SaveTheme(Command[ThemeResult]):
                 self._write_manifest(app, staging, manifest)
                 self._write_thumbnail(app, staging, theme)
         except (OSError, ThemeError, TrccError) as e:
-            return ThemeResult(
-                ok=False, key=self.key, theme_name=self.name,
-                message=f"failed to save theme: {e}",
-            )
+            log.warning("SaveTheme: %r not saved to %s: %s",
+                        self.name, target, e)
+            return self._failed(f"failed to save theme: {e}")
         # Overwritten: the one theme of that name is the one just saved, even
         # when the old one was kept in the other folder.
         for old in (o for o in same_name if o != target):
             log.info("SaveTheme: replacing %s, kept in another folder", old)
             app.themes.delete(old.parent, old.name)
 
-        # The device's overrides pointed at the SOURCE theme's assets.  They
-        # are captured inside the saved theme now, so drop them before the
-        # switch — this part IS SaveTheme's own business ("what I just baked
-        # in is no longer an override").  The background CHOICE needs no
-        # clearing: the switch below is a picked load, which ends it.
-        app.settings.set_mask_path(self.key, None)
-        # Establishing the saved theme as the device's live state is EXACTLY a
-        # theme switch, so dispatch the Command that owns one.
-        #
-        # This used to hand-roll LoadTheme — its own comment admitted it
-        # ("same switch LoadTheme performs") — re-pointing ``active_themes``,
-        # writing ``current_theme`` and busting the cache itself.  Two copies
-        # of one rule, already drifted: the copy never applied the theme's own
-        # bundled mask and never restarted a video background, and when
-        # LoadTheme learned to adopt the overlay layout into the working layer
-        # the copy had to be taught the same thing separately.  One writer of
-        # ``active_themes`` means the working layer cannot disagree with the
-        # theme that is actually loaded, structurally rather than by hand.
-        switched = LoadTheme(key=self.key, path=target).execute(app)
-        if not switched.ok:
-            log.warning(
-                "SaveTheme: %s written to %s but the switch to it failed "
-                "(%s) — the theme is on disk, the device still shows the "
-                "previous one", self.name, target, switched.message,
-            )
-        # ...and re-assert self-containment afterwards.  ``mask_path`` is an
-        # OVERRIDE field ("use this instead of the theme's"), and LoadTheme
-        # writes it as a side effect of
-        # applying a theme's bundled mask — so a theme that bundles its own
-        # mask comes back holding an override that points at itself.  Harmless
-        # to render (the renderer resolves the same image either way) but not
-        # harmless to keep: an override survives the next switch, so it would
-        # bleed this theme's mask onto the next maskless theme the user picks.
-        # A saved theme owns its assets; the device overrides nothing.
-        app.settings.set_mask_path(self.key, None)
-        _invalidate_scene(app, self.key)
-        log.info(
-            "SaveTheme: %s — cleared overrides + switched the device to %s",
-            self.name, target,
-        )
-
+        self._switch_to(app, target)
         app.events.publish(ThemeSaved(
             key=self.key, theme_name=self.name, path=str(target),
         ))
@@ -992,6 +933,43 @@ class SaveTheme(Command[ThemeResult]):
             ok=True, key=self.key, theme_name=self.name,
             theme_path=str(target),
             message=f"theme saved as '{self.name}' at {target}",
+        )
+
+    def _failed(self, message: str, *, target_exists: bool = False) -> ThemeResult:
+        """The one shape of a save that did not happen."""
+        log.debug("SaveTheme %s: -> not saved %r", self.key, message)
+        return ThemeResult(ok=False, key=self.key, theme_name=self.name,
+                           target_exists=target_exists, message=message)
+
+    def _switch_to(self, app: App, target: Path) -> None:
+        """Make the saved theme the device's live state.
+
+        The device's overrides pointed at the SOURCE theme's assets, and are
+        baked into the saved theme now, so they go.  The background choice
+        needs no clearing: the switch is a picked load, which ends it.
+
+        The switch is a theme switch, so it is LoadTheme's: one writer of
+        ``active_themes`` keeps the working layer and the loaded theme from
+        disagreeing.  A hand-rolled copy here had already drifted -- it never
+        applied the theme's bundled mask or restarted a video background.
+
+        ``mask_path`` is cleared again AFTER it: LoadTheme writes it when it
+        applies a theme's bundled mask, so a theme with its own mask came back
+        holding an override pointing at itself -- which survives the next
+        switch and bleeds this mask onto the next maskless theme."""
+        app.settings.set_mask_path(self.key, None)
+        switched = LoadTheme(key=self.key, path=target).execute(app)
+        if not switched.ok:
+            log.warning(
+                "SaveTheme: %s written to %s but the switch to it failed "
+                "(%s) — the theme is on disk, the device still shows the "
+                "previous one", self.name, target, switched.message,
+            )
+        app.settings.set_mask_path(self.key, None)
+        _invalidate_scene(app, self.key)
+        log.info(
+            "SaveTheme: %s — cleared overrides + switched the device to %s",
+            self.name, target,
         )
 
     # ── Manifest assembly (called by execute, error-rolled-back as a unit) ──
