@@ -154,3 +154,34 @@ def test_a_class_from_an_unloaded_module_is_not_swept() -> None:
     Ghost.__module__ = "trcc.modules.ghost.core"
     assert Ghost.__module__ not in sys.modules
     assert Ghost not in gen_ports_reference._all_classes()
+
+
+def test_a_class_nothing_references_any_more_is_not_swept() -> None:
+    """A class no one holds lingers in the collector until a collection runs,
+    and the suite turns automatic collection off: a worker generated
+    ``BaseScsiTransport`` with five implementations instead of four, on one
+    run of 3.15 (2026-11-12) -- by test order, not by the tree.  Whatever left
+    that class, a dead class is not an implementation.  MUTATION CHECK: drop
+    ``gc.collect()`` in ``_all_classes`` and the dead subclass is swept."""
+    import gc
+    import weakref
+
+    from trcc.adapters.device.scsi_transport import BaseScsiTransport
+
+    def make_and_drop() -> weakref.ref[type]:
+        class Dead(BaseScsiTransport):
+            """A subclass nothing will hold."""
+
+        Dead.__module__ = "trcc.core"          # a loaded module: not skipped
+        return weakref.ref(Dead)
+
+    enabled = gc.isenabled()
+    gc.disable()                               # as the suite runs
+    try:
+        dead = make_and_drop()
+        assert dead() is not None, "collected already: the test proves nothing"
+        assert not any(c.__name__ == "Dead" and c.__module__ == "trcc.core"
+                       for c in gen_ports_reference._all_classes())
+    finally:
+        if enabled:
+            gc.enable()

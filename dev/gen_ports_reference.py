@@ -117,6 +117,10 @@ def _all_classes() -> list[type]:
     """
     import gc
 
+    # A class nothing holds any more lingers until a collection runs, and the
+    # suite runs with automatic collection off: one worker counted a fifth
+    # BaseScsiTransport (3.15, 2026-11-12).  Collect first; dead is not built.
+    gc.collect()
     return [
         obj for obj in gc.get_objects()
         if issubclass(type(obj), type)
