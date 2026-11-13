@@ -77,7 +77,12 @@ import function_census  # noqa: E402
 #: cloud download it defined inline is a method.  Proved by the whole
 #: window's pixels and all 999 widgets' rect, visibility, text and creation
 #: order (``panel_snapshot trcc_app``), identical before and after.
-MAX_LONG_FUNCTIONS = 4
+#: 4 -> 3 the same day: ``build_app`` (179 lines) registers what it used to
+#: define inline -- both middlewares, ``/health``, ``/pair``, ``/`` and the
+#: static mount are module functions.  Every route, the middleware stack,
+#: the OpenAPI document and the mount identical (14953 lines), and every
+#: API-main log line across the 24 test files that build it (1230 lines).
+MAX_LONG_FUNCTIONS = 3
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.

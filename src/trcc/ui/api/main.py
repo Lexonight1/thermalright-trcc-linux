@@ -144,12 +144,172 @@ def set_pairing_code(code: str | None) -> None:
              "set" if code else "cleared (pairing disabled)")
 
 
+async def log_requests(request: Request, call_next):
+    """Request logging -- every call gets one line.
+
+    INFO, except a route that declares itself per-frame (a poller, like
+    ``/tick``) -- the way a Command declares LOG_LEVEL.  At INFO a 1 Hz poller
+    rotated the diagnosis out of the file within hours; a FAILED dispatch
+    still logs a WARNING from the bus."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - start) * 1000
+    line = ("API %s %s → %d (%.0fms)", request.method,
+            loggable_path(request.url.path),
+            response.status_code, ms)
+    if getattr(request.state, "per_frame", False):
+        frame_log.debug(*line)
+    else:
+        log.info(*line)
+    return response
+
+
+async def check_token(request: Request, call_next):
+    """Token auth.
+
+    When ``_api_token`` is set, every non-exempt path requires a matching
+    ``X-API-Token`` header (hmac compare so a wrong-length token doesn't
+    time-leak).  When it is None the API is unauth'd loopback -- which a web
+    page in the user's own browser can reach, so only a loopback Host with no
+    foreign Origin gets through (``is_loopback_client``).  WebSockets bypass
+    HTTP middleware; ``admit_ws`` applies the same rule."""
+    if _api_token and request.url.path not in _AUTH_EXEMPT:
+        header_token = request.headers.get("X-API-Token", "")
+        if not hmac.compare_digest(header_token, _api_token):
+            log.warning(
+                "API auth: rejected %s %s (token mismatch)",
+                request.method, loggable_path(request.url.path),
+            )
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid token"},
+            )
+    elif not _api_token and not is_loopback_client(
+            request.url.hostname, request.headers.get("origin")):
+        log.warning("API auth: refused %s %s from host=%s origin=%s "
+                    "(token-less server, not a loopback client)",
+                    request.method, loggable_path(request.url.path),
+                    request.headers.get("host"),
+                    request.headers.get("origin"))
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Refused: not a loopback client"},
+        )
+    return await call_next(request)
+
+
+def health() -> dict:
+    """Liveness probe — always reachable, no auth required."""
+    log.debug("health")
+    return {"status": "ok", "version": __version__}
+
+
+def pair_device(code: str) -> dict | JSONResponse:
+    """Exchange the terminal pairing code for the persistent API token.
+
+    Remote devices receive the code out-of-band (operator types
+    it into the remote app), POST it here, and store the returned
+    ``token`` for all future requests as the ``X-API-Token`` header.
+    """
+    if not _pairing_code:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail":
+                "Pairing not available "
+                "(server started without a pairing code)",
+            },
+        )
+    if not hmac.compare_digest(code.upper(), _pairing_code.upper()):
+        log.warning("API pair: rejected (wrong code)")
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Invalid pairing code"},
+        )
+    if not _api_token:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "No API token configured"},
+        )
+    log.info("API pair: remote device paired successfully")
+    return {"success": True, "token": _api_token}
+
+
+def root() -> dict:
+    log.debug("root")
+    return {
+        "name": "TRCC API",
+        "version": __version__,
+        "endpoints": [
+            "GET  /devices",
+            "POST /devices/{key}/connect",
+            "POST /devices/{key}/disconnect",
+            "POST /devices/{key}/display/orientation",
+            "POST /devices/{key}/display/brightness",
+            "POST /devices/{key}/display/theme",
+            "POST /devices/{key}/display/color",
+            "POST /devices/{key}/display/fit-mode",
+            "POST /devices/{key}/display/overlay",
+            "POST /devices/{key}/display/split-mode",
+            "POST /devices/{key}/display/mask",
+            "POST /devices/{key}/display/mask-position",
+            "POST /devices/{key}/display/mask-visible",
+            "POST /devices/{key}/display/play-video",
+            "POST /devices/{key}/display/stop-video",
+            "POST /devices/{key}/display/tick",
+            "POST /devices/{key}/led/colors",
+            "POST /devices/{key}/led/render",
+            "GET  /system/info",
+            "GET  /system/sensors",
+            "POST /system/setup",
+            "POST /config/temp-unit",
+            "POST /config/language",
+            "POST /config/gpu",
+            "POST /config/refresh-interval",
+            "POST /theme/save",
+            "POST /theme/export",
+            "POST /theme/import",
+        ],
+    }
+
+
+def _mount_static(api: FastAPI, trcc: CommandBus | None) -> None:
+    """Static serving for cloud previews.
+
+    Mounts data/web so the /theme/web gallery's preview_url
+    (/static/web/{w}{h}/<id>.png — and masks under zt{w}{h}/) resolve.
+    Created if absent so the mount succeeds before the first
+    /theme/init download; StaticFiles serves whatever lands there."""
+    if trcc is None:
+        log.info("static: routes only — /static/web not mounted")
+        return
+    try:
+        data_dir = trcc.dispatch(GetPaths()).data_dir
+        if not data_dir:
+            raise RuntimeError("GetPaths returned no data_dir")
+        web_root = Path(data_dir) / "web"
+        web_root.mkdir(parents=True, exist_ok=True)
+        api.mount(
+            "/static/web", StaticFiles(directory=str(web_root)), name="static-web",
+        )
+        log.info("static: mounted /static/web → %s", web_root)
+    except (OSError, AttributeError, RuntimeError) as e:
+        # RuntimeError is the no-data_dir case raised just above; it was
+        # not caught, so it crashed the API at startup instead of skipping.
+        log.warning("static: /static/web mount skipped — %s", e)
+
+
 def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
     """Build the FastAPI app.  Creates a default App if none passed.
 
     ``serve=False`` builds the routes and nothing else -- no App, no static
     mount -- for a caller that only lists them (``trcc system list-endpoints``,
     which used to find or START the shared App to print a list).
+
+    Registration order is kept as it always was: the logging middleware, then
+    auth (Starlette runs the LAST added outermost, so auth wraps logging),
+    the two auth-exempt meta routes, every router, the static mount, then
+    ``/``.
     """
     log.info("build_app: trcc=%s serve=%s", trcc is not None, serve)
     if trcc is None and serve:
@@ -166,162 +326,14 @@ def build_app(trcc: CommandBus | None = None, *, serve: bool = True) -> FastAPI:
         version=__version__,
     )
     api.state.trcc = trcc
-
-    # ── Request logging — every call gets one line ──────────────────
-    # INFO, except a route that declares itself per-frame (a poller, like
-    # ``/tick``) — the way a Command declares LOG_LEVEL.  At INFO a 1 Hz poller
-    # rotated the diagnosis out of the file within hours; a FAILED dispatch
-    # still logs a WARNING from the bus.
-    @api.middleware("http")
-    async def log_requests(request: Request, call_next):
-        start = time.perf_counter()
-        response = await call_next(request)
-        ms = (time.perf_counter() - start) * 1000
-        line = ("API %s %s → %d (%.0fms)", request.method,
-                loggable_path(request.url.path),
-                response.status_code, ms)
-        if getattr(request.state, "per_frame", False):
-            frame_log.debug(*line)
-        else:
-            log.info(*line)
-        return response
-
-    # ── Token-auth middleware ───────────────────────────────────────
-    # When ``_api_token`` is set, every non-exempt path requires a
-    # matching ``X-API-Token`` header (hmac compare so a wrong-length token
-    # doesn't time-leak).  When it is None the API is unauth'd loopback —
-    # which a web page in the user's own browser can reach, so only a
-    # loopback Host with no foreign Origin gets through (``is_loopback_client``).
-    # WebSockets bypass HTTP middleware; ``admit_ws`` applies the same rule.
-    @api.middleware("http")
-    async def check_token(request: Request, call_next):
-        if _api_token and request.url.path not in _AUTH_EXEMPT:
-            header_token = request.headers.get("X-API-Token", "")
-            if not hmac.compare_digest(header_token, _api_token):
-                log.warning(
-                    "API auth: rejected %s %s (token mismatch)",
-                    request.method, loggable_path(request.url.path),
-                )
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Invalid token"},
-                )
-        elif not _api_token and not is_loopback_client(
-                request.url.hostname, request.headers.get("origin")):
-            log.warning("API auth: refused %s %s from host=%s origin=%s "
-                        "(token-less server, not a loopback client)",
-                        request.method, loggable_path(request.url.path),
-                        request.headers.get("host"),
-                        request.headers.get("origin"))
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Refused: not a loopback client"},
-            )
-        return await call_next(request)
-
-    # ── Health endpoint — exempt from auth ──────────────────────────
-    @api.get("/health", tags=["meta"])
-    def health() -> dict:
-        """Liveness probe — always reachable, no auth required."""
-        log.debug("health")
-        return {"status": "ok", "version": __version__}
-
-    # ── Pairing endpoint — exempt from auth ─────────────────────────
-    @api.post("/pair", tags=["meta"], response_model=None)
-    def pair_device(code: str) -> dict | JSONResponse:
-        """Exchange the terminal pairing code for the persistent API token.
-
-        Remote devices receive the code out-of-band (operator types
-        it into the remote app), POST it here, and store the returned
-        ``token`` for all future requests as the ``X-API-Token`` header.
-        """
-        if not _pairing_code:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "detail":
-                    "Pairing not available "
-                    "(server started without a pairing code)",
-                },
-            )
-        if not hmac.compare_digest(code.upper(), _pairing_code.upper()):
-            log.warning("API pair: rejected (wrong code)")
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Invalid pairing code"},
-            )
-        if not _api_token:
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "No API token configured"},
-            )
-        log.info("API pair: remote device paired successfully")
-        return {"success": True, "token": _api_token}
-
+    api.middleware("http")(log_requests)
+    api.middleware("http")(check_token)
+    api.get("/health", tags=["meta"])(health)
+    api.post("/pair", tags=["meta"], response_model=None)(pair_device)
     for router in routers(trcc):
         api.include_router(router)
-
-    # ── Static serving for cloud previews ───────────────────────────
-    # Mount data/web so the /theme/web gallery's preview_url
-    # (/static/web/{w}{h}/<id>.png — and masks under zt{w}{h}/) resolve.
-    # Created if absent so the mount succeeds before the first
-    # /theme/init download; StaticFiles serves whatever lands there.
-    if trcc is None:
-        log.info("static: routes only — /static/web not mounted")
-    else:
-        try:
-            data_dir = trcc.dispatch(GetPaths()).data_dir
-            if not data_dir:
-                raise RuntimeError("GetPaths returned no data_dir")
-            web_root = Path(data_dir) / "web"
-            web_root.mkdir(parents=True, exist_ok=True)
-            api.mount(
-                "/static/web", StaticFiles(directory=str(web_root)), name="static-web",
-            )
-            log.info("static: mounted /static/web → %s", web_root)
-        except (OSError, AttributeError, RuntimeError) as e:
-            # RuntimeError is the no-data_dir case raised just above; it was
-            # not caught, so it crashed the API at startup instead of skipping.
-            log.warning("static: /static/web mount skipped — %s", e)
-
-    @api.get("/", tags=["meta"])
-    def root() -> dict:
-        log.debug("root")
-        return {
-            "name": "TRCC API",
-            "version": __version__,
-            "endpoints": [
-                "GET  /devices",
-                "POST /devices/{key}/connect",
-                "POST /devices/{key}/disconnect",
-                "POST /devices/{key}/display/orientation",
-                "POST /devices/{key}/display/brightness",
-                "POST /devices/{key}/display/theme",
-                "POST /devices/{key}/display/color",
-                "POST /devices/{key}/display/fit-mode",
-                "POST /devices/{key}/display/overlay",
-                "POST /devices/{key}/display/split-mode",
-                "POST /devices/{key}/display/mask",
-                "POST /devices/{key}/display/mask-position",
-                "POST /devices/{key}/display/mask-visible",
-                "POST /devices/{key}/display/play-video",
-                "POST /devices/{key}/display/stop-video",
-                "POST /devices/{key}/display/tick",
-                "POST /devices/{key}/led/colors",
-                "POST /devices/{key}/led/render",
-                "GET  /system/info",
-                "GET  /system/sensors",
-                "POST /system/setup",
-                "POST /config/temp-unit",
-                "POST /config/language",
-                "POST /config/gpu",
-                "POST /config/refresh-interval",
-                "POST /theme/save",
-                "POST /theme/export",
-                "POST /theme/import",
-            ],
-        }
-
+    _mount_static(api, trcc)
+    api.get("/", tags=["meta"])(root)
     return api
 
 
