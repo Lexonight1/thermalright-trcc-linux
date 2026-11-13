@@ -92,8 +92,10 @@ def create(
     """One-shot theme builder: background + optional mask + overlay -> save.
 
     Mirrors legacy ``trcc theme --save``.  Dispatches :class:`CreateTheme`,
-    the Command the API's create-theme dispatches too, which reads every
-    input before the panel changes: bad input changes nothing.
+    the Command the API's create-theme dispatches too.  The name and the
+    overlay are checked before the panel changes, so a bad one changes
+    nothing; a background or mask that will not open is found as it is
+    shown.
     """
     log.info(
         "cli theme create: key=%s name=%s background=%s mask=%s overlay=%s "

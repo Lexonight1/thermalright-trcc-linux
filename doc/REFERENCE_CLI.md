@@ -2318,7 +2318,7 @@ trcc theme cloud-load KEY THEME_ID
 
 ### `trcc theme create`
 
-One-shot theme builder: background + optional mask + overlay -> save. Mirrors legacy `trcc theme --save`. Dispatches `CreateTheme`, the Command the API's create-theme dispatches too, which reads every input before the panel changes: bad input changes nothing.
+One-shot theme builder: background + optional mask + overlay -> save. Mirrors legacy `trcc theme --save`. Dispatches `CreateTheme`, the Command the API's create-theme dispatches too. The name and the overlay are checked before the panel changes, so a bad one changes nothing; a background or mask that will not open is found as it is shown.
 
 ```bash
 trcc theme create [OPTIONS] KEY NAME
