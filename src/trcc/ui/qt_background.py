@@ -46,6 +46,20 @@ log = logging.getLogger(__name__)
 Failed = Callable[[str], Result]
 
 
+def still_there(callback: Callable[..., Any]) -> bool:
+    """Whether *callback*'s widget is still there.
+
+    A bound method of a QObject whose C++ half Qt has deleted -- a window that
+    closed while Python still holds it -- is not: calling it draws into a dead
+    widget ("Internal C++ object already deleted").  Anything else is.
+    """
+    owner = getattr(callback, "__self__", None)
+    there = not (isinstance(owner, QObject) and not shiboken6.isValid(owner))
+    log.debug("still_there: %s -> %s",
+              getattr(callback, "__qualname__", callback), there)
+    return there
+
+
 class _Relay(QObject):
     """The one QObject a worker touches: made on the GUI thread, never freed."""
 
@@ -73,9 +87,7 @@ class _Relay(QObject):
         # dead), or Qt deleted the widget while Python still holds it -- a
         # window that closed and a page list that keeps it.  The second used
         # to deliver into a dead widget: "Internal C++ object already deleted".
-        owner = getattr(on_done, "__self__", None)
-        if on_done is None or (isinstance(owner, QObject)
-                               and not shiboken6.isValid(owner)):
+        if on_done is None or not still_there(on_done):
             log.info("_Relay: answer %d arrived after its window closed -- "
                      "dropped", token)
             return

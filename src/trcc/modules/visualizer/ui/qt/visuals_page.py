@@ -357,7 +357,7 @@ class VisualsPage(BaseThemeBrowser, ModulePage):
         self._tr: Callable[[str], str] = str
         self._key = ""
         self._listed = False
-        self._tiles = VisualTiles(app, self._tile_query, self._show_tile)
+        self._tiles = VisualTiles(app, self._tile_query, self._show_tile, self._say)
         super().__init__(parent, skin=look.tiles)
 
     def _setup_ui(self) -> None:
