@@ -61,12 +61,17 @@ import function_census  # noqa: E402
 #: the tree) became FormLED's sections as ``_build_*`` steps, none over 75.
 #: Proved by every LED style's pixels + each widget's rect, visibility, text
 #: and creation (stacking) order, identical before and after.
-MAX_LONG_FUNCTIONS = 8
+#: 8 -> 7 the same day: ``_parse_dc`` (190 lines) reads the 0xDC sections
+#: as steps -- switches, fonts, positions, slot elements, tail, clock.
+#: Proved over every 0xDC file on the dev box (184 unique), each whole, cut
+#: every 3 bytes and corrupted every 5th: 64134 parses identical to before.
+MAX_LONG_FUNCTIONS = 7
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.
 #: 6 -> 5 the same day: ``RenderLed.execute``, the same split.
-MAX_BRANCHY_FUNCTIONS = 5
+#: 5 -> 4 the same day: ``_parse_dc``, the same split.
+MAX_BRANCHY_FUNCTIONS = 4
 
 #: Passed explicitly so each gate's meaning lives HERE, not in the tool.
 LINE_THRESHOLD = 140

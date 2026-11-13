@@ -482,40 +482,70 @@ def _write_run(w: _Writer, run: tuple[tuple[str, Any], ...],
 
 
 def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
+    """A 0xDC file, read in its own order: the slot switches, 13 fonts, the
+    trailer head, 13 positions, the trailer tail and the clock block.  From
+    the trailer on every section is optional -- older files end early, and
+    what they lack keeps its default."""
+    log.debug("_parse_dc: %s, %d bytes", theme_name, len(data))
     r = _Reader(data, start=1)
-    r.read_int32()
-    r.read_int32()
+    overlay_enabled, slot_enabled = _dc_switches(r)
+    custom_text, fonts = _dc_fonts(r)
+    trailer = _trailer_defaults()
+    try:
+        _read_run(r, _TRAILER_HEAD, trailer)
+    except (struct.error, IndexError) as e:
+        log.debug("0xDC head truncated (%s) — keeping defaults", e)
+    positions = _dc_positions(r)
+    elements = _dc_slot_elements(positions, slot_enabled, fonts, custom_text)
+    show_unit = _dc_tail(r, trailer)
+    elements += _dc_clock_elements(r)
+    # One flag for all six values, applied where 0xDD applies its per-element
+    # one — so both formats hand the overlay the same vocabulary and
+    # ``_draw_metric`` needs to know nothing about which file it came from.
+    for element in elements:
+        if element.get("type") == "metric":
+            element["show_unit"] = show_unit
+    return {
+        "name": theme_name,
+        "overlay_enabled": overlay_enabled,
+        **trailer,
+        "elements": elements,
+    }
 
-    flag_custom = r.read_bool()
+
+def _dc_switches(r: _Reader) -> tuple[bool, dict[str, bool]]:
+    """The header: the overlay switch, and which slots are on -- the custom
+    text, and each of the six readings with its label."""
+    r.read_int32()
+    r.read_int32()
+    custom = r.read_bool()
     # ``myXtxx`` — the OVERLAY toggle, same field 0xDD carries in its header
     # and discarded here for the same reason.  See ``_parse_dd``.
     overlay_enabled = r.read_bool()
-    flag_cpu_temp = r.read_bool()
-    flag_cpu_freq = r.read_bool()
-    flag_cpu_usage = r.read_bool()
-    flag_gpu_temp = r.read_bool()
-    flag_gpu_clock = r.read_bool()
-    flag_gpu_usage = r.read_bool()
+    slot_enabled = {"custom_text": custom}
+    for reading in ("cpu_temp", "cpu_freq", "cpu_usage",
+                    "gpu_temp", "gpu_clock", "gpu_usage"):
+        slot_enabled[reading] = slot_enabled[f"{reading}_label"] = r.read_bool()
     r.read_int32()
+    log.debug("_dc_switches: overlay=%s slots on=%s", overlay_enabled,
+              [k for k, on in slot_enabled.items() if on])
+    return overlay_enabled, slot_enabled
 
-    slot_enabled = {
-        "custom_text": flag_custom,
-        "cpu_temp": flag_cpu_temp,
-        "cpu_temp_label": flag_cpu_temp,
-        "cpu_freq": flag_cpu_freq,
-        "cpu_freq_label": flag_cpu_freq,
-        "cpu_usage": flag_cpu_usage,
-        "cpu_usage_label": flag_cpu_usage,
-        "gpu_temp": flag_gpu_temp,
-        "gpu_temp_label": flag_gpu_temp,
-        "gpu_clock": flag_gpu_clock,
-        "gpu_clock_label": flag_gpu_clock,
-        "gpu_usage": flag_gpu_usage,
-        "gpu_usage_label": flag_gpu_usage,
-    }
 
-    fonts: list[dict[str, Any]] = []
+def _dc_fonts(r: _Reader) -> tuple[str, list[dict[str, Any]]]:
+    """The custom text, then one font per slot.  A slot the file cuts short
+    gets the default font -- and the loop goes ON reading after it.  That is
+    not dead weight: each later slot's ``read_string`` still takes a byte,
+    which moves where the trailer below starts reading.  Stopping at the
+    first failure changed what 4262 of 64134 cut or corrupted files parse
+    to (``screencast_display`` among them), measured 2026-11-13.
+
+    The raw RGB bytes are kept whatever the alpha: themes commonly persist
+    alpha=0 with a real colour (#808080 most often), and honouring the alpha
+    repainted user themes white on first read -- as legacy ``dc_parser``
+    knew, which ignored it too."""
     custom_text = ""
+    fonts: list[dict[str, Any]] = []
     for idx in range(_FONT_SLOTS):
         try:
             if idx == 0:
@@ -525,17 +555,10 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
             style = r.read_byte()
             r.read_byte()
             r.read_byte()
-            alpha = r.read_byte()
+            r.read_byte()   # alpha: not part of the colour, see above
             red = r.read_byte()
             green = r.read_byte()
             blue = r.read_byte()
-            # Preserve the raw RGB bytes regardless of alpha.  Legacy
-            # `dc_parser` / `OverlayElement.color_hex` ignored alpha
-            # and returned the colour straight from the bytes — themes
-            # commonly persist with alpha=0 + a real RGB triplet
-            # (#808080 is the most common), and forcing #ffffff there
-            # silently repaints user themes white on first read.
-            del alpha  # legacy quirk: not part of the colour key
             fonts.append({
                 "name": font_name,
                 "size": size,
@@ -548,13 +571,12 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
                 "name": THEME_FONT, "size": 24, "bold": False,
                 "italic": False, "color": "#ffffff",
             })
+    log.debug("_dc_fonts: %d fonts, custom text %r", len(fonts), custom_text)
+    return custom_text, fonts
 
-    trailer = _trailer_defaults()
-    try:
-        _read_run(r, _TRAILER_HEAD, trailer)
-    except (struct.error, IndexError) as e:
-        log.debug("0xDC head truncated (%s) — keeping defaults", e)
 
+def _dc_positions(r: _Reader) -> list[tuple[int, int]]:
+    """Each slot's (x, y), as far as the file goes."""
     positions: list[tuple[int, int]] = []
     for _ in range(_ELEMENT_SLOTS):
         try:
@@ -563,7 +585,16 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         except (struct.error, IndexError):
             break
         positions.append((x, y))
+    log.debug("_dc_positions: %d of %d", len(positions), _ELEMENT_SLOTS)
+    return positions
 
+
+def _dc_slot_elements(
+    positions: list[tuple[int, int]], slot_enabled: dict[str, bool],
+    fonts: list[dict[str, Any]], custom_text: str,
+) -> list[dict[str, Any]]:
+    """An element for every slot that is on and has a position: the custom
+    text (when there is any), a fixed label, or a reading."""
     elements: list[dict[str, Any]] = []
     for idx, (slot_name, metric_key, label, fmt) in enumerate(_SLOT_MAP):
         if idx >= len(positions):
@@ -571,9 +602,7 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         if not slot_enabled.get(slot_name, True):
             continue
         x, y = positions[idx]
-        font = fonts[idx] if idx < len(fonts) else {
-            "size": 24, "bold": False, "italic": False, "color": "#ffffff",
-        }
+        font = fonts[idx]
         if slot_name == "custom_text":
             if not custom_text:
                 continue
@@ -589,39 +618,40 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
                 "type": "metric", "x": x, "y": y,
                 "metric": metric_key, "format": fmt, **font,
             })
+    log.debug("_dc_slot_elements: %d element(s)", len(elements))
+    return elements
 
-    # Optional 0xDC trailer — carries overlay rect + mask flags + the
-    # clock/date/weekday block.  Same fields legacy DcParser reads
-    # after the 13 positions; ported verbatim to avoid silently losing
-    # the time/date/weekday elements 0xDC themes carry.
+
+def _dc_tail(r: _Reader, trailer: dict[str, Any]) -> bool:
+    """The optional trailer tail into *trailer*: overlay rect, mask flags and
+    the rest legacy ``DcParser`` reads after the 13 positions.  Returns the
+    theme's SHOW-UNIT switch; True when the file has none.
+
+    ``num8`` is that switch.  The C# copies this one bool into every value
+    element's ``myModeSub`` (``arrayList5..10[1] = num8``), the same field
+    0xDD carries per element.  It used to be read and dropped, so a mask
+    whose ART already draws "°C" got a second one from us.  Measured: 10 of
+    500 shipped 0xDC files ask for it hidden (2.0%); 177 of 1274 0xDD files
+    (13.9%), and those always worked."""
     show_unit = True
     try:
         r.read_string()         # custom-text string (unused here)
-        # ``num8`` — the theme's SHOW-UNIT switch.  The C# copies this one
-        # bool into every value element's ``myModeSub`` (``arrayList5..10[1]
-        # = num8``), which is the same field 0xDD carries per element and
-        # which ``_build_dd_element`` already translates to ``show_unit``.
-        # 0xDC had no equivalent: its metric formats bake the glyph in and
-        # the flag was read and dropped, so a mask whose ART already draws
-        # "°C" got a second one from us.  MEASURED: 10 of 500 shipped 0xDC
-        # files ask for it hidden (2.0%); on the 0xDD side 177 of 1274
-        # (13.9%) do, and those have always worked.
         show_unit = r.read_bool()
         _read_run(r, _TRAILER_TAIL, trailer)
     except (struct.error, IndexError) as e:
         log.debug("0xDC tail absent/truncated (%s) — keeping defaults", e)
+    return show_unit
 
-    # Clock/date/weekday block.  Flag10 is the master enable; flag11
-    # = date, flag12 = time, flag13 = weekday.  Each carries its own
-    # font block + (x, y) coordinates.  Bare-minimum parse — emit
-    # next/-shape clock elements so OverlayService renders them on
-    # 0xDC themes the same as legacy did.
+
+def _dc_clock_elements(r: _Reader) -> list[dict[str, Any]]:
+    """The optional clock block: a master switch, then date, time and
+    weekday, each with its own font and (x, y).  The date and time keep the
+    format the theme was DESIGNED with, per element, as the C#'s myModeSub.
+    Older 0xDC files have no block, and get no clock."""
     try:
         flag_clock_master = r.read_bool()
         flag_date = r.read_bool()
         flag_time = r.read_bool()
-        # The DC stores the date and time format the theme was DESIGNED for,
-        # per element as the C#'s myModeSub -- each clock draws in its own.
         date_format_idx = r.read_int32()
         time_format_idx = r.read_int32()
         date_x = r.read_int32()
@@ -634,43 +664,30 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
         weekday_x = r.read_int32()
         weekday_y = r.read_int32()
         weekday_font = _read_dd_font(r)
-        if flag_clock_master:
-            if flag_date:
-                elements.append({
-                    "type": "clock", "source": "date",
-                    "format": DATE_FORMATS.get(date_format_idx,
-                                               DATE_FORMATS[0]),
-                    "x": date_x, "y": date_y, **date_font,
-                })
-            if flag_time:
-                elements.append({
-                    "type": "clock", "source": "time",
-                    "format": TIME_FORMATS.get(time_format_idx,
-                                               TIME_FORMATS[0]),
-                    "x": time_x, "y": time_y, **time_font,
-                })
-            if flag_weekday:
-                elements.append({
-                    "type": "clock", "source": "weekday",
-                    "x": weekday_x, "y": weekday_y, **weekday_font,
-                })
-    except (struct.error, IndexError):
-        # Trailer is optional — older 0xDC themes don't have it.
-        pass
-
-    # One flag for all six values, applied where 0xDD applies its per-element
-    # one — so both formats hand the overlay the same vocabulary and
-    # ``_draw_metric`` needs to know nothing about which file it came from.
-    for element in elements:
-        if element.get("type") == "metric":
-            element["show_unit"] = show_unit
-
-    return {
-        "name": theme_name,
-        "overlay_enabled": overlay_enabled,
-        **trailer,
-        "elements": elements,
-    }
+    except (struct.error, IndexError) as e:
+        log.debug("0xDC clock block absent/truncated (%s) — no clock", e)
+        return []
+    elements: list[dict[str, Any]] = []
+    if flag_clock_master and flag_date:
+        elements.append({
+            "type": "clock", "source": "date",
+            "format": DATE_FORMATS.get(date_format_idx, DATE_FORMATS[0]),
+            "x": date_x, "y": date_y, **date_font,
+        })
+    if flag_clock_master and flag_time:
+        elements.append({
+            "type": "clock", "source": "time",
+            "format": TIME_FORMATS.get(time_format_idx, TIME_FORMATS[0]),
+            "x": time_x, "y": time_y, **time_font,
+        })
+    if flag_clock_master and flag_weekday:
+        elements.append({
+            "type": "clock", "source": "weekday",
+            "x": weekday_x, "y": weekday_y, **weekday_font,
+        })
+    log.debug("_dc_clock_elements: master=%s -> %d clock(s)",
+              flag_clock_master, len(elements))
+    return elements
 
 
 def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
