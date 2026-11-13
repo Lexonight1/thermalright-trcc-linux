@@ -2565,10 +2565,10 @@ class CreateTheme(Command[CreateThemeResult]):
     shorthand (:data:`METRIC_SPEC_USAGE`).  Neither leaves the overlay as it
     is.  Given a *name*, the result is saved as that theme (``SaveTheme``).
 
-    Every UI passes its inputs as given; they are read here, before the panel
-    changes, so bad input changes nothing.  After that the first step that
-    refuses ends it, with that step's message; the steps before it stay
-    done.  Each step gates and connects its device itself, as it does when
+    Every UI passes its inputs as given.  The name and the overlay are read
+    first, so a bad one changes nothing; the background and the mask are
+    read by the step that shows them.  The first step that refuses ends it,
+    with that step's message; the steps before it stay done.  Each step gates and connects its device itself, as it does when
     dispatched on its own.  ``reads`` names the given files the panel still
     reads, so a caller that staged them deletes only the rest.
     """
@@ -2614,7 +2614,8 @@ class CreateTheme(Command[CreateThemeResult]):
             height=height, reads=self._still_read(app), theme_path=theme_path,
             message=(f"Theme created from {self.background.name} "
                      f"({'video' if animated else 'image'}, {width}x{height})"
-                     + (f", saved as {self.name!r}" if self.name else "")),
+                     + (f", saved as {self.name!r} at {theme_path}"
+                        if self.name else "")),
         )
 
     def _read_inputs(self, app: App) -> tuple[dict, ...] | None:

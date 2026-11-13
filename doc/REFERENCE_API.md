@@ -43,7 +43,7 @@ Interactive docs are served at `/docs` while the API is running.
 | `POST /devices/{key}/display/boot-animation` | `BootAnimationResult` | Upload a multi-frame compressed boot animation to a SCSI LCD's flash. |
 | `POST /devices/{key}/display/brightness` | `BrightnessResult` | — |
 | `POST /devices/{key}/display/color` | `SendResult` | Push a solid-color frame to a connected LCD device. |
-| `POST /devices/{key}/display/create-theme` | `CreateThemeResponse` | Create + apply a custom theme from uploaded multipart files. |
+| `POST /devices/{key}/display/create-theme` | `CreateThemeResponse` | Create a theme from uploaded files, show it, and save it if named. |
 | `POST /devices/{key}/display/export-video` | `VideoExportResult` | Encode a clip into a loose ``Theme.zt`` sized for the device's panel. |
 | `POST /devices/{key}/display/fit-mode` | `FitModeResult` | — |
 | `POST /devices/{key}/display/game` | `GameModeResult` | Switch game mode and/or set its CPU threshold. |

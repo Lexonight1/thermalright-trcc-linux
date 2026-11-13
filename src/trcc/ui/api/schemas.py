@@ -531,6 +531,11 @@ class CreateThemeResponse(ResultBase):
     key: str = ""
     animated: bool = False
     resolution: str = ""
+    #: The theme it was saved as; "" when it was only shown.  Its path is
+    #: server-side and stays off the wire, as for ``ThemeResponse``.
+    theme_name: str = ""
+    #: The save was refused only because a theme of that name exists (409).
+    target_exists: bool = False
 
 
 class AutostartRequest(BaseModel):

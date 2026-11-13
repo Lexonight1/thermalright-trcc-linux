@@ -2318,7 +2318,7 @@ trcc theme cloud-load KEY THEME_ID
 
 ### `trcc theme create`
 
-One-shot theme builder: bg + optional mask + overlay metrics → save. Mirrors legacy `trcc theme --save`. Dispatches a chain of existing Commands: `LoadImage` for the background, `UploadCustomMask` if `--mask` given, `AddOverlayElement` per `--metric` arg, then `SaveTheme` to persist the result. Stops on the first failure and leaves the device in whatever state was reached.
+One-shot theme builder: background + optional mask + overlay -> save. Mirrors legacy `trcc theme --save`. Dispatches `CreateTheme`, the Command the API's create-theme dispatches too, which reads every input before the panel changes: bad input changes nothing.
 
 ```bash
 trcc theme create [OPTIONS] KEY NAME
@@ -2331,9 +2331,11 @@ trcc theme create [OPTIONS] KEY NAME
 
 | Option | Description |
 |---|---|
-| `--bg`, `-b` `BACKGROUND` | Background image (PNG/JPG/BMP/WEBP) |
-| `--mask` `MASK` | Optional mask PNG to overlay (custom_<name>/01.png) |
+| `--bg`, `-b` `BACKGROUND` | Background picture (.bmp, .jpeg, .jpg, .png, .webp) or video (.avi, .gif, .mkv, .mov, .mp4, .webm, .zt) |
+| `--mask` `MASK` | Optional mask picture; also kept in the mask library as custom_<file name> |
+| `--overlay` `OVERLAY` | Optional overlay file, {"elements": [...]} -- before any --metric |
 | `--metric`, `-m` `METRIC` | Overlay metric spec: 'metric_key:x,y[:color[:size]]' — e.g. 'cpu:temp:160,90:#ff8800:24'. color defaults to '#ffffff', size defaults to 16. Repeatable. |
+| `--overwrite` | Replace an existing theme of that name. |
 
 ### `trcc theme delete`
 

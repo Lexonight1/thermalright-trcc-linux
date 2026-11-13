@@ -7,6 +7,7 @@ the upload handling.  These pin what the Command reports, above all
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -193,7 +194,7 @@ def test_a_name_saves_it_as_that_theme(panel: App, png: Path) -> None:
     library = panel.platform.paths().user_theme_dir(320, 320)
     assert result.theme_path == str(library / "mine")
     assert result.message == ("Theme created from bg.png (image, 320x320), "
-                              "saved as 'mine'")
+                              f"saved as 'mine' at {library / 'mine'}")
     assert panel.settings.for_device(_KEY).current_theme == result.theme_path
 
 
@@ -244,3 +245,146 @@ def test_it_crosses_the_socket_whole(tmp_path: Path) -> None:
                        name="mine", overwrite=True)
 
     assert decode_command(encode_command(sent)) == sent
+
+
+# ── Every UI passes every input: the CLI and the API ─────────────────────────
+
+
+class _Cli:
+    """``trcc theme create KEY ...`` through the real CLI, and where it saves."""
+
+    def __init__(self, platform: MockPlatform) -> None:
+        from typer.testing import CliRunner
+
+        from trcc.ui.cli.main import app as cli_app
+
+        self._runner = CliRunner()
+        self._app = cli_app
+        self.paths = platform.paths()
+
+    def __call__(self, *args: str) -> Any:
+        return self._runner.invoke(self._app, ["theme", "create", _KEY, *args])
+
+    def overlay(self) -> list[tuple[str, str]]:
+        """What the panel's overlay shows, asked as a UI asks."""
+        from trcc.ui.cli import _ctx
+
+        shown = _ctx.get_app().dispatch(ResolveOverlay(key=_KEY)).elements
+        return [(e.type, e.text or e.metric) for e in shown]
+
+
+@pytest.fixture
+def cli(tmp_path: Path, renderer: QtRenderer,
+        monkeypatch: pytest.MonkeyPatch) -> Iterator[_Cli]:
+    """The real CLI on one mock panel, the same App across calls."""
+    from trcc.ui.cli import _ctx
+
+    monkeypatch.setattr(MediaService, "load_video", _stub_load_video(renderer))
+    platform = MockPlatform([{"vid": "0402", "pid": "3922"}], tmp_path)
+    _ctx.set_platform(platform)
+    _ctx.set_renderer(renderer)
+    yield _Cli(platform)
+    _ctx.get_app.cache_clear()
+    _ctx._platform_override = None
+    _ctx._renderer_override = None
+
+
+def _stub_load_video(renderer: QtRenderer) -> Any:
+    frame = renderer.encode_jpeg(renderer.create_surface(320, 320))
+
+    def load_video(self: MediaService, device_key: str, path: Path,
+                   size: Any, **kwargs: Any) -> Playback:
+        playback = Playback(frames=[frame] * 3, fps=kwargs.get("fps", 15))
+        self._playbacks[device_key] = playback
+        return playback
+    return load_video
+
+
+def test_the_cli_passes_every_input(cli: _Cli, png: Path, tmp_path: Path) -> None:
+    """--mask, --overlay and --metric all reach the one Command, and the
+    result is saved under NAME."""
+    done = cli("mine", "--bg", str(png), "--mask", str(png),
+               "--overlay", str(_overlay_file(tmp_path, _TEXT)),
+               "--metric", "cpu:temp:160,90:#ff8800:24")
+
+    assert done.exit_code == 0, done.output
+    themes = cli.paths.user_theme_dir(320, 320)
+    assert f"saved as 'mine' at {themes / 'mine'}" in done.output
+    assert (themes / "mine").is_dir()
+    assert (cli.paths.user_mask_dir(320, 320) / "custom_bg").is_dir()
+    assert cli.overlay() == [("text", "hi"), ("metric", "cpu:temp")]
+
+
+def test_the_cli_saves_a_video_theme(cli: _Cli, png: Path, tmp_path: Path) -> None:
+    """A video background was API-only; the CLI's --bg takes one now."""
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+
+    assert cli("first", "--bg", str(png)).exit_code == 0
+    done = cli("clip", "--bg", str(video))
+
+    assert done.exit_code == 0, done.output
+    assert "Theme created from clip.mp4 (video, 320x320)" in done.output
+
+
+def test_the_cli_asks_before_it_overwrites(cli: _Cli, png: Path) -> None:
+    assert cli("mine", "--bg", str(png)).exit_code == 0
+
+    taken = cli("mine", "--bg", str(png))
+    replaced = cli("mine", "--bg", str(png), "--overwrite")
+
+    assert taken.exit_code == 1
+    assert "Re-run with --overwrite to replace it." in taken.output
+    assert replaced.exit_code == 0, replaced.output
+
+
+def test_a_bad_metric_leaves_the_cli_panel_as_it_was(cli: _Cli, png: Path) -> None:
+    """It used to show the background first and refuse the metric after."""
+    done = cli("mine", "--bg", str(png), "--metric", "cpu:temp")
+
+    assert done.exit_code == 1
+    assert "Invalid metric spec 'cpu:temp'" in done.output
+    assert not (cli.paths.user_content_dir() / "single-image").exists()
+
+
+@pytest.fixture
+def api(tmp_path: Path, renderer: QtRenderer) -> Any:
+    from trcc.ui.api.main import build_app
+
+    from .conftest import loopback_client
+
+    app = App(MockPlatform([{"vid": "0402", "pid": "3922"}], tmp_path),
+              renderer=renderer)
+    with loopback_client(build_app(trcc=app)) as client:
+        yield client
+
+
+def _create(client: Any, png: Path, **form: Any) -> Any:
+    return client.post(f"/devices/{_KEY}/display/create-theme",
+                       files={"background": ("bg.png", png.read_bytes(),
+                                             "image/png")},
+                       data=form)
+
+
+def test_the_api_takes_the_shorthand_and_a_name(api: Any, png: Path) -> None:
+    done = _create(api, png, metric=["cpu:temp:160,90", "gpu:0:temp:1,2"],
+                   name="mine")
+
+    assert done.status_code == 200, done.text
+    assert done.json()["theme_name"] == "mine"
+    assert done.json()["message"] == ("theme created from bg.png (image, "
+                                      "320x320), saved as 'mine'")
+    shown = api.get(f"/devices/{_KEY}/display/overlay-elements").json()
+    assert [e["metric"] for e in shown["elements"]] == ["cpu:temp", "gpu:0:temp"]
+
+
+def test_a_taken_name_is_a_409_the_client_can_retry(api: Any, png: Path) -> None:
+    """The negotiation /theme/save has: same body, target_exists, 409."""
+    assert _create(api, png, name="mine").status_code == 200
+
+    taken = _create(api, png, name="mine")
+    replaced = _create(api, png, name="mine", overwrite="true")
+
+    assert taken.status_code == 409
+    assert (taken.json()["target_exists"], taken.json()["theme_name"]) == (True, "mine")
+    assert replaced.status_code == 200, replaced.text

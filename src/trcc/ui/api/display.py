@@ -9,13 +9,14 @@ from pathlib import Path
 from fastapi import (
     APIRouter,
     File,
+    Form,
     HTTPException,
     Request,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from trcc.core.commands import (
     AddOverlayElement,
@@ -798,43 +799,56 @@ class _Staged:
         return path
 
 
-@router.post("/create-theme", response_model=CreateThemeResponse)
+@router.post(
+    "/create-theme",
+    response_model=CreateThemeResponse,
+    responses={409: {
+        "model": CreateThemeResponse,
+        "description": "A theme of that name exists — retry with "
+                       "`overwrite=true` to replace it.",
+    }},
+)
 async def create_theme(
     key: str,
     request: Request,
     background: UploadFile = File(...),
     mask: UploadFile | None = File(None),
     overlay: UploadFile | None = File(None),
-) -> CreateThemeResponse:
-    """Create + apply a custom theme from uploaded multipart files.
+    metric: list[str] = Form([]),
+    name: str = Form(""),
+    overwrite: bool = Form(False),
+) -> CreateThemeResponse | JSONResponse:
+    """Create a theme from uploaded files, show it, and save it if named.
 
-    Mirrors legacy ``POST /display/create-theme``: accept a background
-    image OR video plus an optional mask PNG and an optional overlay
-    JSON config, stage them, and dispatch ``CreateTheme``, which shows
-    them.  This route only checks, stages and cleans up the uploads.
+    Mirrors legacy ``POST /display/create-theme``.  Dispatches
+    ``CreateTheme``, the Command ``trcc theme create`` dispatches too, with
+    every input as given; this route only checks, stages and cleans up the
+    uploads.
 
     Inputs (multipart/form-data):
       * ``background`` — required.  Image (png/jpg/jpeg/bmp/webp) or
         video (mp4/mov/webm/mkv/avi/zt/gif).
-      * ``mask``       — optional PNG.
+      * ``mask``       — optional picture, kept in the mask library as
+        ``custom_<file name>``.
       * ``overlay``    — optional JSON file with ``{"elements": [...]}``
         shape.
+      * ``metric``     — optional, repeatable: one metric element in
+        shorthand, ``metric_key:x,y[:color[:size]]``, after the file's.
+      * ``name``       — optional: save the result as this theme.
+      * ``overwrite``  — replace a saved theme of that name.  Without it a
+        taken name answers 409 with ``target_exists``, as ``/theme/save``.
       A video background always loops, as the Windows app's does; the
       ``loop`` field this route once took is gone (an unknown form field is
       ignored, so a client still sending it is not refused).
-
-    Legacy's ``metric`` form-field shorthand (``metric=cpu_temp:10,20``)
-    is NOT supported here yet — it requires the ``build_overlay_config``
-    helper that lives on the cutover close-plan as a separate item
-    (G45).  Upload an ``overlay`` JSON file instead until that lands.
     """
     log.info(
         "api POST /devices/{key}/display/create-theme: key=%s "
-        "background=%s mask=%s overlay=%s",
+        "background=%s mask=%s overlay=%s metric=%s name=%r overwrite=%s",
         key,
         background.filename,
         mask.filename if mask is not None else None,
         overlay.filename if overlay is not None else None,
+        metric, name, overwrite,
     )
     staged = _Staged(staging_dir(request))
     reads: tuple[str, ...] = ()     # what the panel still reads stays
@@ -867,8 +881,15 @@ async def create_theme(
 
         created = request.app.state.trcc.dispatch(CreateTheme(
             key=key, background=bg_path, mask=mask_path, overlay=overlay_path,
+            metrics=tuple(metric), name=name, overwrite=overwrite,
         ))
         reads = created.reads
+        if created.target_exists:
+            log.info("api create-theme: %r exists — 409, client may retry "
+                     "with overwrite=true", name)
+            return JSONResponse(status_code=409, content=CreateThemeResponse(
+                ok=False, key=key, theme_name=name, target_exists=True,
+                message=created.message).model_dump())
         http_error_if_failed(created)
         size = f"{created.width}x{created.height}"
         return CreateThemeResponse(
@@ -876,8 +897,10 @@ async def create_theme(
             key=key,
             animated=created.animated,
             resolution=size,
+            theme_name=name,
             message=(f"theme created from {bg_name} "
-                     f"({'video' if created.animated else 'image'}, {size})"),
+                     f"({'video' if created.animated else 'image'}, {size})"
+                     + (f", saved as {name!r}" if name else "")),
         )
     finally:
         staged.discard(reads)
