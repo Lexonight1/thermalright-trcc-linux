@@ -1650,7 +1650,7 @@ def test_create_theme_keeps_only_what_a_command_still_reads(tmp_path: Path) -> N
     """``create-theme`` staged every upload in ``uploads/`` and never removed
     one.  An image background is COPIED by LoadImage, so its staged file is
     debris at once; a refused request left everything it had staged.  A mask
-    stays: ApplyMask persists the path it was given.
+    is copied too, into the mask library under its upload's name.
     MUTATION CHECK: drop the ``finally`` cleanup -> both halves fail.
     """
     from trcc.adapters.render.qt import QtRenderer
@@ -1677,9 +1677,10 @@ def test_create_theme_keeps_only_what_a_command_still_reads(tmp_path: Path) -> N
         assert with_mask.status_code == 200, with_mask.text
 
     uploads = trcc.platform.paths().user_content_dir() / "uploads"
-    mask = trcc.settings.for_device("0402:3922").mask_path
-    assert mask is not None
-    assert [p.name for p in uploads.iterdir()] == [Path(mask).name]
+    library = trcc.platform.paths().user_mask_dir(320, 320)
+    assert list(uploads.iterdir()) == []
+    assert trcc.settings.for_device("0402:3922").mask_path == str(
+        library / "custom_mask" / "01.png")
 
 
 

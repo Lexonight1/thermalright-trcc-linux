@@ -13,7 +13,7 @@ import pytest
 
 from trcc.adapters.render.qt import QtRenderer
 from trcc.app import App
-from trcc.core.commands import ConnectDevice, CreateTheme, LoadImage
+from trcc.core.commands import ConnectDevice, CreateTheme, ListMasks, LoadImage
 from trcc.ipc import decode_command, encode_command
 from trcc.services.media import MediaService, Playback
 
@@ -82,15 +82,21 @@ def test_a_picture_is_copied_so_nothing_given_is_still_read(
 def test_a_video_mask_and_overlay_are_all_shown_and_kept(
     panel: App, png: Path, themed_video: Path,
 ) -> None:
+    """The mask goes to the user's mask library under its file's name, as a
+    mask uploaded from any UI does, so the panel reads that copy -- and every
+    GUI's mask browser lists it."""
     result = panel.dispatch(CreateTheme(key=_KEY, background=themed_video,
                                         mask=png, elements=(_TEXT,)))
 
     assert result.ok, result.message
     assert result.animated is True
-    assert result.reads == (str(themed_video), str(png))
+    assert result.reads == (str(themed_video),)
+    library = panel.platform.paths().user_mask_dir(320, 320)
     settings = panel.settings.for_device(_KEY)
-    assert settings.mask_path == str(png)
+    assert settings.mask_path == str(library / "custom_bg" / "01.png")
     assert settings.overlay_enabled is True
+    masks = panel.dispatch(ListMasks(resolution=(320, 320))).masks
+    assert [m.name for m in masks] == ["custom_bg"]
 
 
 def test_a_refused_mask_still_names_the_video_that_plays(
@@ -114,7 +120,7 @@ def test_a_refused_overlay_ends_it_with_that_steps_message(
 
     assert result.ok is False
     assert result.message == "Invalid element type 'bogus'"
-    assert result.reads == (str(png),)
+    assert result.reads == ()
 
 
 def test_it_crosses_the_socket_whole(tmp_path: Path) -> None:

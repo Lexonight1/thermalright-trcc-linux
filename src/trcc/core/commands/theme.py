@@ -2493,8 +2493,10 @@ class CreateTheme(Command[CreateThemeResult]):
 
     A picture becomes a one-image theme (``LoadImage``), so the panel starts
     clean.  A video plays over the CURRENT theme (``PlayVideo``), whose mask
-    and overlay stay unless *mask* or *elements* replace them.  Then the mask
-    (``ApplyMask``), then the overlay (``SetOverlayConfig``, ``EnableOverlay``).
+    and overlay stay unless *mask* or *elements* replace them.  Then the mask,
+    stored in the user's mask library under its file's name and shown
+    (``UploadCustomMask``), then the overlay (``SetOverlayConfig``,
+    ``EnableOverlay``).
 
     The first step that refuses ends it, with that step's message; the steps
     before it stay done.  Each step gates and connects its device itself, as
@@ -2523,10 +2525,10 @@ class CreateTheme(Command[CreateThemeResult]):
         if animated:
             reads.append(self.background)   # PlayVideo keeps its path (#249)
         if self.mask is not None:
-            masked = app.dispatch(ApplyMask(key=self.key, path=self.mask))
+            masked = app.dispatch(UploadCustomMask(key=self.key,
+                                                   source=self.mask))
             if not masked.ok:
                 return self._failed(masked.message, reads)
-            reads.append(self.mask)         # so does ApplyMask
         if self.elements is not None:
             laid = app.dispatch(SetOverlayConfig(key=self.key,
                                                  elements=self.elements))

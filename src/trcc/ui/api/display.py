@@ -749,15 +749,54 @@ _CREATE_THEME_IMG_EXTS = MEDIA.exts(MediaKind.IMAGE)
 _CREATE_THEME_VID_EXTS = MEDIA.exts(MediaKind.ANIMATED)
 
 
-def _stage_upload(upload: UploadFile, uploads_dir: Path, suffix: str,
-                  staged: list[Path]) -> Path:
-    """Write *upload* to a fresh name in ``uploads/``, recorded for cleanup."""
-    path = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
-    staged.append(path)
-    with path.open("wb") as f:
-        shutil.copyfileobj(upload.file, f)
-    log.debug("_stage_upload: %s -> %s", upload.filename, path.name)
-    return path
+class _Staged:
+    """The uploads one request staged in ``uploads/``, and their cleanup.
+
+    Nothing else ever cleans ``uploads/``, so every entry is removed again
+    unless the panel still reads it (``CreateThemeResult.reads``).
+    """
+
+    def __init__(self, uploads_dir: Path) -> None:
+        log.debug("_Staged: in %s", uploads_dir)
+        self._dir = uploads_dir
+        self._entries: list[Path] = []
+
+    def file(self, upload: UploadFile, suffix: str) -> Path:
+        """*upload* under a fresh name."""
+        path = self._dir / f"{uuid.uuid4().hex}{suffix}"
+        log.debug("_Staged.file: %s as %s", upload.filename, path.name)
+        self._entries.append(path)
+        return self._write(upload, path)
+
+    def named(self, upload: UploadFile, suffix: str, fallback: str) -> Path:
+        """*upload* under its own name, in a fresh folder -- for a Command
+        that files it by that name (the mask library's ``custom_<name>``)."""
+        folder = self._dir / uuid.uuid4().hex
+        self._entries.append(folder)
+        folder.mkdir()
+        stem = Path(Path(upload.filename or "").name).stem or fallback
+        log.debug("_Staged.named: %s as %s/%s%s", upload.filename,
+                  folder.name, stem, suffix)
+        return self._write(upload, folder / f"{stem}{suffix}")
+
+    def discard(self, kept: tuple[str, ...]) -> None:
+        """Remove every entry but *kept*."""
+        keep = {Path(p) for p in kept}
+        for path in self._entries:
+            if path in keep:
+                continue
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+            log.debug("_Staged.discard: removed %s", path.name)
+
+    @staticmethod
+    def _write(upload: UploadFile, path: Path) -> Path:
+        with path.open("wb") as f:
+            shutil.copyfileobj(upload.file, f)
+        log.debug("_Staged: %s -> %s", upload.filename, path)
+        return path
 
 
 def _overlay_elements(overlay: UploadFile | None) -> tuple[dict, ...] | None:
@@ -818,12 +857,8 @@ async def create_theme(
         mask.filename if mask is not None else None,
         overlay.filename if overlay is not None else None,
     )
-    uploads_dir = staging_dir(request)
-    # Staged uploads the panel still reads stay -- CreateTheme names them.
-    # Everything else -- a copied image background, anything a refused
-    # request staged -- is removed: nothing else ever cleaned ``uploads/``.
-    staged: list[Path] = []
-    kept: set[Path] = set()
+    staged = _Staged(staging_dir(request))
+    reads: tuple[str, ...] = ()     # what the panel still reads stays
     try:
         bg_name = Path(background.filename or "background").name
         bg_suffix = Path(bg_name).suffix.lower() or ".jpg"
@@ -835,7 +870,7 @@ async def create_theme(
                 f"(expected image {sorted(_CREATE_THEME_IMG_EXTS)} or "
                 f"video {sorted(_CREATE_THEME_VID_EXTS)})",
             )
-        bg_path = _stage_upload(background, uploads_dir, bg_suffix, staged)
+        bg_path = staged.file(background, bg_suffix)
 
         mask_path: Path | None = None
         if mask is not None and mask.file is not None:
@@ -845,7 +880,7 @@ async def create_theme(
                     400,
                     f"unsupported mask extension {mask_suffix!r}",
                 )
-            mask_path = _stage_upload(mask, uploads_dir, mask_suffix, staged)
+            mask_path = staged.named(mask, mask_suffix, "mask")
 
         overlay_elements = _overlay_elements(overlay)
 
@@ -853,7 +888,7 @@ async def create_theme(
             key=key, background=bg_path, mask=mask_path,
             elements=overlay_elements,
         ))
-        kept.update(Path(p) for p in created.reads)
+        reads = created.reads
         http_error_if_failed(created)
         size = f"{created.width}x{created.height}"
         return CreateThemeResponse(
@@ -865,10 +900,8 @@ async def create_theme(
                      f"({'video' if created.animated else 'image'}, {size})"),
         )
     finally:
-        for path in staged:
-            if path not in kept:
-                path.unlink(missing_ok=True)
-                log.debug("create_theme: removed staged %s", path.name)
+        staged.discard(reads)
+
 @router.post("/color")
 def send_color(key: str, body: ColorRequest, request: Request) -> SendResult:
     """Push a solid-color frame to a connected LCD device."""

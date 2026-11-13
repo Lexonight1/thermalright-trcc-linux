@@ -352,8 +352,8 @@ class CreateThemeResult(Result):
     #: The panel's canvas, 0 x 0 when the device reports none.
     width: int = 0
     height: int = 0
-    #: The given files the panel still reads -- the video it plays, the mask
-    #: it shows.  Every other given file was copied, or never used.
+    #: The given files the panel still reads -- the video it plays.  Every
+    #: other given file was copied (a picture, a mask), or never used.
     reads: tuple[str, ...] = ()
 
 
