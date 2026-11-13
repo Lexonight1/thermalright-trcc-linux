@@ -612,6 +612,78 @@ class ClassContextFilter(logging.Filter):
         return True
 
 
+def _drop_our_handlers(root: logging.Logger) -> None:
+    """Drop the handlers a previous configure installed -- leave foreign
+    handlers (pytest's capture handler, e.g.) untouched.
+
+    CLOSED, not merely detached.  Removing a FileHandler from the logger
+    drops the last reference to it, and the OS file descriptor lives until
+    the GC finalises the object — surfacing as
+    ``PytestUnraisableExceptionWarning: Exception ignored in <_io.FileIO
+    name='.../trcc.log' mode='ab'>`` at whatever unrelated moment that
+    happens to be.  Every reconfigure leaked two descriptors (the rotating
+    log and ``latest``), which matters for the daemon this loop exists to
+    support: a daemon reconfigures without piling up duplicate handlers.
+
+    Safe for all three of ours, verified rather than assumed:
+    ``StreamHandler.close()`` does NOT close the underlying stream, so the
+    stderr handler leaves stderr writable; ``Handler.close()`` is idempotent,
+    so the test fixture that also closes them cannot double-free; and all
+    three are attached to ``root`` alone, so nothing else is still using one.
+    """
+    ours = [h for h in root.handlers if getattr(h, _HANDLER_TAG, False)]
+    log.debug("_drop_our_handlers: closing %d", len(ours))
+    for handler in ours:
+        root.removeHandler(handler)
+        handler.close()
+
+
+def _attach(root: logging.Logger, handler: logging.Handler, level: int,
+            formatter: logging.Formatter, context: logging.Filter) -> None:
+    """*handler* on *root* at *level*, in TRCC's format, tagged as ours so
+    the next configure can find and close it."""
+    log.debug("_attach: %s at %s", type(handler).__name__,
+              logging.getLevelName(level))
+    handler.setLevel(level)
+    handler.setFormatter(formatter)
+    handler.addFilter(context)
+    setattr(handler, _HANDLER_TAG, True)
+    root.addHandler(handler)
+
+
+def _start_run_log(log_file: Path) -> tuple[Path, OSError | None]:
+    """The per-run log beside *log_file* -- a SECOND file holding THIS run
+    alone -- emptied when this process owns the run, and why it could not
+    be emptied, if it could not.
+
+    ``configure_logging`` runs once per process (CLI root callback / launch
+    entry point), so the truncate happens exactly once per app init.
+
+    The truncate is done HERE, explicitly, and not via ``mode="w"``:
+    ``RotatingFileHandler`` SILENTLY discards the mode whenever
+    ``maxBytes > 0`` (CPython forces ``"a"`` so a rollover has something to
+    append to).  Passing ``mode="w"`` looked right and did nothing, so the
+    per-run file was append-only and spanned days.  Reading a stale window
+    as if it were the current run caused three separate misdiagnoses — the
+    file said what you expected because a PREVIOUS run had put it there.
+
+    Truncate only if no LIVE peer is already writing this run.  Truncating
+    unconditionally is what the flip turns into a defect: a client starting
+    while the daemon runs would wipe the daemon's session out from under it,
+    leaving a file that is part one run and part another — the exact stale
+    window the per-run log was introduced to remove.
+    """
+    latest_file = log_file.with_name(f"{log_file.stem}.latest{log_file.suffix}")
+    log.debug("_start_run_log: %s", latest_file)
+    latest_file.parent.mkdir(parents=True, exist_ok=True)
+    if _RUN_OWNERSHIP.claim(latest_file):
+        try:
+            latest_file.write_bytes(b"")
+        except OSError as e:  # read-only dir / permissions — keep logging
+            return latest_file, e
+    return latest_file, None
+
+
 def configure_logging(
     log_file: Path,
     *,
@@ -653,87 +725,24 @@ def configure_logging(
         logging.DEBUG if per_frame else logging.WARNING,
     )
 
-    # Drop any handlers we installed previously — leave foreign handlers
-    # (pytest's capture handler, e.g.) untouched.
-    #
-    # CLOSED, not merely detached.  Removing a FileHandler from the logger
-    # drops the last reference to it, and the OS file descriptor lives until
-    # the GC finalises the object — surfacing as
-    # ``PytestUnraisableExceptionWarning: Exception ignored in <_io.FileIO
-    # name='.../trcc.log' mode='ab'>`` at whatever unrelated moment that
-    # happens to be.  Every reconfigure leaked two descriptors (the rotating
-    # log and ``latest``), which matters for the daemon this loop exists to
-    # support: the comment above says it is here so a daemon can reconfigure
-    # without piling up duplicate handlers.
-    #
-    # Safe for all three of ours, verified rather than assumed:
-    # ``StreamHandler.close()`` does NOT close the underlying stream, so the
-    # stderr handler leaves stderr writable; ``Handler.close()`` is idempotent,
-    # so the test fixture that also closes them cannot double-free; and all
-    # three are attached to ``root`` alone, so nothing else is still using one.
-    for handler in list(root.handlers):
-        if getattr(handler, _HANDLER_TAG, False):
-            root.removeHandler(handler)
-            handler.close()
-
+    _drop_our_handlers(root)
     # Before ANY new handler is attached — see _detach_early_logging.
     early_records = _detach_early_logging(root)
 
     formatter = logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATEFMT)
-    context_filter = ClassContextFilter()
-
-    file_handler = _make_file_handler(
-        log_file, max_bytes=max_bytes, backup_count=backup_count,
-    )
-    file_handler.setLevel(level)
-    file_handler.setFormatter(formatter)
-    file_handler.addFilter(context_filter)
-    setattr(file_handler, _HANDLER_TAG, True)
-    root.addHandler(file_handler)
-
-    # Per-run log: a SECOND file holding THIS run alone.
-    # ``configure_logging`` runs once per process (CLI root callback /
-    # launch entry point), so the truncate happens exactly once per app
-    # init.  Still a RotatingFileHandler so a long-lived ``-v`` session
-    # (video DEBUG can emit ~30–90 lines/s) can't grow the file without
-    # bound — it rolls at ``latest_max_bytes`` keeping one backup (worst
-    # case 2× the cap on disk).
-    #
-    # The truncate is done HERE, explicitly, and not via ``mode="w"``:
-    # ``RotatingFileHandler`` SILENTLY discards the mode whenever
-    # ``maxBytes > 0`` (CPython forces ``"a"`` so a rollover has something to
-    # append to).  Passing ``mode="w"`` looked right and did nothing, so the
-    # per-run file was append-only and spanned days.  Reading a stale window
-    # as if it were the current run caused three separate misdiagnoses — the
-    # file said what you expected because a PREVIOUS run had put it there.
-    latest_file = log_file.with_name(f"{log_file.stem}.latest{log_file.suffix}")
-    truncate_error: OSError | None = None
-    latest_file.parent.mkdir(parents=True, exist_ok=True)
-    # Truncate only if no LIVE peer is already writing this run.  Truncating
-    # unconditionally is what the flip turns into a defect: a client starting
-    # while the daemon runs would wipe the daemon's session out from under it,
-    # leaving a file that is part one run and part another — the exact stale
-    # window the per-run log was introduced to remove.
-    if _RUN_OWNERSHIP.claim(latest_file):
-        try:
-            latest_file.write_bytes(b"")
-        except OSError as e:  # read-only dir / permissions — keep logging
-            truncate_error = e
-    latest_handler = _make_file_handler(
-        latest_file, max_bytes=latest_max_bytes, backup_count=1,
-    )
-    latest_handler.setLevel(level)
-    latest_handler.setFormatter(formatter)
-    latest_handler.addFilter(context_filter)
-    setattr(latest_handler, _HANDLER_TAG, True)
-    root.addHandler(latest_handler)
-
-    stderr_handler = logging.StreamHandler(stream=sys.stderr)
-    stderr_handler.setLevel(stderr_level)
-    stderr_handler.setFormatter(formatter)
-    stderr_handler.addFilter(context_filter)
-    setattr(stderr_handler, _HANDLER_TAG, True)
-    root.addHandler(stderr_handler)
+    context = ClassContextFilter()
+    _attach(root, _make_file_handler(log_file, max_bytes=max_bytes,
+                                     backup_count=backup_count),
+            level, formatter, context)
+    # Still a RotatingFileHandler, so a long-lived ``-v`` session (video
+    # DEBUG can emit ~30–90 lines/s) can't grow it without bound — it rolls
+    # at ``latest_max_bytes`` keeping one backup (worst case 2× the cap).
+    latest_file, truncate_error = _start_run_log(log_file)
+    _attach(root, _make_file_handler(latest_file, max_bytes=latest_max_bytes,
+                                     backup_count=1),
+            level, formatter, context)
+    _attach(root, logging.StreamHandler(stream=sys.stderr),
+            stderr_level, formatter, context)
 
     _replay_early_logging(root, early_records)
     log.info(

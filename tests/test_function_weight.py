@@ -82,7 +82,13 @@ import function_census  # noqa: E402
 #: static mount are module functions.  Every route, the middleware stack,
 #: the OpenAPI document and the mount identical (14953 lines), and every
 #: API-main log line across the 24 test files that build it (1230 lines).
-MAX_LONG_FUNCTIONS = 3
+#: 3 -> 2 the same day: ``configure_logging`` (144 lines) -- dropping the
+#: old handlers, starting the per-run log, and the attach the three
+#: handlers shared are steps.  Handlers, levels, format, files and every
+#: line written identical in four scenarios (defaults, DEBUG + per-frame
+#: with rotation, called twice, a run log that cannot be emptied), plus the
+#: new DEBUG lines.  The two left are the recorded LEAVEs.
+MAX_LONG_FUNCTIONS = 2
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.
