@@ -1,5 +1,57 @@
 # Changelog
 
+## v9.12.2
+
+### Added
+
+- **Full-colour JPEG frames.** JPEG panels now get every frame at full colour
+  resolution (4:4:4) through libjpeg-turbo, where Qt's encoder dropped to
+  4:2:0 whenever a busy frame had to shrink, and saturated edges fringed on
+  the panel. It costs less, too: on a 1920x462 panel a busy frame takes about
+  half the CPU work it did. Every package pulls in libjpeg-turbo, the Windows
+  and macOS installers bundle it, and `trcc report` says which encoder your
+  panels get. Found, measured and tested by Alex Shutov (#336).
+- **The Box can fill the panel, sit over the metrics, and show through.** On
+  the Visualizer page: "Full panel", and "Over the metrics" to draw a module
+  on top of a theme's readings. A module frame with transparency lets the
+  theme show where it is clear. `trcc display set-inset --size full
+  --over-metrics` and the API do the same. Asked for, with a working fork, by
+  Alex Shutov (#335).
+- **A theme can place a module's picture.** A new overlay element draws what
+  a module draws -- an Audio Visualizer, say -- in a box where the theme puts
+  it, under the metrics. Add it as "Module Picture" in the gui, as "module" in
+  qtgui, or with `trcc display place-module`; it saves with the theme (#328).
+- **Fedora Atomic is recognised** -- Bazzite, Silverblue, Kinoite, Bluefin,
+  Aurora. Upgrade and install advice now uses `rpm-ostree` instead of
+  `sudo dnf`, which an image-based system refuses, and TRCC no longer offers
+  an ffmpeg swap it cannot make there (#338).
+
+### Fixed
+
+- **Windows: the CPU temperature no longer blinks off.** When another
+  monitoring program held the PCI bus for a moment, the reading disappeared
+  for a tick. TRCC now keeps showing the last reading, as LibreHardwareMonitor
+  does, for as long as the bus is busy. Board temperatures and fans read from
+  the motherboard chip had the same blink and are fixed too (#340).
+- **Windows: the CPU clock shows the speed the CPU runs at**, not its fixed
+  base clock (a Ryzen 7 5800X3D read 3401 MHz at any load). It now comes from
+  the counters Task Manager uses (#339).
+- **Bazzite and other Fedora Atomic systems: system updates.** A TRCC
+  installed with `rpm-ostree` is built for one Fedora's Python, so it stops
+  the system update when your system moves to the next Fedora. The install
+  guide now says what to do: remove TRCC, update, and install it again
+  (#338).
+- **The Audio Visualizer gallery stops asking for tiles it cannot get.** With
+  the Visualizer off, the gallery asked the App for the same tile over and
+  over in the background; it now asks once and says why. A closed window no
+  longer keeps tiles coming.
+- **Windows: a busy board bus no longer makes TRCC's service find the fan chip
+  again on every tick.**
+
+### Changed
+
+- **The Windows installer is built with Inno Setup 7.**
+
 ## v9.12.1
 
 ### Added
