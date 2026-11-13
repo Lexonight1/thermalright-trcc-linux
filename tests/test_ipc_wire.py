@@ -343,6 +343,40 @@ def test_missing_command_key_decode_raises() -> None:
         decode_command({"kwargs": {}})
 
 
+# A fixed shape is a count: unchecked, [1, 2, 3, 4] decoded as (1, 2, 3) and
+# [] as () -- for a plain field and, through ``X | None``, an optional one,
+# which handed the client's list through as it was (2026-11-13).
+_FIXED_SHAPES = [
+    ("SetLedColor", {"key": "0416:8001"}, "color", [1, 2, 3]),
+    ("RenderLed", {"key": "0416:8001"}, "color", [1, 2, 3]),
+    ("DownloadCloudTheme", {"theme_id": "a001"}, "resolution", [320, 320]),
+    ("ListThemes", {}, "resolution", [320, 320]),
+]
+
+
+@pytest.mark.parametrize(("name", "rest", "field", "good"), _FIXED_SHAPES,
+                         ids=[f"{n}.{f}" for n, _, f, _ in _FIXED_SHAPES])
+@pytest.mark.parametrize("change", ["empty", "short", "long"])
+def test_a_fixed_shape_of_the_wrong_length_is_refused(
+    name: str, rest: dict, field: str, good: list[int], change: str,
+) -> None:
+    bad = {"empty": [], "short": good[:-1], "long": [*good, 7]}[change]
+
+    with pytest.raises(ValueError, match=(f"expected {len(good)} values for "
+                                          rf"tuple\[.*\], got {len(bad)}")):
+        decode_command({"command": name, "kwargs": {**rest, field: bad}})
+
+
+@pytest.mark.parametrize(("name", "rest", "field", "good"), _FIXED_SHAPES,
+                         ids=[f"{n}.{f}" for n, _, f, _ in _FIXED_SHAPES])
+def test_a_fixed_shape_of_the_right_length_decodes(
+    name: str, rest: dict, field: str, good: list[int],
+) -> None:
+    cmd = decode_command({"command": name, "kwargs": {**rest, field: good}})
+
+    assert getattr(cmd, field) == tuple(good)
+
+
 # ── Event round-trip — the whole registry, not a sample ─────────────
 #
 # Events are the half daemon mode never had: ``AppProxy`` exposes dispatch

@@ -398,14 +398,19 @@ def _coerce(hint: Any, raw: Any) -> Any:
     origin = typing.get_origin(hint)
     args = typing.get_args(hint)
 
-    # ``X | None`` / ``Union[X, None]`` — try the non-None branch
+    # ``X | None`` / ``Union[X, None]`` — try the non-None branch.  When every
+    # branch refuses, so does the field: handing ``raw`` through gave a Command
+    # the client's list as it was -- ``RenderLed(color=[1, 2])`` (2026-11-13).
     if origin in (types.UnionType, typing.Union):
-        non_none = [a for a in args if a is not type(None)]
-        for branch in non_none:
+        refused: Exception | None = None
+        for branch in (a for a in args if a is not type(None)):
             try:
                 return _coerce(branch, raw)
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as e:
+                refused = e
+        if refused is not None:
+            log.warning("_coerce: %s refused %r -- %s", hint, raw, refused)
+            raise refused
         return raw
 
     if origin is list:
@@ -415,7 +420,13 @@ def _coerce(hint: Any, raw: Any) -> Any:
     if origin is tuple:
         if len(args) == 2 and args[1] is Ellipsis:
             return tuple(_coerce(args[0], v) for v in raw)
-        return tuple(_coerce(t, v) for t, v in zip(args, raw, strict=False))
+        # A fixed shape is a count too: unchecked, [1, 2, 3, 4] arrived as
+        # (1, 2, 3) and [] as () for every colour, size and position field.
+        if len(raw) != len(args):
+            log.warning("_coerce: %s got %d value(s): %r", hint, len(raw), raw)
+            raise ValueError(f"expected {len(args)} values for {hint}, "
+                             f"got {len(raw)}")
+        return tuple(_coerce(t, v) for t, v in zip(args, raw, strict=True))
 
     if origin is dict:
         key_t, val_t = args if args else (Any, Any)
