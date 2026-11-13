@@ -486,7 +486,6 @@ def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
     trailer head, 13 positions, the trailer tail and the clock block.  From
     the trailer on every section is optional -- older files end early, and
     what they lack keeps its default."""
-    log.debug("_parse_dc: %s, %d bytes", theme_name, len(data))
     r = _Reader(data, start=1)
     overlay_enabled, slot_enabled = _dc_switches(r)
     custom_text, fonts = _dc_fonts(r)
@@ -527,8 +526,8 @@ def _dc_switches(r: _Reader) -> tuple[bool, dict[str, bool]]:
                     "gpu_temp", "gpu_clock", "gpu_usage"):
         slot_enabled[reading] = slot_enabled[f"{reading}_label"] = r.read_bool()
     r.read_int32()
-    log.debug("_dc_switches: overlay=%s slots on=%s", overlay_enabled,
-              [k for k, on in slot_enabled.items() if on])
+    frame_log.debug("_dc_switches: overlay=%s slots on=%s", overlay_enabled,
+                    [k for k, on in slot_enabled.items() if on])
     return overlay_enabled, slot_enabled
 
 
@@ -571,7 +570,8 @@ def _dc_fonts(r: _Reader) -> tuple[str, list[dict[str, Any]]]:
                 "name": THEME_FONT, "size": 24, "bold": False,
                 "italic": False, "color": "#ffffff",
             })
-    log.debug("_dc_fonts: %d fonts, custom text %r", len(fonts), custom_text)
+    frame_log.debug("_dc_fonts: %d fonts, custom text %r", len(fonts),
+                    custom_text)
     return custom_text, fonts
 
 
@@ -585,7 +585,7 @@ def _dc_positions(r: _Reader) -> list[tuple[int, int]]:
         except (struct.error, IndexError):
             break
         positions.append((x, y))
-    log.debug("_dc_positions: %d of %d", len(positions), _ELEMENT_SLOTS)
+    frame_log.debug("_dc_positions: %d of %d", len(positions), _ELEMENT_SLOTS)
     return positions
 
 
@@ -618,7 +618,7 @@ def _dc_slot_elements(
                 "type": "metric", "x": x, "y": y,
                 "metric": metric_key, "format": fmt, **font,
             })
-    log.debug("_dc_slot_elements: %d element(s)", len(elements))
+    frame_log.debug("_dc_slot_elements: %d element(s)", len(elements))
     return elements
 
 
@@ -665,7 +665,7 @@ def _dc_clock_elements(r: _Reader) -> list[dict[str, Any]]:
         weekday_y = r.read_int32()
         weekday_font = _read_dd_font(r)
     except (struct.error, IndexError) as e:
-        log.debug("0xDC clock block absent/truncated (%s) — no clock", e)
+        frame_log.debug("0xDC clock block absent/truncated (%s) — no clock", e)
         return []
     elements: list[dict[str, Any]] = []
     if flag_clock_master and flag_date:
@@ -685,8 +685,8 @@ def _dc_clock_elements(r: _Reader) -> list[dict[str, Any]]:
             "type": "clock", "source": "weekday",
             "x": weekday_x, "y": weekday_y, **weekday_font,
         })
-    log.debug("_dc_clock_elements: master=%s -> %d clock(s)",
-              flag_clock_master, len(elements))
+    frame_log.debug("_dc_clock_elements: master=%s -> %d clock(s)",
+                    flag_clock_master, len(elements))
     return elements
 
 
