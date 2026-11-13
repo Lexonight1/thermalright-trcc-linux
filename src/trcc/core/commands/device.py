@@ -144,6 +144,7 @@ if TYPE_CHECKING:
     from ...app import App
     from ...services.media import Playback
     from ..ports import Device
+    from ..protocol import DeviceProfile
 
 from ..logs import per_frame
 from ..models import MEDIA, Capability, MediaKind
@@ -4016,30 +4017,6 @@ class DeviceState(Query[DeviceStateResult]):
             connected=device.is_connected,
             is_led=device.is_led,
             needs_keepalive=device.needs_keepalive,
-            resolution=profile.resolution if profile else None,
-            jpeg=profile.jpeg if profile else None,
-            rotate=profile.rotate if profile else None,
-            widescreen=profile.widescreen if profile else None,
-            serial=getattr(handshake, "serial", "") or "",
-            byte_order=profile.byte_order if profile else "",
-            encode_base=profile.encode_base if profile else None,
-            encode_invert=profile.encode_invert if profile else None,
-            encode_baseline=profile.encode_baseline if profile else None,
-            pm_byte=handshake.pm_byte if handshake else None,
-            sub_byte=handshake.sub_byte if handshake else None,
-            # HANDSHAKE-derived, not the registry's.  Its ONE consumer
-            # (qtgui device_panel) prints it under a literal "Handshake"
-            # heading beside PM and SUB, so that is what it has always meant —
-            # while this filled it from ``info.fbl``.  They diverge exactly
-            # where it matters: the registry declares {72, 100, 192} across all
-            # ten rows, and real handshakes yield 58 (#228's Frozen Warframe SE)
-            # and 224.  ``pm_to_fbl`` is the same fallback the gui's own
-            # fingerprint line used before it moved onto this Query.
-            fbl=(
-                handshake.fbl if handshake and handshake.fbl is not None
-                else pm_to_fbl(handshake.pm_byte, handshake.sub_byte)
-                if handshake else None
-            ),
             # ``.value``, matching the declared ``str | None`` and the way
             # ``kind`` / ``wire`` are already flattened.  This stored the
             # raw ``LedStyle`` enum while claiming to be a str — harmless
@@ -4047,4 +4024,42 @@ class DeviceState(Query[DeviceStateResult]):
             # moment a consumer keys a dict by the real enum.
             led_style=(style.value if (style := info.led_style) else None),
             message=f"{info.product} ({info.wire.value})",
+            **_profile_fields(profile),
+            **_handshake_fields(handshake),
         )
+
+
+def _profile_fields(profile: DeviceProfile | None) -> dict[str, Any]:
+    """The panel geometry the handshake decided -- none before it, so the
+    Result's own defaults (None, not 0 or False) say "not asked yet"."""
+    log.debug("_profile_fields: %s", profile.resolution if profile else None)
+    if profile is None:
+        return {}
+    return {
+        "resolution": profile.resolution, "jpeg": profile.jpeg,
+        "rotate": profile.rotate, "widescreen": profile.widescreen,
+        "byte_order": profile.byte_order, "encode_base": profile.encode_base,
+        "encode_invert": profile.encode_invert,
+        "encode_baseline": profile.encode_baseline,
+    }
+
+
+def _handshake_fields(handshake: HandshakeResult | None) -> dict[str, Any]:
+    """What the device's own answer said -- none before it answered.
+
+    ``fbl`` is HANDSHAKE-derived, not the registry's.  Its ONE consumer
+    (qtgui device_panel) prints it under a literal "Handshake" heading beside
+    PM and SUB, so that is what it has always meant -- while this filled it
+    from ``info.fbl``.  They diverge exactly where it matters: the registry
+    declares {72, 100, 192} across all ten rows, and real handshakes yield 58
+    (#228's Frozen Warframe SE) and 224.  ``pm_to_fbl`` is the same fallback
+    the gui's own fingerprint line used before it moved onto this Query."""
+    log.debug("_handshake_fields: %s", "answered" if handshake else None)
+    if handshake is None:
+        return {}
+    return {
+        "serial": getattr(handshake, "serial", "") or "",
+        "pm_byte": handshake.pm_byte, "sub_byte": handshake.sub_byte,
+        "fbl": (handshake.fbl if handshake.fbl is not None
+                else pm_to_fbl(handshake.pm_byte, handshake.sub_byte)),
+    }

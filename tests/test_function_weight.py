@@ -94,7 +94,13 @@ MAX_LONG_FUNCTIONS = 2
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.
 #: 6 -> 5 the same day: ``RenderLed.execute``, the same split.
 #: 5 -> 4 the same day: ``_parse_dc``, the same split.
-MAX_BRANCHY_FUNCTIONS = 4
+#: 4 -> 3 the same day: ``DeviceState.execute`` (20 -> 6) -- eight
+#: ``if profile`` and three ``if handshake`` guards, one per field, became
+#: ``_profile_fields`` / ``_handshake_fields``, which add nothing before a
+#: handshake so the Result's own defaults say "not asked yet".  Every field
+#: of 432 answers identical: all 144 catalogued variants, each unattached,
+#: attached and connected.
+MAX_BRANCHY_FUNCTIONS = 3
 
 #: Passed explicitly so each gate's meaning lives HERE, not in the tool.
 LINE_THRESHOLD = 140
