@@ -16,7 +16,7 @@ import logging
 from collections.abc import Callable
 from functools import cached_property, partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from PySide6.QtCore import QRegularExpression as QRE
 from PySide6.QtCore import Qt, Signal
@@ -136,6 +136,9 @@ from ..qt_file_drop import FileDropTarget
 
 log = logging.getLogger(__name__)
 frame_log = per_frame(__name__)
+
+#: Any widget ``_place_hidden`` positions, returned as the type it came in as.
+_W = TypeVar("_W", bound=QWidget)
 
 
 # =============================================================================
@@ -981,52 +984,71 @@ class TRCCApp(QMainWindow):
     # ── UI Setup ────────────────────────────────────────────────────
 
     def _setup_ui(self) -> None:
-        """Build main UI layout."""
+        """Build the main window -- FormCZTV's pieces in creation order,
+        which is their stacking order where they overlap."""
+        log.info("_setup_ui: building the main window")
         central = QWidget()
         self.setCentralWidget(central)
+        self._set_panel_bg(central, Assets.FORM1_BG,
+                           width=Sizes.WINDOW_W, height=Sizes.WINDOW_H,
+                           fallback_style=f"background-color: {Colors.WINDOW_BG};")
+        self._build_device_sidebar(central)
+        self._build_form(central)
+        self._create_mode_tabs()
+        self._build_theme_panels()
+        self.uc_activity_sidebar = self._place_hidden(
+            UCActivitySidebar(self.form_container), (532, 128, 250, 500))
+        self._create_bottom_controls()
+        self._create_title_buttons()
+        self._build_pages(central)
+        self._build_form1_buttons(central)
+        self._create_i18n_overlays()
+        # What the modules add: built once, after the stack and the labels.
+        self._module_pages: dict[str, QWidget] = {}
+        self._module_tabs: dict[str, QPushButton] = {}
+        self._module_views: dict[str, QWidget] = {}
+        self._sync_modules()
 
-        pix_form1 = set_background_pixmap(central, Assets.FORM1_BG,
-            width=Sizes.WINDOW_W, height=Sizes.WINDOW_H,
-            fallback_style=f"background-color: {Colors.WINDOW_BG};")
-        if pix_form1:
-            self._pixmap_refs.append(pix_form1)
+    def _place_hidden(self, widget: _W, rect: tuple[int, int, int, int]) -> _W:
+        """*widget* at *rect*, hidden until its view is shown."""
+        log.debug("_place_hidden: %s at %s", type(widget).__name__, rect)
+        widget.setGeometry(*rect)
+        widget.setVisible(False)
+        return widget
 
-        # Device sidebar — no detect_fn, populated via on_app_event
+    def _build_device_sidebar(self, central: QWidget) -> None:
+        """The device list down the left -- no detect_fn, populated via
+        on_app_event.  Its per-OS "no devices" guidance comes from the
+        Platform port (one source of truth), injected here so the panel
+        stays toolkit-pure."""
+        log.debug("_build_device_sidebar")
         self.uc_device = UCDevice(central)
         self.uc_device.setGeometry(*Layout.SIDEBAR)
-        # Per-OS "no devices" guidance comes from the Platform port (one
-        # source of truth), injected here so the panel stays toolkit-pure.
         self.uc_device.set_no_devices_hint(
             self._app.dispatch(GetPlatformInfo()).no_devices_hint)
 
-        # FormCZTV container
+    def _build_form(self, central: QWidget) -> None:
+        """The FormCZTV container, its preview and the image/video cutters.
+
+        The preview starts at a sensible default size; the LCD handler calls
+        ``preview.set_resolution(w, h)`` on connect with the real canvas, so
+        the initial dimensions only affect the brief pre-connect render."""
+        log.debug("_build_form")
         self.form_container = QWidget(central)
         self.form_container.setGeometry(*Layout.FORM_CONTAINER)
-        pix = set_background_pixmap(self.form_container, Assets.FORM_CZTV_BG,
-            fallback_style=f"background-color: {Colors.WINDOW_BG};")
-        if pix:
-            self._pixmap_refs.append(pix)
-
-        # Preview — pick a sensible default size; the LCD handler
-        # calls preview.set_resolution(w, h) on connect with the real
-        # canvas, so the initial dimensions only affect the brief
-        # pre-connect render.
+        self._set_panel_bg(self.form_container, Assets.FORM_CZTV_BG,
+                           fallback_style=f"background-color: {Colors.WINDOW_BG};")
         self.uc_preview = UCPreview(320, 320, self.form_container)
         self.uc_preview.setGeometry(*Layout.PREVIEW)
+        self.uc_image_cut = self._place_hidden(
+            UCImageCut(self.form_container), (16, 88, 500, 702))
+        self.uc_video_cut = self._place_hidden(
+            UCVideoCut(self.form_container, app=self._app), (16, 88, 500, 702))
 
-        # Image/video cutters
-        self.uc_image_cut = UCImageCut(self.form_container)
-        self.uc_image_cut.setGeometry(16, 88, 500, 702)
-        self.uc_image_cut.setVisible(False)
-
-        self.uc_video_cut = UCVideoCut(self.form_container, app=self._app)
-        self.uc_video_cut.setGeometry(16, 88, 500, 702)
-        self.uc_video_cut.setVisible(False)
-
-        # Mode tabs
-        self._create_mode_tabs()
-
-        # Theme panel stack
+    def _build_theme_panels(self) -> None:
+        """The panel stack: Local themes, Cloud backgrounds, Settings, Cloud
+        masks -- in the order the mode tabs index them."""
+        log.debug("_build_theme_panels")
         self.panel_stack = QStackedWidget(self.form_container)
         self.panel_stack.setGeometry(*Layout.PANEL_STACK)
 
@@ -1034,45 +1056,7 @@ class TRCCApp(QMainWindow):
         self._set_panel_bg(self.uc_theme_local, Assets.THEME_LOCAL_BG)
         self.panel_stack.addWidget(self.uc_theme_local)
 
-        # Cloud theme download path — wraps next/'s CloudThemeService so
-        # the legacy UCThemeWeb widget keeps its (theme_id, resolution,
-        # cache_dir) → str|None signature.
-        #
-        # IMPORTANT: download only.  Legacy splits "download" and "select"
-        # into two events: the worker thread downloads (no playback),
-        # then ``_on_download_complete`` auto-selects the now-cached
-        # tile through the normal click handler — which routes to
-        # ``LCDHandler.select_cloud_theme`` → ``LoadCloudTheme`` →
-        # ``PlayVideo``.  If the download path itself dispatches
-        # ``LoadCloudTheme``, playback starts twice and the cached
-        # tile's QMovie thumb never gets a chance to be the trigger.
-        _app_local = self._app
-
-        def _download_theme(theme_id: str, resolution: str, cache_dir: str) -> str | None:
-            del cache_dir  # next/ owns the cache path
-            from ...core.models import parse_resolution
-            try:
-                w, h = parse_resolution(resolution)
-            except ValueError:
-                log.warning("_download_theme: bad resolution %r", resolution)
-                return None
-            # ``DownloadCloudTheme``, not ``LoadCloudTheme`` — see the note
-            # above: this is the download half only.  The widget's resolution
-            # is already the ORIENTED catalog size (lcd_handler sets it from
-            # the same bw x bh the theme browser uses), which is what the
-            # cloud catalog is keyed by.
-            result = _app_local.dispatch(
-                DownloadCloudTheme(theme_id=theme_id, resolution=(w, h)),
-            )
-            if not result.ok:
-                log.warning("_download_theme: %s failed — %s",
-                            theme_id, result.message)
-                return None
-            log.info("_download_theme: %s cached at %s",
-                     theme_id, result.theme_path)
-            return result.theme_path
-
-        self.uc_theme_web = UCThemeWeb(download_fn=_download_theme)
+        self.uc_theme_web = UCThemeWeb(download_fn=self._download_theme)
         self._set_panel_bg(self.uc_theme_web, Assets.THEME_WEB_BG)
         self.panel_stack.addWidget(self.uc_theme_web)
 
@@ -1085,64 +1069,80 @@ class TRCCApp(QMainWindow):
         self._set_panel_bg(self.uc_theme_mask, Assets.THEME_MASK_BG)
         self.panel_stack.addWidget(self.uc_theme_mask)
 
+    def _download_theme(self, theme_id: str, resolution: str,
+                        cache_dir: str) -> str | None:
+        """The Cloud backgrounds tab's download: keeps ``UCThemeWeb``'s
+        (theme_id, resolution, cache_dir) -> str | None signature.
 
-        # Activity sidebar
-        self.uc_activity_sidebar = UCActivitySidebar(self.form_container)
-        self.uc_activity_sidebar.setGeometry(532, 128, 250, 500)
-        self.uc_activity_sidebar.setVisible(False)
+        IMPORTANT: download only.  Legacy splits "download" and "select" into
+        two events: the worker thread downloads (no playback), then
+        ``_on_download_complete`` auto-selects the now-cached tile through the
+        normal click handler -- which routes to
+        ``LCDHandler.select_cloud_theme`` -> ``LoadCloudTheme`` ->
+        ``PlayVideo``.  If this dispatched ``LoadCloudTheme``, playback would
+        start twice and the cached tile's QMovie thumb would never get a
+        chance to be the trigger.
 
-        # Bottom controls + title buttons
-        self._create_bottom_controls()
-        self._create_title_buttons()
+        The widget's resolution is already the ORIENTED catalog size
+        (lcd_handler sets it from the same bw x bh the theme browser uses),
+        which is what the cloud catalog is keyed by."""
+        del cache_dir  # the App owns the cache path
+        from ...core.models import parse_resolution
+        try:
+            w, h = parse_resolution(resolution)
+        except ValueError:
+            log.warning("_download_theme: bad resolution %r", resolution)
+            return None
+        result = self._app.dispatch(
+            DownloadCloudTheme(theme_id=theme_id, resolution=(w, h)),
+        )
+        if not result.ok:
+            log.warning("_download_theme: %s failed — %s",
+                        theme_id, result.message)
+            return None
+        log.info("_download_theme: %s cached at %s",
+                 theme_id, result.theme_path)
+        return result.theme_path
 
-        # About panel — gpu_list via the ListGpus Command (the sensor
-        # aggregator's GPUs as (key, name) tuples).  Legacy fed this from
-        # the enumerator's get_gpu_list(); the new tree's equivalent is the
-        # ListGpus Command (the new SensorEnumerator port exposes gpus(),
-        # not the legacy get_gpu_list — calling that left it always empty,
-        # so the About panel wrongly showed "No GPU detected").
+    def _build_pages(self, central: QWidget) -> None:
+        """The pages that cover the form, each hidden until its button:
+        About, Thanks, Modules, the system-info dashboard and the LED panel.
+
+        About's GPU list comes from the ListGpus Command (the sensor
+        aggregator's GPUs as (key, name) tuples); the legacy
+        ``get_gpu_list()`` left it always empty, so the panel wrongly showed
+        "No GPU detected".  The dashboard and the LED panel ask the bus for
+        everything else (``GetSensorDashboard``, ``ListMemorySlots``,
+        ``ListDiskSensors``) -- this window holds no sensor or Platform port.
+        The LED panel's language is injected so it never reaches into _boot
+        for global settings."""
+        log.debug("_build_pages")
         gpus_result = self._app.dispatch(ListGpus())
         gpu_list: list[tuple[str, str]] = (
             [(g.key, g.name) for g in gpus_result.gpus]
             if gpus_result.ok else []
         )
-        self.uc_about = UCAbout(
-            parent=central, gpu_list=gpu_list,
-            app=self._app, ui_state=self._ui_state,
-        )
-        self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
-        self.uc_about.setVisible(False)
-
-        # System info dashboard — takes the App and asks the bus for its
-        # layout (``GetSensorDashboard``).  It used to be handed a live
-        # ``SensorEnumerator`` plus a ``SysInfoConfig`` built here, which it
-        # then passed on to the sensor picker; both are gone, so nothing in
-        # this window holds a sensor port any more.
+        self.uc_about = self._place_hidden(
+            UCAbout(parent=central, gpu_list=gpu_list,
+                    app=self._app, ui_state=self._ui_state),
+            Layout.FORM_CONTAINER)
         # About -- inspired by, what TRCC does, thanks to the community.
-        self.uc_thanks = UCThanks(central)
-        self.uc_thanks.setGeometry(*Layout.FORM_CONTAINER)
-        self.uc_thanks.setVisible(False)
+        self.uc_thanks = self._place_hidden(UCThanks(central),
+                                            Layout.FORM_CONTAINER)
         # Modules -- every module, switched on or off.
-        self.uc_modules = UCModules(self._app, self._bus, central)
-        self.uc_modules.setGeometry(*Layout.FORM_CONTAINER)
-        self.uc_modules.setVisible(False)
+        self.uc_modules = self._place_hidden(
+            UCModules(self._app, self._bus, central), Layout.FORM_CONTAINER)
+        self.uc_system_info = self._place_hidden(
+            UCSystemInfo(self._app, parent=central), Layout.SYSINFO_PANEL)
+        self.uc_led_control = self._place_hidden(
+            UCLedControl(central,
+                         self._app.dispatch(ControlCenterSnapshot()).language,
+                         app=self._app),
+            Layout.FORM_CONTAINER)
 
-        self.uc_system_info = UCSystemInfo(self._app, parent=central)
-        self.uc_system_info.setGeometry(*Layout.SYSINFO_PANEL)
-        self.uc_system_info.setVisible(False)
-
-        # LED panel — Platform port supplies the memory/disk probes.
-        # Language is injected (composition root) so the panel never reaches
-        # into _boot for global settings.
-        self.uc_led_control = UCLedControl(
-            central, self._app.dispatch(ControlCenterSnapshot()).language,
-            app=self._app)
-        self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
-        self.uc_led_control.setVisible(False)
-        # Memory and disk both come off the bus now (``ListMemorySlots`` /
-        # ``ListDiskSensors``).  The panel is handed no Platform port at all.
-
-        # Form1 buttons
+    def _build_form1_buttons(self, central: QWidget) -> None:
+        """Form1's power (close) and help buttons."""
+        log.debug("_build_form1_buttons")
         self.form1_close_btn = create_image_button(
             central, *Layout.FORM1_CLOSE_BTN,
             Assets.BTN_POWER, Assets.BTN_POWER_HOVER, fallback_text="X")
@@ -1154,13 +1154,6 @@ class TRCCApp(QMainWindow):
             Assets.BTN_HELP, None, fallback_text="?")
         say_tip(self.form1_help_btn, "Help")
         self.form1_help_btn.clicked.connect(self._on_help_clicked)
-
-        self._create_i18n_overlays()
-        # What the modules add: built once, after the stack and the labels.
-        self._module_pages: dict[str, QWidget] = {}
-        self._module_tabs: dict[str, QPushButton] = {}
-        self._module_views: dict[str, QWidget] = {}
-        self._sync_modules()
 
     def _i18n_label(self, parent: QWidget, text: str, x: int, y: int, w: int,
                     h: int, pt: int, key: str | None = None,
@@ -1310,8 +1303,13 @@ class TRCCApp(QMainWindow):
         self._lcd_selection.changed.connect(page.set_device_key)
         log.info("_add_module_page: %s at panel %d, tab at %s", key, index, (x, y))
 
-    def _set_panel_bg(self, widget: QWidget, asset_name: str) -> None:
-        pix = set_background_pixmap(widget, asset_name)
+    def _set_panel_bg(self, widget: QWidget, asset_name: str, *,
+                      width: int | None = None, height: int | None = None,
+                      fallback_style: str | None = None) -> None:
+        """*asset_name* as *widget*'s background, its pixmap kept alive."""
+        log.debug("_set_panel_bg: %s on %s", asset_name, type(widget).__name__)
+        pix = set_background_pixmap(widget, asset_name, width=width,
+                                    height=height, fallback_style=fallback_style)
         if pix:
             self._pixmap_refs.append(pix)
 

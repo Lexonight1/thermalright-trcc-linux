@@ -18,6 +18,7 @@ widget's visibility.
 
 ``uc_led_styles`` is the LED panel once per LED style, stacked in one
 picture: the one to use for any change to the shared LED panel.
+``trcc_app`` is the whole gui window, every widget in it.
 
 Snapshots land in ``dev/.panel_snapshots/`` (git-ignored scratch).  Panels
 render against a fixed fake fleet so the result never depends on what is
@@ -109,6 +110,12 @@ def _build_uc_theme_setting(edited: bool) -> Any:
     overlay elements and the mask hidden, so the grid, the element editor and
     the mask box show values rather than defaults.
     """
+    return _build_trcc_app(edited).uc_theme_setting
+
+
+def _build_trcc_app(edited: bool = False) -> Any:
+    """The whole gui window over one mock panel: every widget it builds,
+    hidden pages included, for a change to how the window is put together."""
     import tempfile
     sys.path.insert(0, str(REPO))
     from tests.conftest import show_a_theme
@@ -141,7 +148,7 @@ def _build_uc_theme_setting(edited: bool) -> Any:
     window = TRCCApp(app=app)
     window.replay_initial_devices()
     _KEEP.extend((app, window))
-    return window.uc_theme_setting
+    return window
 
 
 def _tile_pngs(folder: Path, names: list[str]) -> dict[str, Path]:
@@ -304,6 +311,7 @@ PANELS: dict[str, Callable[[], Any]] = {
     "uc_theme_mask": lambda: _build_uc_theme_mask(filled=True),
     "uc_theme_mask_empty": lambda: _build_uc_theme_mask(filled=False),
     "uc_visuals": _build_uc_visuals,
+    "trcc_app": _build_trcc_app,
 }
 
 

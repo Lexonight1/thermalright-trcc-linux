@@ -72,7 +72,12 @@ import function_census  # noqa: E402
 #: 6 -> 5 the same day: ``PlayVideo.play`` (156 lines) -- the file guards
 #: (``_unplayable``), the decode size, and what the UIs are told
 #: (``_announce``) are steps; one ``_failed`` for its six failure results.
-MAX_LONG_FUNCTIONS = 5
+#: 5 -> 4 the same day: ``TRCCApp._setup_ui`` (181 lines) builds the window
+#: as steps -- sidebar, form, theme panels, pages, Form1 buttons -- and the
+#: cloud download it defined inline is a method.  Proved by the whole
+#: window's pixels and all 999 widgets' rect, visibility, text and creation
+#: order (``panel_snapshot trcc_app``), identical before and after.
+MAX_LONG_FUNCTIONS = 4
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.

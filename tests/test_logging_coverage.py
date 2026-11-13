@@ -144,7 +144,9 @@ _SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "trcc"
 #: 259 -> 257 on 2026-11-13: ``UCLedControl._setup_ui`` became its named
 #: ``_build_*`` steps and logs; its silent ``_lc2_text`` closure became the
 #: logged ``_lc2_word``.  Every new step was written with its line.
-MAX_SILENT = 257
+#: 257 -> 256 the same day: ``TRCCApp._set_panel_bg``, touched when
+#: ``_setup_ui`` became its steps and both window backgrounds went through it.
+MAX_SILENT = 256
 
 
 def test_logging_coverage_only_improves() -> None:
