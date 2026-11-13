@@ -2556,9 +2556,11 @@ def metric_element(spec: str) -> dict[str, Any]:
 class CreateTheme(Command[CreateThemeResult]):
     """Show a background, with an optional mask and overlay, and save it.
 
-    A picture becomes a one-image theme (``LoadImage``), so the panel starts
-    clean.  A video plays over the CURRENT theme (``PlayVideo``), whose mask
-    and overlay stay unless *mask* or the overlay replace them.  Then the
+    The background becomes a one-file theme -- ``LoadImage`` for a picture,
+    ``LoadVideo`` for a video -- so the panel starts clean either way, and a
+    video needs no theme already showing.  It played over the CURRENT theme
+    (``PlayVideo``) until 2026-11-13: refused on a panel showing nothing, and
+    the old theme's mask and overlay stayed.  Then the
     mask, stored in the user's mask library under its file's name and shown
     (``UploadCustomMask``), then the overlay (``SetOverlayConfig``,
     ``EnableOverlay``): the *overlay* file's elements, then one per *metrics*
@@ -2639,7 +2641,7 @@ class CreateTheme(Command[CreateThemeResult]):
         """What creating it dispatches, in order."""
         log.debug("CreateTheme._steps: animated=%s overlay=%s", animated,
                   elements is not None)
-        yield (PlayVideo(key=self.key, path=self.background) if animated
+        yield (LoadVideo(key=self.key, path=self.background) if animated
                else LoadImage(key=self.key, path=self.background))
         if self.mask is not None:
             yield UploadCustomMask(key=self.key, source=self.mask)
@@ -2651,9 +2653,10 @@ class CreateTheme(Command[CreateThemeResult]):
                             overwrite=self.overwrite)
 
     def _still_read(self, app: App) -> tuple[str, ...]:
-        """The given background, while the panel reads it -- a video plays
-        from the file it was given (#249) until a saved theme switches the
-        panel to its own copy.  A picture or a mask is always copied."""
+        """The given background, while the panel reads it.  Every step copies
+        what it is given -- a picture, a video, a mask -- so this is ``()``;
+        it is asked of the device rather than assumed, so a step that plays a
+        file in place (``PlayVideo`` did, #249) keeps its file."""
         chosen = app.settings.for_device(self.key).chosen_file
         reads = (str(self.background),) if chosen == str(self.background) else ()
         log.debug("CreateTheme._still_read: chosen=%s -> %s", chosen, reads)

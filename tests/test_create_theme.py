@@ -60,9 +60,9 @@ def png(tmp_path: Path, renderer: QtRenderer) -> Path:
 
 
 @pytest.fixture
-def themed_video(panel: App, png: Path, tmp_path: Path, renderer: QtRenderer,
-                 monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A video file, on a panel that shows a theme to play it over.
+def video(tmp_path: Path, renderer: QtRenderer,
+          monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A video file.
 
     ``MediaService.load_video`` is stubbed: decoding is ffmpeg's job, tested
     where ``PlayVideo`` is; here only the composition is under test.
@@ -76,10 +76,21 @@ def themed_video(panel: App, png: Path, tmp_path: Path, renderer: QtRenderer,
         return playback
 
     monkeypatch.setattr(MediaService, "load_video", load_video)
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    return clip
+
+
+@pytest.fixture
+def themed_video(panel: App, png: Path, video: Path) -> Path:
+    """A video file, on a panel already showing a picture theme."""
     assert panel.dispatch(LoadImage(key=_KEY, path=png)).ok
-    video = tmp_path / "clip.mp4"
-    video.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     return video
+
+
+def _single_video(app: App) -> str:
+    """Where LoadVideo files clip.mp4: its own one-file theme."""
+    return str(app.platform.paths().user_content_dir() / "single-video" / "clip")
 
 
 def test_a_picture_is_copied_so_nothing_given_is_still_read(
@@ -105,25 +116,27 @@ def test_a_video_mask_and_overlay_are_all_shown_and_kept(
 
     assert result.ok, result.message
     assert result.animated is True
-    assert result.reads == (str(themed_video),)
+    assert result.reads == ()
     library = panel.platform.paths().user_mask_dir(320, 320)
     settings = panel.settings.for_device(_KEY)
+    assert settings.current_theme == _single_video(panel)
     assert settings.mask_path == str(library / "custom_bg" / "01.png")
     assert settings.overlay_enabled is True
     masks = panel.dispatch(ListMasks(resolution=(320, 320))).masks
     assert [m.name for m in masks] == ["custom_bg"]
 
 
-def test_a_refused_mask_still_names_the_video_that_plays(
+def test_a_refused_mask_leaves_the_video_playing_its_own_copy(
     panel: App, tmp_path: Path, themed_video: Path,
 ) -> None:
-    """The video started before the mask step refused, and plays on -- a
-    caller that deleted it would pull the file out from under the panel."""
+    """The video started before the mask step refused, and plays on -- from
+    its theme's own copy, so the caller may delete the file it gave."""
     result = panel.dispatch(CreateTheme(key=_KEY, background=themed_video,
                                         mask=tmp_path / "missing.png"))
 
     assert result.ok is False
-    assert result.reads == (str(themed_video),)
+    assert result.reads == ()
+    assert panel.settings.for_device(_KEY).current_theme == _single_video(panel)
 
 
 def test_a_refused_overlay_ends_it_with_that_steps_message(
@@ -198,17 +211,17 @@ def test_a_name_saves_it_as_that_theme(panel: App, png: Path) -> None:
     assert panel.settings.for_device(_KEY).current_theme == result.theme_path
 
 
-def test_a_saved_video_theme_reads_its_own_copy(
+def test_a_video_theme_reads_its_own_copy_saved_or_not(
     panel: App, themed_video: Path,
 ) -> None:
-    """Saving switches the panel to the saved theme, which plays its own
-    copy -- so the given file is no longer read, and a caller that staged
-    it may delete it."""
+    """LoadVideo copies the clip into its own theme, and saving switches the
+    panel to the saved theme's copy -- either way the given file is no
+    longer read, and a caller that staged it may delete it."""
     shown = panel.dispatch(CreateTheme(key=_KEY, background=themed_video))
     saved = panel.dispatch(CreateTheme(key=_KEY, background=themed_video,
                                        name="clip"))
 
-    assert shown.reads == (str(themed_video),)
+    assert shown.reads == ()
     assert saved.ok, saved.message
     assert saved.reads == ()
     assert panel.settings.for_device(_KEY).chosen_file is None
@@ -390,12 +403,11 @@ def test_a_taken_name_is_a_409_the_client_can_retry(api: Any, png: Path) -> None
     assert replaced.status_code == 200, replaced.text
 
 
-def test_an_uploaded_video_is_kept_while_the_panel_plays_it(
+def test_an_uploaded_video_is_copied_so_the_upload_is_removed(
     panel: App, themed_video: Path,
 ) -> None:
-    """The staged upload is the file PlayVideo reads, so the cleanup keeps
-    it -- and, staged under its own name, its folder.  Removing the folder
-    would pull the clip out from under the panel."""
+    """LoadVideo files the clip in its own theme, under the upload's name, so
+    nothing still reads the staged upload and the route removes it."""
     from trcc.ui.api.main import build_app
 
     from .conftest import loopback_client
@@ -407,8 +419,31 @@ def test_an_uploaded_video_is_kept_while_the_panel_plays_it(
                                                  "video/mp4")})
 
     assert done.status_code == 200, done.text
-    playing = Path(panel.settings.for_device(_KEY).chosen_file or "")
     uploads = panel.platform.paths().user_content_dir() / "uploads"
-    assert playing.name == "clip.mp4"
-    assert uploads in playing.parents
-    assert playing.read_bytes() == themed_video.read_bytes()
+    assert list(uploads.iterdir()) == []
+    assert panel.settings.for_device(_KEY).current_theme == _single_video(panel)
+    copy = Path(_single_video(panel)) / "Theme.mp4"
+    assert copy.read_bytes() == themed_video.read_bytes()
+
+
+def test_a_video_needs_no_theme_already_showing(panel: App, video: Path) -> None:
+    """PlayVideo refused this: "has no theme to show a background on"."""
+    result = panel.dispatch(CreateTheme(key=_KEY, background=video))
+
+    assert result.ok, result.message
+    assert panel.settings.for_device(_KEY).current_theme == _single_video(panel)
+
+
+def test_a_video_starts_clean_as_a_picture_does(
+    panel: App, png: Path, video: Path, tmp_path: Path,
+) -> None:
+    """The theme showing before -- its mask, its overlay -- does not carry
+    over into one made from a video, any more than into one from a picture."""
+    assert panel.dispatch(CreateTheme(key=_KEY, background=png, mask=png,
+                                      overlay=_overlay_file(tmp_path, _TEXT))).ok
+
+    result = panel.dispatch(CreateTheme(key=_KEY, background=video))
+
+    assert result.ok, result.message
+    assert panel.settings.for_device(_KEY).mask_path is None
+    assert panel.dispatch(ResolveOverlay(key=_KEY)).elements == []
