@@ -105,7 +105,12 @@ MAX_LONG_FUNCTIONS = 2
 #: to ``services.overlay.metric_text``; the clock tiles now draw with the
 #: panel's own ``clock_text``.  36 tile grabs (17 tiles at two frozen moments)
 #: identical, every pixel.
-MAX_BRANCHY_FUNCTIONS = 2
+#: 2 -> 1 on 2026-11-13: the ``create-theme`` route.  Showing the upload
+#: moved into the ``CreateTheme`` Command; the route keeps the checks,
+#: staging and cleanup.  18 requests (every arm, every refusal, three that
+#: fail part-way) answer, store, publish and dispatch the same before and
+#: after, save the one new ``CreateTheme`` dispatch.
+MAX_BRANCHY_FUNCTIONS = 1
 
 #: Passed explicitly so each gate's meaning lives HERE, not in the tool.
 LINE_THRESHOLD = 140

@@ -24,8 +24,8 @@ from trcc.core.commands import (
     BuildPreview,
     ClearInset,
     ConfigureSlideshow,
+    CreateTheme,
     DeleteOverlayElement,
-    DeviceCanvas,
     DeviceState,
     EnableOverlay,
     ExportVideoClip,
@@ -33,7 +33,6 @@ from trcc.core.commands import (
     KeepAliveLoop,
     LcdSnapshot,
     ListMasks,
-    LoadImage,
     LoadTheme,
     LoadVideo,
     PauseVideo,
@@ -793,17 +792,15 @@ async def create_theme(
 
     Mirrors legacy ``POST /display/create-theme``: accept a background
     image OR video plus an optional mask PNG and an optional overlay
-    JSON config, then route through the existing per-device Commands
-    so the wire path stays identical to a load-from-disk flow.
+    JSON config, stage them, and dispatch ``CreateTheme``, which shows
+    them.  This route only checks, stages and cleans up the uploads.
 
     Inputs (multipart/form-data):
       * ``background`` — required.  Image (png/jpg/jpeg/bmp/webp) or
-        video (mp4/mov/webm/mkv/avi/zt/gif).  Animated → ``PlayVideo``;
-        static → ``LoadImage``.
-      * ``mask``       — optional PNG.  Applied via ``ApplyMask`` after
-        the background lands.
+        video (mp4/mov/webm/mkv/avi/zt/gif).
+      * ``mask``       — optional PNG.
       * ``overlay``    — optional JSON file with ``{"elements": [...]}``
-        shape.  Dispatched via ``SetOverlayConfig`` + ``EnableOverlay``.
+        shape.
       A video background always loops, as the Windows app's does; the
       ``loop`` field this route once took is gone (an unknown form field is
       ignored, so a client still sending it is not refused).
@@ -822,10 +819,9 @@ async def create_theme(
         overlay.filename if overlay is not None else None,
     )
     uploads_dir = staging_dir(request)
-    # Staged uploads a Command still reads stay: PlayVideo and ApplyMask
-    # persist the path they were given.  Everything else -- the image
-    # background LoadImage copied, anything a refused request staged --
-    # is removed: nothing else ever cleaned ``uploads/``.
+    # Staged uploads the panel still reads stay -- CreateTheme names them.
+    # Everything else -- a copied image background, anything a refused
+    # request staged -- is removed: nothing else ever cleaned ``uploads/``.
     staged: list[Path] = []
     kept: set[Path] = set()
     try:
@@ -853,47 +849,20 @@ async def create_theme(
 
         overlay_elements = _overlay_elements(overlay)
 
-        animated = bg_suffix in _CREATE_THEME_VID_EXTS
-        if animated:
-            # PlayVideo persists the background path itself (#249).
-            play_result = request.app.state.trcc.dispatch(
-                PlayVideo(key=key, path=bg_path),
-            )
-            http_error_if_failed(play_result)
-            kept.add(bg_path)
-        else:
-            load_result = request.app.state.trcc.dispatch(
-                LoadImage(key=key, path=bg_path),
-            )
-            http_error_if_failed(load_result)
-
-        if mask_path is not None:
-            mask_result = request.app.state.trcc.dispatch(
-                ApplyMask(key=key, path=mask_path),
-            )
-            http_error_if_failed(mask_result)
-            kept.add(mask_path)
-
-        if overlay_elements is not None:
-            config_result = request.app.state.trcc.dispatch(
-                SetOverlayConfig(key=key, elements=overlay_elements),
-            )
-            http_error_if_failed(config_result)
-            request.app.state.trcc.dispatch(
-                EnableOverlay(key=key, enabled=True),
-            )
-
-        # The one ladder (DeviceCanvas); this route kept its own copy of it.
-        found = request.app.state.trcc.dispatch(DeviceCanvas(key=key))
-        w, h = (found.width, found.height) if found.ok else (0, 0)
-
+        created = request.app.state.trcc.dispatch(CreateTheme(
+            key=key, background=bg_path, mask=mask_path,
+            elements=overlay_elements,
+        ))
+        kept.update(Path(p) for p in created.reads)
+        http_error_if_failed(created)
+        size = f"{created.width}x{created.height}"
         return CreateThemeResponse(
             ok=True,
             key=key,
-            animated=animated,
-            resolution=f"{w}x{h}",
+            animated=created.animated,
+            resolution=size,
             message=(f"theme created from {bg_name} "
-                     f"({'video' if animated else 'image'}, {w}x{h})"),
+                     f"({'video' if created.animated else 'image'}, {size})"),
         )
     finally:
         for path in staged:

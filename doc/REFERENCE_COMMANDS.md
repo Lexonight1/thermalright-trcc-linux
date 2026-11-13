@@ -4,7 +4,7 @@
 
 Every capability in TRCC, as the one surface all four UIs dispatch against. A new UI — a browser client, a VR panel, a TUI — needs only this page and an event subscription; it never imports a service or an adapter.
 
-**178 total: 128 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
+**179 total: 129 Commands and 50 Queries.** A *Query* is a read and nothing else, which is why it is named separately — a missing read should be obvious rather than archaeological.
 
 ## Dispatching one
 
@@ -705,6 +705,19 @@ Ask what a device's video playback is doing.  Read-only.
 | `key` | `str` | yes |
 
 ## Themes, masks and media
+
+### `CreateTheme`
+
+Show a background, with an optional mask and overlay, in one step.
+
+*Command* → `CreateThemeResult`
+
+| Field | Type | Required |
+|---|---|---|
+| `key` | `str` | yes |
+| `background` | `Path` | yes |
+| `mask` | `Path | None` | no |
+| `elements` | `tuple[dict, Ellipsis] | None` | no |
 
 ### `DeleteTheme`
 

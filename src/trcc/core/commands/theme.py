@@ -50,6 +50,7 @@ from ..results import (
     CloudThemeEntryResult,
     CloudThemeLoadResult,
     CloudThemesListResult,
+    CreateThemeResult,
     DeleteThemeResult,
     EnsureDataDownloadResult,
     FileEntry,
@@ -91,11 +92,14 @@ from ._helpers import (
 )
 from .device import (
     ApplyMask,
+    DeviceCanvas,
+    EnableOverlay,
     PlayVideo,
     SetBackground,
     SetBackgroundMode,
     SetMaskPosition,
     SetMediaPlayer,
+    SetOverlayConfig,
     StartScreencast,
     StopVideo,
     _publish_background,
@@ -2482,6 +2486,71 @@ class LoadImage(Command[ThemeResult]):
                 message=f"Failed to stage image as theme: {e}",
             )
         return app.dispatch(LoadTheme(key=self.key, path=theme_dir))
+
+@dataclass(frozen=True, slots=True)
+class CreateTheme(Command[CreateThemeResult]):
+    """Show a background, with an optional mask and overlay, in one step.
+
+    A picture becomes a one-image theme (``LoadImage``), so the panel starts
+    clean.  A video plays over the CURRENT theme (``PlayVideo``), whose mask
+    and overlay stay unless *mask* or *elements* replace them.  Then the mask
+    (``ApplyMask``), then the overlay (``SetOverlayConfig``, ``EnableOverlay``).
+
+    The first step that refuses ends it, with that step's message; the steps
+    before it stay done.  Each step gates and connects its device itself, as
+    it does when dispatched on its own.  ``reads`` names the given files the
+    panel still reads, so a caller that staged them deletes only the rest.
+    """
+    key: str
+    background: Path
+    mask: Path | None = None
+    #: Overlay elements, each a flat dict as ``SetOverlayConfig`` takes them;
+    #: None leaves the overlay as it is.
+    elements: tuple[dict, ...] | None = None
+
+    def execute(self, app: App) -> CreateThemeResult:
+        log.info("CreateTheme: key=%s background=%s mask=%s elements=%s",
+                 self.key, self.background.name,
+                 self.mask.name if self.mask else None,
+                 None if self.elements is None else len(self.elements))
+        animated = MEDIA.kind_of(self.background) is MediaKind.ANIMATED
+        reads: list[Path] = []
+        shown = app.dispatch(
+            PlayVideo(key=self.key, path=self.background) if animated
+            else LoadImage(key=self.key, path=self.background))
+        if not shown.ok:
+            return self._failed(shown.message, reads)
+        if animated:
+            reads.append(self.background)   # PlayVideo keeps its path (#249)
+        if self.mask is not None:
+            masked = app.dispatch(ApplyMask(key=self.key, path=self.mask))
+            if not masked.ok:
+                return self._failed(masked.message, reads)
+            reads.append(self.mask)         # so does ApplyMask
+        if self.elements is not None:
+            laid = app.dispatch(SetOverlayConfig(key=self.key,
+                                                 elements=self.elements))
+            if not laid.ok:
+                return self._failed(laid.message, reads)
+            app.dispatch(EnableOverlay(key=self.key, enabled=True))
+        canvas = app.dispatch(DeviceCanvas(key=self.key))
+        width, height = (canvas.width, canvas.height) if canvas.ok else (0, 0)
+        log.info("CreateTheme: %s shown (%s, %dx%d), still reads %d file(s)",
+                 self.background.name, "video" if animated else "image",
+                 width, height, len(reads))
+        return CreateThemeResult(
+            ok=True, key=self.key, animated=animated,
+            width=width, height=height, reads=tuple(map(str, reads)),
+            message=(f"Theme created from {self.background.name} "
+                     f"({'video' if animated else 'image'}, {width}x{height})"),
+        )
+
+    def _failed(self, message: str, reads: list[Path]) -> CreateThemeResult:
+        """A refused step's message, with the files the panel reads by then."""
+        log.warning("CreateTheme: stopped (%s); still reads %d file(s)",
+                    message, len(reads))
+        return CreateThemeResult(ok=False, key=self.key, message=message,
+                                 reads=tuple(map(str, reads)))
 
 @dataclass(frozen=True, slots=True)
 class ProbeVideoDuration(Query[VideoDurationResult]):

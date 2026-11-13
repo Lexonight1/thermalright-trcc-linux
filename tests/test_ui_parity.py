@@ -116,6 +116,19 @@ KNOWN_UI_ASYMMETRY: dict[str, tuple[frozenset[str], str]] = {
         "wants the loose .zt back (ExportVideoClip + SetBackground), which is "
         "a different capability, not a missing one"
     )),
+    "CreateTheme": (frozenset({"api"}), (
+        "gap: a background, a mask and an overlay in one Command (2026-11-13), "
+        "the body of the create-theme route until then.  A `trcc theme create` "
+        "is the next step of the plan that made it.  Meanwhile the cli shows "
+        "the background and the mask on their own (LoadImage, PlayVideo, "
+        "ApplyMask), and edits the overlay element by element: the overlay's "
+        "bulk replace is API-only (see SetOverlayConfig)"
+    )),
+    "LoadImage": (frozenset({"cli", "qtgui"}), (
+        "scoped: the API shows a picture as a theme through CreateTheme "
+        "(create-theme), which runs it; a picture that is not to become a "
+        "theme is SendImage, which the API has"
+    )),
     "ToggleVideo": (frozenset({"cli", "gui", "qtgui"}), (
         "scoped: verb sugar over PauseVideo (shared), which the API exposes "
         "directly"

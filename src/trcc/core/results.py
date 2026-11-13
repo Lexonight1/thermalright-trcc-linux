@@ -340,6 +340,24 @@ class ThemeResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class CreateThemeResult(Result):
+    """What ``CreateTheme`` showed, and which of the given files it still reads.
+
+    ``reads`` is filled on a failure too: a video that started plays on when
+    a later step refuses, so a caller that staged it must still keep it.
+    """
+    key: str = ""
+    #: The background was a video (it plays), not a picture.
+    animated: bool = False
+    #: The panel's canvas, 0 x 0 when the device reports none.
+    width: int = 0
+    height: int = 0
+    #: The given files the panel still reads -- the video it plays, the mask
+    #: it shows.  Every other given file was copied, or never used.
+    reads: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class OrientationResult(Result):
     key: str = ""
     degrees: int = 0
