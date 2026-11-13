@@ -15,14 +15,14 @@ from PySide6.QtWidgets import QMenu, QWidget
 from ...core.logs import per_frame
 from ...core.models import (
     CATEGORY_NAMES,
+    DATE_FORMATS,
     OVERLAY_MODE_IMAGES,
     OVERLAY_SELECT_IMAGE,
     SUB_METRICS,
+    TIME_FORMATS,
     OverlayElementConfig,
     OverlayMode,
 )
-from ...core.models import DATE_FORMATS as DATE_PATTERNS
-from ...core.models import TIME_FORMATS as TIME_PATTERNS
 from ...services._clock import clock_text, compute_clock
 from ..presentation.sensor_display import source_label
 from .settings_layout import (
@@ -49,9 +49,6 @@ CATEGORY_COLORS = {
     4: '#FA6401',   # NET - orange
     5: '#E02020',   # FAN - red
 }
-
-TIME_FORMATS = {0: 'HH:mm', 1: 'hh:mm'}
-DATE_FORMATS = {1: 'yyyy/MM/dd', 2: 'dd/MM/yyyy', 3: 'MM/dd', 4: 'dd/MM'}
 
 # Re-export from models for backward compat (uc_theme_setting imports these)
 MODE_IMAGES = OVERLAY_MODE_IMAGES
@@ -274,12 +271,12 @@ class OverlayElementWidget(QWidget):
                 # the text the panel draws, so the two never disagree
                 painter.setPen(QColor(color_str))
                 self._draw_value(painter, self._clock_text(
-                    "time", TIME_PATTERNS.get(self.config.mode_sub, "")))
+                    "time", TIME_FORMATS.get(self.config.mode_sub, "")))
             elif mode == OverlayMode.DATE:
                 # Windows: label1+label3 hidden, only label2 visible
                 painter.setPen(QColor(color_str))
                 self._draw_value(painter, self._clock_text(
-                    "date", DATE_PATTERNS.get(self.config.mode_sub, "")))
+                    "date", DATE_FORMATS.get(self.config.mode_sub, "")))
             elif mode == OverlayMode.WEEKDAY:
                 # Windows: label1+label3 hidden, only label2 visible --
                 # the panel's weekday, in the window's language

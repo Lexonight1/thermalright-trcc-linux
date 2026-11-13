@@ -68,11 +68,9 @@ from .display_mode_panels import (
 from .overlay_element import (  # noqa: F401
     CATEGORY_COLORS,
     CATEGORY_NAMES,
-    DATE_FORMATS,
     MODE_IMAGES,
     SELECT_IMAGE,
     SUB_METRICS,
-    TIME_FORMATS,
     OverlayElementWidget,
 )
 from .overlay_grid import OverlayGridPanel
