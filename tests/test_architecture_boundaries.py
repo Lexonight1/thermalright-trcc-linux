@@ -1219,7 +1219,10 @@ KNOWN_FS_IO: dict[str, int] = {
     # 25 -> 23 on 2026-10-06: ExportConfig / ImportConfig DELETED (their
     # json.dump write and json.load read went with them) -- the import was a
     # local file-read hole through the theme download.
-    "trcc/core/commands/theme.py": 23,
+    # 23 -> 22 on 2026-11-13: LoadTheme resolves the theme's path once
+    # (03d30f62) -- the old body called ``theme.path.resolve()`` twice for the
+    # same string, once to persist it and once to report it.
+    "trcc/core/commands/theme.py": 22,
     "trcc/core/libraries.py": 1,
     "trcc/core/toolchain.py": 2,
     "trcc/services/_dc.py": 3,
