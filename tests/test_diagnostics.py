@@ -29,7 +29,6 @@ from trcc.adapters.diagnostics.health import (
     check_gpu_sensors,
     check_log_writable,
     check_python_version,
-    package_install_hint,
     run_health_checks,
 )
 from trcc.adapters.infra.logging import (
@@ -1514,14 +1513,6 @@ def test_gpu_reader_state_uses_the_injected_reader(fake_platform) -> None:
     """The other reach — the port method the GPU-offer decision consumes."""
     state = DiagnosticsAdapter(fake_platform, _state(True, True)).gpu_reader_state()
     assert (state.reader_installed, state.initialized) == (True, True)
-
-
-def test_package_install_hint_returns_a_string() -> None:
-    """Hint never crashes — even when no package manager is detected,
-    it returns the generic 'install via your package manager' fallback."""
-    hint = package_install_hint("ffmpeg")
-    assert isinstance(hint, str)
-    assert "ffmpeg" in hint
 
 
 # =========================================================================

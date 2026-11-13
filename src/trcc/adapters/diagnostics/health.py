@@ -43,9 +43,7 @@ __all__ = [
     "HealthCheckResult",
     "HealthReport",
     "Severity",
-    "detect_package_manager",
     "nvidia_gpu_present",
-    "package_install_hint",
     "quick_subprocess",
     "run_health_checks",
 ]
@@ -819,41 +817,6 @@ def run_health_checks(
         report.worst_severity, report.fail_count, report.warn_count,
     )
     return report
-
-
-def detect_package_manager() -> str | None:
-    """Return the first available package manager name, or None.
-
-    Lightweight version of legacy ``_detect_pkg_manager``.  Used by
-    install-hint generation when a check FAILs and we want to suggest a
-    distro-specific install command.
-    """
-    log.info("detect_package_manager: called")
-    candidates = ["dnf", "apt", "pacman", "zypper", "xbps-install", "apk"]
-    for binary in candidates:
-        if shutil.which(binary):
-            return binary
-    return None
-
-
-_PM_INSTALL_COMMANDS: dict[str, str] = {
-    "dnf":          "sudo dnf install {pkg}",
-    "apt":          "sudo apt install {pkg}",
-    "pacman":       "sudo pacman -S {pkg}",
-    "zypper":       "sudo zypper install {pkg}",
-    "xbps-install": "sudo xbps-install {pkg}",
-    "apk":          "sudo apk add {pkg}",
-}
-
-
-def package_install_hint(package: str) -> str:
-    """One-line install hint for a missing package, distro-specific."""
-    log.info("package_install_hint: package=%s", package)
-    pm = detect_package_manager()
-    template = _PM_INSTALL_COMMANDS.get(pm or "", "")
-    if template:
-        return template.format(pkg=package)
-    return f"Install {package} via your package manager"
 
 
 def quick_subprocess(cmd: list[str], timeout_s: float = 2.0) -> str:

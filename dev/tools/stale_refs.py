@@ -334,8 +334,6 @@ _MUST_RESOLVE = [
      "registry-dispatched: never named in src, reached via DEVICES[wire]"),
     ("trcc.adapters.system.windows", "WindowsPlatform",
      "registry-dispatched via PLATFORMS[key]"),
-    ("trcc.adapters.diagnostics.health", "package_install_hint",
-     "DEAD but present — deadness is a different question from existence"),
     ("trcc.modules.visualizer.adapters._spectrum", "HOLD",
      "bound by tuple assignment: HOLD, GRAVITY = 0.35, 5.0"),
     ("trcc.modules.visualizer.adapters._gl_draw", "GL_FRAGMENT_SHADER",
