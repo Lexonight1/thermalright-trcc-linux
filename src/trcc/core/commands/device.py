@@ -351,37 +351,21 @@ class ConnectDevice(Command[ConnectResult]):
             device = app.attach(vid, pid, unit=unit)
         except DeviceNotFoundError as e:
             hints = app.platform.check_permissions()
-            app.events.publish(ErrorOccurred(message=str(e), kind="not_found",
-                                             key=self.key, hints=hints))
-            result = ConnectResult(ok=False, key=self.key, message=str(e),
-                                   hints=hints)
-            app.note_connect_issue(result, permanent=True)
-            return result
+            return self._failed(app, e, "not_found", hints, permanent=True)
         except (ImportError, OSError, TransportError) as e:
-            # Building the transport can fail for reasons that are the user's
-            # environment, not a missing device: a firmware quirk selects the
-            # HID output-report transport, and hidapi may be absent or be the
-            # wrong one of the two PyPI packages that both import as ``hid``
-            # (#244, #253).  Those raise from the transport constructor, and an
-            # uncaught raise here takes the GUI down instead of telling anyone
-            # what to install — so report it like any other connect failure.
-            # ``TransportError`` is the SCSI node not existing (yet): a usb add
-            # arrives ~1 s before usb-storage creates /dev/sgN, and a panel a
-            # VM holds has none.  It used to escape this Command — and every
-            # Command that connects first — as an exception, with no issue
-            # recorded for any UI to show.
+            # The user's environment, not a missing device: hidapi absent, or
+            # the wrong one of the two PyPI packages that import as ``hid``
+            # (#244, #253) -- or a SCSI node not there yet: a usb add arrives
+            # ~1 s before usb-storage creates /dev/sgN, and a panel a VM holds
+            # has none.  Reported like any failed connect, never raised, so a
+            # UI can say what to install.  A missing library or a denied open
+            # stays until the user acts; a node not there yet does not.
             hints = app.platform.check_permissions()
             log.warning("ConnectDevice %s: transport unavailable — %s",
                         self.key, e)
-            app.events.publish(ErrorOccurred(message=str(e), kind="transport",
-                                             key=self.key, hints=hints))
-            result = ConnectResult(ok=False, key=self.key, message=str(e),
-                                   hints=hints)
-            # A missing library or a denied open stays that way until the user
-            # acts; a node that is not there yet does not.
-            app.note_connect_issue(
-                result, permanent=isinstance(e, (ImportError, PermissionError_)))
-            return result
+            return self._failed(
+                app, e, "transport", hints,
+                permanent=isinstance(e, (ImportError, PermissionError_)))
 
         try:
             handshake = self._handshake_with_quirk_retry(app, device, vid, pid,
@@ -392,23 +376,64 @@ class ConnectDevice(Command[ConnectResult]):
             # the panel is coming back to (its theme, a cast, a slideshow).
             app.release_device(self.key)
             hints = _connect_failure_hints(app, e, self.key, vid, pid, unit)
-            app.events.publish(ErrorOccurred(message=str(e), kind="handshake",
-                                             key=self.key, hints=hints))
-            result = ConnectResult(ok=False, key=self.key, message=str(e),
-                                   hints=hints)
-            app.note_connect_issue(
-                result, permanent=isinstance(e, PermissionError_))
-            return result
+            return self._failed(app, e, "handshake", hints,
+                                permanent=isinstance(e, PermissionError_))
 
-        # Variant override: handshake reveals the PM/SUB fingerprint, which
-        # disambiguates products sharing one (VID, PID).  Patch the device's
-        # ProductInfo with the resolved button_image so the GUI sidebar
-        # shows the right product picture.  Without this, every device falls
-        # back to the registry default (A1CZTV "ransom" button).
+        catalog_product = device.info.product
+        self._identify(device, handshake, vid, pid)
+        self._prepare_data(app, device, handshake)
+
+        # Hand the wire to a per-device send worker — it owns every write
+        # from here (serialization + Bulk/LY keepalive) until disconnect.
+        app.start_sender(self.key)
+
+        app.clear_connect_issue(self.key)   # it came up — drop any past failure
+        app.events.publish(DeviceConnected(
+            key=self.key, resolution=handshake.resolution,
+        ))
+        _warn_if_it_cannot_draw(app, self.key, device)
+        w, h = handshake.resolution
+        log.info("ConnectDevice %s: %s %dx%d (catalog: %s)", self.key,
+                 device.info.product, w, h, catalog_product)
+        return ConnectResult(
+            ok=True, key=self.key,
+            message=f"Connected: {device.info.product} {w}x{h}",
+            handshake=handshake,
+            product=device.info.product, catalog_product=catalog_product,
+        )
+
+    def _failed(self, app: App, error: Exception, kind: str, hints: list[str],
+                *, permanent: bool) -> ConnectResult:
+        """A connect that did not happen, said where every UI looks: an
+        ``ErrorOccurred`` for the open ones, and a connect issue the App keeps
+        for the rest -- *permanent* until the user acts, else retried."""
+        log.debug("ConnectDevice %s: -> %s failure (permanent=%s)",
+                  self.key, kind, permanent)
+        app.events.publish(ErrorOccurred(message=str(error), kind=kind,
+                                         key=self.key, hints=hints))
+        result = ConnectResult(ok=False, key=self.key, message=str(error),
+                               hints=hints)
+        app.note_connect_issue(result, permanent=permanent)
+        return result
+
+    def _identify(self, device: Device, handshake: HandshakeResult,
+                  vid: int, pid: int) -> None:
+        """Name the cooler the handshake revealed, on ``device.info``.
+
+        The PM/SUB fingerprint tells apart products that share one USB id: its
+        variant override gives the sidebar the right picture (else every
+        device shows the registry's A1CZTV default) and, when confirmed, the
+        right name -- the registry's ``product`` is one string for an id
+        covering dozens of coolers (#272).
+
+        An LED's style is resolved here too: the registry leaves it None
+        ("resolved at runtime").  The LED adapter's own resolution comes
+        first -- it reads the header fingerprint, so a Magic Qube (PM=208,
+        like CZ1) is not tagged CZ1 -- then the header/PM table from the raw
+        handshake."""
         from dataclasses import replace as _dc_replace
 
         from ..variants import get_variant_override
-        catalog_product = device.info.product
         override = get_variant_override(
             vid, pid, handshake.pm_byte, handshake.sub_byte,
         )
@@ -417,10 +442,6 @@ class ConnectDevice(Command[ConnectResult]):
             if override.button_image:
                 patch["button_image"] = override.button_image
             if override.display_name:
-                # The registry's ``product`` is one string for a USB id that
-                # covers dozens of coolers, so it names the wrong one for most
-                # of them (#272).  The handshake knows which cooler this is;
-                # when we have a confirmed name for that fingerprint, use it.
                 patch["product"] = override.display_name
             if patch:
                 device.info = _dc_replace(device.info, **patch)
@@ -430,14 +451,6 @@ class ConnectDevice(Command[ConnectResult]):
                     override.button_image or "(cutout-only)",
                 )
 
-        # LED style: enrich ``led_style`` from the handshake.  The registry
-        # leaves it None ("resolved at runtime"), so without this the LED
-        # handler reads None and falls back to a default style.  Prefer the
-        # LED adapter's already-resolved style — it honours the header
-        # fingerprint, so a Magic Qube (shares PM=208 with CZ1) isn't
-        # mis-tagged as CZ1 — and fall back to the header/PM registry from the
-        # raw handshake bytes.  resolve_* live in core, so this stays inside
-        # the hexagon.
         if device.info.wire is Wire.LED and device.info.led_style is None:
             led_hs = getattr(device, "led_handshake", None)
             led_style = getattr(led_hs, "style", None)
@@ -455,59 +468,37 @@ class ConnectDevice(Command[ConnectResult]):
                     self.key, led_style.value,
                 )
 
-        # Install theme/cloud/mask data for the HANDSHAKE-resolved resolution.
-        # This is the only install a device gets: DiscoverDevices never
-        # handshakes, so it cannot know the size or the variant library
-        # (2026-10-06).  ensure_all installs BOTH
-        # orientations for non-square panels (so portrait themes/masks exist).
-        #
-        # SUBMITTED, not called: this is the port of legacy's
-        # ``_ensure_data_background(device, w, h)`` — background is the whole
-        # point of it.  Run inline it downloaded six archives before connect
-        # returned, and since the GUI's splash waits on connect, the main
-        # window could not appear until then. (#136, #275)
-        # First boot for this panel: if the cooler bolted it in sideways, start
-        # the owner at 90 degrees instead of making them find the dial.  The
-        # SUB byte already told us at handshake; the C# spends it here too
-        # (SetThemeInfo_ThemeML seeds themeDirection).  Re-connects are a
-        # no-op — the device already has persisted settings by then.
+    def _prepare_data(self, app: App, device: Device,
+                      handshake: HandshakeResult) -> None:
+        """Ready the panel's first boot and its artwork.
+
+        A cooler that bolts its panel in sideways starts at 90 degrees, as the
+        C# seeds themeDirection from the SUB byte (SetThemeInfo_ThemeML); a
+        re-connect is a no-op, the device already has settings.
+
+        The theme, cloud and mask data for the HANDSHAKE's resolution is
+        installed from here and only here -- DiscoverDevices never handshakes.
+        Which LIBRARY, not just which size: two coolers can share a panel and
+        ship different chrome, chosen from the SUB and PM bytes
+        (FormCZTV.cs:1290, :5746), and this is the one place both bytes and the
+        size are known together.  SUBMITTED, not run: inline it downloaded six
+        archives before connect returned, and the window waited (#136, #275).
+        """
         profile = getattr(device, "profile", None)
         if profile is not None:
             app.settings.seed_mount_orientation(
                 self.key, profile.portrait_mounted)
-
         w, h = handshake.resolution
-        if w and h:
-            # Which artwork LIBRARY, not just which size.  Two coolers can
-            # share a panel and ship different chrome: the C# picks
-            # 1600720u/l/'' from the SUB byte and zt480480y from PM
-            # (FormCZTV.cs:1290, :5746).  This is the one place both bytes and
-            # the resolution are known together, so it is where the choice is
-            # made -- everything downstream takes a resolved suffix.
-            variant = artwork_variant((w, h), handshake.sub_byte)
-            masks = mask_variant((w, h), handshake.sub_byte, handshake.pm_byte)
-            log.info("ConnectDevice %s: data library %dx%d variant=%r mask=%r "
-                     "(sub=%d pm=%d)", self.key, w, h, variant, masks,
-                     handshake.sub_byte, handshake.pm_byte)
-            app.data_install_runner.submit((w, h), variant, masks)
-
-        # Hand the wire to a per-device send worker — it owns every write
-        # from here (serialization + Bulk/LY keepalive) until disconnect.
-        app.start_sender(self.key)
-
-        app.clear_connect_issue(self.key)   # it came up — drop any past failure
-        app.events.publish(DeviceConnected(
-            key=self.key, resolution=handshake.resolution,
-        ))
-        _warn_if_it_cannot_draw(app, self.key, device)
-        log.info("ConnectDevice %s: %s %dx%d (catalog: %s)", self.key,
-                 device.info.product, w, h, catalog_product)
-        return ConnectResult(
-            ok=True, key=self.key,
-            message=f"Connected: {device.info.product} {w}x{h}",
-            handshake=handshake,
-            product=device.info.product, catalog_product=catalog_product,
-        )
+        if not (w and h):
+            log.debug("ConnectDevice %s: no resolution — no data to install",
+                      self.key)
+            return
+        variant = artwork_variant((w, h), handshake.sub_byte)
+        masks = mask_variant((w, h), handshake.sub_byte, handshake.pm_byte)
+        log.info("ConnectDevice %s: data library %dx%d variant=%r mask=%r "
+                 "(sub=%d pm=%d)", self.key, w, h, variant, masks,
+                 handshake.sub_byte, handshake.pm_byte)
+        app.data_install_runner.submit((w, h), variant, masks)
 
 
 def _warn_if_it_cannot_draw(app: App, key: str, device: Any) -> None:

@@ -65,7 +65,11 @@ import function_census  # noqa: E402
 #: as steps -- switches, fonts, positions, slot elements, tail, clock.
 #: Proved over every 0xDC file on the dev box (184 unique), each whole, cut
 #: every 3 bytes and corrupted every 5th: 64134 parses identical to before.
-MAX_LONG_FUNCTIONS = 7
+#: 7 -> 6 the same day: ``ConnectDevice._connect`` (174 lines) -- its three
+#: failure arms share ``_failed``; who the cooler is (``_identify``) and its
+#: first boot + artwork (``_prepare_data``) are steps.  Every ConnectDevice
+#: log line in 82 test files identical before and after (8685 lines).
+MAX_LONG_FUNCTIONS = 6
 
 #: LOWER IT when a function comes off the list; never raise it.
 #: 7 -> 6 on 2026-11-13: ``LoadTheme._load``, the same split.
