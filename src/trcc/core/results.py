@@ -355,6 +355,11 @@ class CreateThemeResult(Result):
     #: The given files the panel still reads -- the video it plays.  Every
     #: other given file was copied (a picture, a mask), or never used.
     reads: tuple[str, ...] = ()
+    #: Where it was saved, when it was given a name.
+    theme_path: str = ""
+    #: The save was refused only because a theme of that name exists -- a UI
+    #: offers to overwrite, as it does for ``SaveTheme``.
+    target_exists: bool = False
 
 
 @dataclass(frozen=True, slots=True)

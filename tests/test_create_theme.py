@@ -186,9 +186,61 @@ def test_bad_overlay_input_is_refused_before_the_panel_changes(
     assert panel.settings.for_device(_KEY).current_theme == before
 
 
+def test_a_name_saves_it_as_that_theme(panel: App, png: Path) -> None:
+    result = panel.dispatch(CreateTheme(key=_KEY, background=png, name="mine"))
+
+    assert result.ok, result.message
+    library = panel.platform.paths().user_theme_dir(320, 320)
+    assert result.theme_path == str(library / "mine")
+    assert result.message == ("Theme created from bg.png (image, 320x320), "
+                              "saved as 'mine'")
+    assert panel.settings.for_device(_KEY).current_theme == result.theme_path
+
+
+def test_a_saved_video_theme_reads_its_own_copy(
+    panel: App, themed_video: Path,
+) -> None:
+    """Saving switches the panel to the saved theme, which plays its own
+    copy -- so the given file is no longer read, and a caller that staged
+    it may delete it."""
+    shown = panel.dispatch(CreateTheme(key=_KEY, background=themed_video))
+    saved = panel.dispatch(CreateTheme(key=_KEY, background=themed_video,
+                                       name="clip"))
+
+    assert shown.reads == (str(themed_video),)
+    assert saved.ok, saved.message
+    assert saved.reads == ()
+    assert panel.settings.for_device(_KEY).chosen_file is None
+
+
+def test_a_taken_name_asks_before_it_overwrites(panel: App, png: Path) -> None:
+    assert panel.dispatch(CreateTheme(key=_KEY, background=png, name="mine")).ok
+
+    taken = panel.dispatch(CreateTheme(key=_KEY, background=png, name="mine"))
+    replaced = panel.dispatch(CreateTheme(key=_KEY, background=png, name="mine",
+                                          overwrite=True))
+
+    assert (taken.ok, taken.target_exists, taken.message) == (
+        False, True, "A theme named 'mine' already exists.")
+    assert replaced.ok, replaced.message
+
+
+def test_a_bad_name_is_refused_before_the_panel_changes(
+    panel: App, png: Path,
+) -> None:
+    result = panel.dispatch(CreateTheme(key=_KEY, background=png,
+                                        name="../escape"))
+
+    assert (result.ok, result.message) == (
+        False, "invalid theme name '../escape' (no path separators, '..', "
+               "leading '.', or NUL bytes)")
+    assert panel.settings.for_device(_KEY).current_theme is None
+
+
 def test_it_crosses_the_socket_whole(tmp_path: Path) -> None:
     """Paths, a None and a tuple of strings all survive the IPC envelope."""
     sent = CreateTheme(key=_KEY, background=tmp_path / "bg.png", mask=None,
-                       overlay=tmp_path / "o.json", metrics=("cpu:temp:1,2",))
+                       overlay=tmp_path / "o.json", metrics=("cpu:temp:1,2",),
+                       name="mine", overwrite=True)
 
     assert decode_command(encode_command(sent)) == sent

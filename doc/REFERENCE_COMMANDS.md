@@ -708,7 +708,7 @@ Ask what a device's video playback is doing.  Read-only.
 
 ### `CreateTheme`
 
-Show a background, with an optional mask and overlay, in one step.
+Show a background, with an optional mask and overlay, and save it.
 
 *Command* → `CreateThemeResult`
 
@@ -719,6 +719,8 @@ Show a background, with an optional mask and overlay, in one step.
 | `mask` | `Path | None` | no |
 | `overlay` | `Path | None` | no |
 | `metrics` | `tuple[str, Ellipsis]` | no |
+| `name` | `str` | no |
+| `overwrite` | `bool` | no |
 
 ### `DeleteTheme`
 

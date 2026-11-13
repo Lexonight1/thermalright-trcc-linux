@@ -865,11 +865,9 @@ class SaveTheme(Command[ThemeResult]):
     def execute(self, app: App) -> ThemeResult:
         log.info("SaveTheme: key=%s name=%s overwrite=%s",
                  self.key, self.name, self.overwrite)
-        if not is_safe_user_name(self.name):
+        if (refusal := theme_name_refusal(self.name)) is not None:
             log.warning("SaveTheme: rejected unsafe name %r", self.name)
-            return self._failed(
-                f"invalid theme name {self.name!r} "
-                "(no path separators, '..', leading '.', or NUL bytes)")
+            return self._failed(refusal)
         theme = app.active_themes.get(self.key)
         if theme is None:
             log.warning("SaveTheme: no active theme for %s — refusing to save",
@@ -2488,6 +2486,15 @@ class LoadImage(Command[ThemeResult]):
             )
         return app.dispatch(LoadTheme(key=self.key, path=theme_dir))
 
+def theme_name_refusal(name: str) -> str | None:
+    """Why *name* cannot name a saved theme, or None."""
+    if is_safe_user_name(name):
+        return None
+    log.debug("theme_name_refusal: %r is unsafe", name)
+    return (f"invalid theme name {name!r} "
+            "(no path separators, '..', leading '.', or NUL bytes)")
+
+
 #: How one metric element is written in shorthand -- the CLI's ``--metric``.
 METRIC_SPEC_USAGE = (
     "metric spec: 'metric_key:x,y[:color[:size]]' — e.g. "
@@ -2547,7 +2554,7 @@ def metric_element(spec: str) -> dict[str, Any]:
 
 @dataclass(frozen=True, slots=True)
 class CreateTheme(Command[CreateThemeResult]):
-    """Show a background, with an optional mask and overlay, in one step.
+    """Show a background, with an optional mask and overlay, and save it.
 
     A picture becomes a one-image theme (``LoadImage``), so the panel starts
     clean.  A video plays over the CURRENT theme (``PlayVideo``), whose mask
@@ -2555,13 +2562,15 @@ class CreateTheme(Command[CreateThemeResult]):
     mask, stored in the user's mask library under its file's name and shown
     (``UploadCustomMask``), then the overlay (``SetOverlayConfig``,
     ``EnableOverlay``): the *overlay* file's elements, then one per *metrics*
-    shorthand (:data:`METRIC_SPEC_USAGE`).  Neither leaves the overlay as it is.
+    shorthand (:data:`METRIC_SPEC_USAGE`).  Neither leaves the overlay as it
+    is.  Given a *name*, the result is saved as that theme (``SaveTheme``).
 
     Every UI passes its inputs as given; they are read here, before the panel
     changes, so bad input changes nothing.  After that the first step that
-    refuses ends it, with that step's message; the steps before it stay done.  Each step gates and connects its device itself, as
-    it does when dispatched on its own.  ``reads`` names the given files the
-    panel still reads, so a caller that staged them deletes only the rest.
+    refuses ends it, with that step's message; the steps before it stay
+    done.  Each step gates and connects its device itself, as it does when
+    dispatched on its own.  ``reads`` names the given files the panel still
+    reads, so a caller that staged them deletes only the rest.
     """
     key: str
     background: Path
@@ -2571,67 +2580,91 @@ class CreateTheme(Command[CreateThemeResult]):
     overlay: Path | None = None
     #: Metric elements in shorthand, added after the file's.
     metrics: tuple[str, ...] = ()
+    #: Save the result as this theme; "" shows it without saving.
+    name: str = ""
+    #: Replace a saved theme of that name.
+    overwrite: bool = False
 
     def execute(self, app: App) -> CreateThemeResult:
         log.info("CreateTheme: key=%s background=%s mask=%s overlay=%s "
-                 "metrics=%s", self.key, self.background.name,
-                 self.mask.name if self.mask else None,
-                 self.overlay.name if self.overlay else None, self.metrics)
+                 "metrics=%s name=%r overwrite=%s", self.key,
+                 self.background.name, self.mask.name if self.mask else None,
+                 self.overlay.name if self.overlay else None, self.metrics,
+                 self.name, self.overwrite)
         try:
-            elements = self._layout(app)
+            elements = self._read_inputs(app)
         except (ValueError, ThemeError) as e:
-            return self._failed(str(e), [])
+            return self._failed(app, str(e))
         animated = MEDIA.kind_of(self.background) is MediaKind.ANIMATED
-        reads: list[Path] = []
-        shown = app.dispatch(
-            PlayVideo(key=self.key, path=self.background) if animated
-            else LoadImage(key=self.key, path=self.background))
-        if not shown.ok:
-            return self._failed(shown.message, reads)
-        if animated:
-            reads.append(self.background)   # PlayVideo keeps its path (#249)
-        if self.mask is not None:
-            masked = app.dispatch(UploadCustomMask(key=self.key,
-                                                   source=self.mask))
-            if not masked.ok:
-                return self._failed(masked.message, reads)
-        if elements is not None:
-            laid = app.dispatch(SetOverlayConfig(key=self.key,
-                                                 elements=elements))
-            if not laid.ok:
-                return self._failed(laid.message, reads)
-            app.dispatch(EnableOverlay(key=self.key, enabled=True))
+        done: Result = Result()
+        for step in self._steps(animated, elements):
+            done = app.dispatch(step)
+            if not done.ok:
+                return self._failed(app, done.message, target_exists=(
+                    isinstance(done, ThemeResult) and done.target_exists))
         canvas = app.dispatch(DeviceCanvas(key=self.key))
         width, height = (canvas.width, canvas.height) if canvas.ok else (0, 0)
-        log.info("CreateTheme: %s shown (%s, %dx%d), still reads %d file(s)",
+        theme_path = (done.theme_path
+                      if self.name and isinstance(done, ThemeResult) else "")
+        log.info("CreateTheme: %s shown (%s, %dx%d), saved to %r",
                  self.background.name, "video" if animated else "image",
-                 width, height, len(reads))
+                 width, height, theme_path)
         return CreateThemeResult(
-            ok=True, key=self.key, animated=animated,
-            width=width, height=height, reads=tuple(map(str, reads)),
+            ok=True, key=self.key, animated=animated, width=width,
+            height=height, reads=self._still_read(app), theme_path=theme_path,
             message=(f"Theme created from {self.background.name} "
-                     f"({'video' if animated else 'image'}, {width}x{height})"),
+                     f"({'video' if animated else 'image'}, {width}x{height})"
+                     + (f", saved as {self.name!r}" if self.name else "")),
         )
 
-    def _layout(self, app: App) -> tuple[dict, ...] | None:
-        """The overlay to set, or None to leave it; ``ValueError`` (a metric)
-        or ``ThemeError`` (the file) if bad."""
+    def _read_inputs(self, app: App) -> tuple[dict, ...] | None:
+        """Everything given that must be read, before the panel changes: the
+        name, then the overlay to set (None leaves it).  ``ValueError`` (the
+        name, a metric) or ``ThemeError`` (the file) if bad."""
+        if self.name and (refusal := theme_name_refusal(self.name)):
+            raise ValueError(refusal)
         if self.overlay is None and not self.metrics:
-            log.debug("CreateTheme._layout: no overlay given")
+            log.debug("CreateTheme._read_inputs: no overlay given")
             return None
         from_file = (app.themes.overlay_elements(self.overlay)
                      if self.overlay is not None else [])
         layout = (*from_file, *map(metric_element, self.metrics))
-        log.debug("CreateTheme._layout: %d from the file, %d metric(s)",
+        log.debug("CreateTheme._read_inputs: %d from the file, %d metric(s)",
                   len(from_file), len(self.metrics))
         return layout
 
-    def _failed(self, message: str, reads: list[Path]) -> CreateThemeResult:
-        """A refused step's message, with the files the panel reads by then."""
-        log.warning("CreateTheme: stopped (%s); still reads %d file(s)",
-                    message, len(reads))
+    def _steps(self, animated: bool,
+               elements: tuple[dict, ...] | None) -> Iterator[Command[Any]]:
+        """What creating it dispatches, in order."""
+        log.debug("CreateTheme._steps: animated=%s overlay=%s", animated,
+                  elements is not None)
+        yield (PlayVideo(key=self.key, path=self.background) if animated
+               else LoadImage(key=self.key, path=self.background))
+        if self.mask is not None:
+            yield UploadCustomMask(key=self.key, source=self.mask)
+        if elements is not None:
+            yield SetOverlayConfig(key=self.key, elements=elements)
+            yield EnableOverlay(key=self.key, enabled=True)
+        if self.name:
+            yield SaveTheme(key=self.key, name=self.name,
+                            overwrite=self.overwrite)
+
+    def _still_read(self, app: App) -> tuple[str, ...]:
+        """The given background, while the panel reads it -- a video plays
+        from the file it was given (#249) until a saved theme switches the
+        panel to its own copy.  A picture or a mask is always copied."""
+        chosen = app.settings.for_device(self.key).chosen_file
+        reads = (str(self.background),) if chosen == str(self.background) else ()
+        log.debug("CreateTheme._still_read: chosen=%s -> %s", chosen, reads)
+        return reads
+
+    def _failed(self, app: App, message: str, *,
+                target_exists: bool = False) -> CreateThemeResult:
+        """A refusal's message, with the files the panel reads by then."""
+        reads = self._still_read(app)
+        log.warning("CreateTheme: stopped (%s); still reads %s", message, reads)
         return CreateThemeResult(ok=False, key=self.key, message=message,
-                                 reads=tuple(map(str, reads)))
+                                 reads=reads, target_exists=target_exists)
 
 @dataclass(frozen=True, slots=True)
 class ProbeVideoDuration(Query[VideoDurationResult]):
