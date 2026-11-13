@@ -2894,6 +2894,25 @@ class TickGameMode(Command[GameModeTickResult]):
                         self.key, len(data))
         return True, f"game frame {len(data)} bytes"
 
+
+def _mask_size(app: App, path: Path) -> tuple[int, int]:
+    """*path*'s pixel size, decoded by the renderer every frame will use.
+
+    Raises ``TrccError`` when the renderer cannot decode it.  ``(0, 0)`` when
+    no renderer is attached: nothing renders then, so there is nothing to
+    check, and the position is left as it is.
+    """
+    try:
+        renderer = app.renderer
+    except RuntimeError as e:
+        log.warning("_mask_size: %s not measured (%s) — position skipped",
+                    path, e)
+        return (0, 0)
+    size = renderer.surface_size(renderer.open_image(path))
+    log.debug("_mask_size: %s -> %dx%d", path, *size)
+    return size
+
+
 @dataclass(frozen=True, slots=True)
 class ApplyMask(Command[MaskApplyResult]):
     """Set a user-supplied mask image that overrides the active theme's mask.
@@ -2933,6 +2952,17 @@ class ApplyMask(Command[MaskApplyResult]):
             )
         resolved = str(resolved_file.resolve())
         log.info("ApplyMask: resolved %s → %s", candidate, resolved)
+        # Decoded BEFORE anything is saved: a mask saved undecodable made every
+        # render after it raise, and stayed saved across restarts (2026-11-13).
+        try:
+            mw, mh = _mask_size(app, resolved_file)
+        except TrccError as e:
+            log.warning("ApplyMask: %s does not decode (%s) — rejecting",
+                        resolved_file, e)
+            return MaskApplyResult(
+                ok=False, key=self.key, path=str(candidate),
+                message=f"mask image cannot be read: {candidate} ({e})",
+            )
         app.settings.set_mask_path(self.key, resolved)
         # Applying a mask makes it visible.  Legacy kept theme_mask_visible
         # True (Windows isDrawMbImage) and drew the mask whenever one was
@@ -2970,13 +3000,6 @@ class ApplyMask(Command[MaskApplyResult]):
         # (most of the cloud catalog) draw at (0,0) and look invisible.
         from ...services import _dc as Dc
         from ...services.overlay import OverlayService
-        try:
-            mask_img = app.display._r.open_image(resolved_file)
-            mw, mh = app.display._r.surface_size(mask_img)
-        except Exception as e:
-            log.warning("ApplyMask: failed to size %s (%s) — position skipped",
-                        resolved_file, e)
-            mw, mh = (0, 0)
         device = app.devices.get(self.key)
         canvas: tuple[int, int] = (0, 0)
         if device is not None and device.profile is not None:

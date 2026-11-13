@@ -249,3 +249,29 @@ def test_mask_settings_persist_across_app_restart(
     assert dev.mask_path == str(mask_png.resolve())
     assert dev.mask_position == (15, 25)
     assert dev.mask_visible is False
+
+
+@pytest.mark.parametrize("decodes", [True, False], ids=["real_png", "garbage"])
+def test_apply_mask_refuses_an_image_the_renderer_cannot_decode(
+    tmp_home: Path, decodes: bool,
+) -> None:
+    """Saved undecodable, a mask made every later render raise -- and stayed
+    saved.  So it is decoded first, and refused before anything is kept."""
+    from trcc.adapters.render.qt import QtRenderer
+
+    renderer = QtRenderer()
+    app = App(platform=FakePlatform(tmp_home), renderer=renderer)
+    path = tmp_home / "mask.png"
+    path.write_bytes(renderer.encode_png(renderer.create_surface(8, 8))
+                     if decodes else b"\x89PNG\r\n\x1a\n not really")
+    applied: list[MaskApplied] = []
+    app.events.subscribe(MaskApplied, applied.append)
+
+    result = app.dispatch(ApplyMask(key=_KEY, path=path))
+
+    assert result.ok is decodes, result.message
+    saved = app.settings.for_device(_KEY).mask_path
+    assert saved == (str(path.resolve()) if decodes else None)
+    assert len(applied) == (1 if decodes else 0)
+    if not decodes:
+        assert result.message.startswith(f"mask image cannot be read: {path}")
