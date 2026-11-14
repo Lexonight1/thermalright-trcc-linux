@@ -333,6 +333,28 @@ class MediaService:
         #: The decodes still filling a playback, by device (#264).
         self._decodes: dict[str, VideoDecode] = {}
 
+    def why_unplayable(self, path: Path) -> str | None:
+        """Why *path* would not play as a theme's own video, or None.
+
+        The two ways :meth:`load_video` reads a file, asked before it is kept
+        (``LoadVideo``): a ``.zt`` is parsed by :class:`ZtDecoder`; anything
+        else plays at its native size, which only a probe can give -- a file
+        ffprobe cannot read, or no ffprobe at all, fails there anyway.
+        """
+        if path.suffix.lower() == ".zt":
+            try:
+                ZtDecoder(path=path, size=(0, 0)).decode()
+                why = None
+            except ThemeError as e:
+                why = str(e)
+        elif self._tool.probe(path).size is None:
+            why = (f"{path.name} will not play: ffprobe could not read its "
+                   "size -- is it a video, and is ffprobe installed?")
+        else:
+            why = None
+        log.info("why_unplayable: %s -> %s", path.name, why or "plays")
+        return why
+
     def load_video(self, device_key: str, path: Path,
                    size: tuple[int, int] | None,
                    fps: int = _DEFAULT_FPS,

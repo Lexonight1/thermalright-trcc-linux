@@ -3242,3 +3242,40 @@ def test_a_media_player_theme_with_a_video_reloads_with_its_media_player(
     assert app.dispatch(LoadTheme(key=_TEST_DEVICE_KEY, path=saved)).ok
 
     assert app.settings.for_device(_TEST_DEVICE_KEY).chosen_media == str(clip)
+
+
+# ── A file that will not play never becomes the current theme ──────────
+# LoadTheme makes a theme current before it shows it, so an unplugged panel
+# keeps the choice.  So LoadImage / LoadVideo check their file before
+# staging it: one that would not decode became the current theme, a picture
+# made every render after it raise, and a restart restored it (2026-11-13).
+
+
+@pytest.mark.parametrize(("command", "junk", "said"), [
+    ("LoadImage", "junk.png", "image cannot be read: "),
+    ("LoadVideo", "junk.mp4", "junk.mp4 will not play: "),
+    ("LoadVideo", "junk.zt", "Not a Theme.zt archive"),
+], ids=["picture", "video", "zt"])
+def test_a_file_that_will_not_play_never_becomes_the_current_theme(
+    app: App, tmp_home: Path, command: str, junk: str, said: str,
+) -> None:
+    from trcc.core import commands
+
+    renderer = app.renderer
+    good = tmp_home / "good.png"
+    good.write_bytes(renderer.encode_png(renderer.create_surface(8, 8)))
+    app.dispatch(commands.LoadImage(key=_TEST_DEVICE_KEY, path=good))
+    before = app.settings.for_device(_TEST_DEVICE_KEY).current_theme
+    assert before is not None and before.endswith("good")
+    bad = tmp_home / junk
+    bad.write_bytes(b"not media at all")
+
+    result = app.dispatch(getattr(commands, command)(key=_TEST_DEVICE_KEY,
+                                                     path=bad))
+
+    assert result.ok is False
+    assert said in result.message, result.message
+    assert app.settings.for_device(_TEST_DEVICE_KEY).current_theme == before
+    kind = "image" if command == "LoadImage" else "video"
+    staged = app.platform.paths().user_content_dir() / f"single-{kind}" / "junk"
+    assert not staged.exists()

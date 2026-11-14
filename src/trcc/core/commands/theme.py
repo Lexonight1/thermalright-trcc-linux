@@ -79,6 +79,7 @@ from ._helpers import (
     _resolve_oriented_resolution,
     _search_theme_by_name,
     as_working_layer,
+    decoded_size,
     device_overlay_layout,
     enter_orientation,
     fit_mask_upload,
@@ -2468,6 +2469,19 @@ class LoadImage(Command[ThemeResult]):
                     f"Supported: {', '.join(sorted(MEDIA.exts(MediaKind.IMAGE)))}."
                 ),
             )
+        # Decoded BEFORE it is staged: LoadTheme makes a theme current before
+        # it shows it (so an unplugged panel keeps the choice), so a picture
+        # that would not decode became the current theme, every render after
+        # it raised, and a restart restored it (2026-11-13).
+        try:
+            decoded_size(app, self.path)
+        except TrccError as e:
+            log.warning("LoadImage: %s does not decode (%s) — rejecting",
+                        self.path, e)
+            return ThemeResult(
+                ok=False, key=self.key,
+                message=f"image cannot be read: {self.path} ({e})",
+            )
         # ALWAYS install as 00.png — the strict theme-dir convention the
         # background resolver reads (sibling LoadVideo installs Theme.zt for
         # the same reason).  Keeping the source basename produced a dir the
@@ -3026,13 +3040,21 @@ class LoadVideo(Command[ThemeResult]):
         # replaces each returned their own wording for the same outcome — the
         # video was not staged.
         cut = (self.start_ms, self.end_ms, self.rotation) != (0, None, 0)
+        as_is = not cut or self.path.suffix.lower() == ".zt"
         log.info("LoadVideo: %s %s", self.path.name,
                  f"cut {self.start_ms}-{self.end_ms} ms rot {self.rotation}"
                  if cut else "as it is")
+        # A file that goes in as it is is checked first, as LoadImage's is: a
+        # clip that would not play became the current theme, and a restart
+        # restored it (2026-11-13).  A cut needs no check -- a clip ffmpeg
+        # cannot read fails the export, before anything becomes current.
+        if as_is and (why := app.media.why_unplayable(self.path)) is not None:
+            log.warning("LoadVideo: %s will not play — rejecting", self.path)
+            return ThemeResult(ok=False, key=self.key, message=why)
         try:
             with app.themes.single_file_theme(self.path, "video") as unit:
                 theme_dir = unit.path
-                if not cut or self.path.suffix.lower() == ".zt":
+                if as_is:
                     unit.install(self.path, ThemeDir.video(self.path.suffix))
                 else:
                     end_ms = (self.end_ms if self.end_ms is not None

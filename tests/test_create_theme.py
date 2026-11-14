@@ -62,20 +62,8 @@ def png(tmp_path: Path, renderer: QtRenderer) -> Path:
 @pytest.fixture
 def video(tmp_path: Path, renderer: QtRenderer,
           monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A video file.
-
-    ``MediaService.load_video`` is stubbed: decoding is ffmpeg's job, tested
-    where ``PlayVideo`` is; here only the composition is under test.
-    """
-    frame = renderer.encode_jpeg(renderer.create_surface(320, 320))
-
-    def load_video(self: MediaService, device_key: str, path: Path,
-                   size: Any, **kwargs: Any) -> Playback:
-        playback = Playback(frames=[frame] * 3, fps=kwargs.get("fps", 15))
-        self._playbacks[device_key] = playback
-        return playback
-
-    monkeypatch.setattr(MediaService, "load_video", load_video)
+    """A video file, played by a stub (:func:`_stub_video`)."""
+    _stub_video(monkeypatch, renderer)
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     return clip
@@ -292,7 +280,7 @@ def cli(tmp_path: Path, renderer: QtRenderer,
     """The real CLI on one mock panel, the same App across calls."""
     from trcc.ui.cli import _ctx
 
-    monkeypatch.setattr(MediaService, "load_video", _stub_load_video(renderer))
+    _stub_video(monkeypatch, renderer)
     platform = MockPlatform([{"vid": "0402", "pid": "3922"}], tmp_path)
     _ctx.set_platform(platform)
     _ctx.set_renderer(renderer)
@@ -302,7 +290,13 @@ def cli(tmp_path: Path, renderer: QtRenderer,
     _ctx._renderer_override = None
 
 
-def _stub_load_video(renderer: QtRenderer) -> Any:
+def _stub_video(monkeypatch: pytest.MonkeyPatch, renderer: QtRenderer) -> None:
+    """Play any file as three blank frames.
+
+    Decoding is ffmpeg's job, tested where ``PlayVideo`` is; here only the
+    composition is under test.  The stub plays anything, so the question
+    asked before a file is kept (``why_unplayable``) is stubbed with it.
+    """
     frame = renderer.encode_jpeg(renderer.create_surface(320, 320))
 
     def load_video(self: MediaService, device_key: str, path: Path,
@@ -310,7 +304,12 @@ def _stub_load_video(renderer: QtRenderer) -> Any:
         playback = Playback(frames=[frame] * 3, fps=kwargs.get("fps", 15))
         self._playbacks[device_key] = playback
         return playback
-    return load_video
+
+    def why_unplayable(self: MediaService, path: Path) -> str | None:
+        return None
+
+    monkeypatch.setattr(MediaService, "load_video", load_video)
+    monkeypatch.setattr(MediaService, "why_unplayable", why_unplayable)
 
 
 def test_the_cli_passes_every_input(cli: _Cli, png: Path, tmp_path: Path) -> None:

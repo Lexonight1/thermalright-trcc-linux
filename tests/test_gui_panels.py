@@ -1196,8 +1196,10 @@ def test_load_image_command_via_tmpfile(
     from trcc.core.commands import LoadImage
 
     image = tmp_path / "test_image.png"
-    # Minimal PNG header — file existence + extension are what we check
-    image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+    # A picture that decodes: LoadImage refuses one that does not before
+    # staging it, or it became the current theme (2026-11-13).
+    renderer = gui_app.renderer
+    image.write_bytes(renderer.encode_png(renderer.create_surface(8, 8)))
     result = gui_app.dispatch(LoadImage(key="0402:3922", path=image))
     # The Command stages the file as a theme and dispatches LoadTheme.
     # LoadTheme returns ok=True even when no device is connected
@@ -1656,12 +1658,17 @@ def test_load_video_command_rejects_bad_extension(
 
 def test_load_video_command_zt_passthrough(gui_app: App, tmp_path) -> None:
     """A .zt input is copied straight into a staged theme dir (no ffmpeg)."""
+    import struct
+
     from trcc.core.commands import LoadVideo
 
-    # Minimal .zt header — 0xDC magic + a 1-frame placeholder.  LoadVideo
-    # only cares about the extension + file existence at staging time.
+    # A one-frame .zt that parses: 0xDC magic, frame count, its timestamp,
+    # its JPEG's length, the JPEG.  LoadVideo refuses one ZtDecoder cannot
+    # read before staging it, or it became the current theme (2026-11-13).
+    renderer = gui_app.renderer
+    jpeg = renderer.encode_jpeg(renderer.create_surface(8, 8))
     src = tmp_path / "anim.zt"
-    src.write_bytes(b"\xDC" + b"\x01\x00\x00\x00" + b"\x00" * 8)
+    src.write_bytes(b"\xDC" + struct.pack("<iii", 1, 0, len(jpeg)) + jpeg)
 
     result = gui_app.dispatch(LoadVideo(
         key="0402:3922", path=src,

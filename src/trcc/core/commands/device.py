@@ -133,6 +133,7 @@ from ._helpers import (
     _require_connected_device,
     _resolve_mask_path,
     _theme_directories,
+    decoded_size,
     native_canvas,
     resolve_overlay_layout,
     screencast_box,
@@ -2895,24 +2896,6 @@ class TickGameMode(Command[GameModeTickResult]):
         return True, f"game frame {len(data)} bytes"
 
 
-def _mask_size(app: App, path: Path) -> tuple[int, int]:
-    """*path*'s pixel size, decoded by the renderer every frame will use.
-
-    Raises ``TrccError`` when the renderer cannot decode it.  ``(0, 0)`` when
-    no renderer is attached: nothing renders then, so there is nothing to
-    check, and the position is left as it is.
-    """
-    try:
-        renderer = app.renderer
-    except RuntimeError as e:
-        log.warning("_mask_size: %s not measured (%s) — position skipped",
-                    path, e)
-        return (0, 0)
-    size = renderer.surface_size(renderer.open_image(path))
-    log.debug("_mask_size: %s -> %dx%d", path, *size)
-    return size
-
-
 @dataclass(frozen=True, slots=True)
 class ApplyMask(Command[MaskApplyResult]):
     """Set a user-supplied mask image that overrides the active theme's mask.
@@ -2955,7 +2938,7 @@ class ApplyMask(Command[MaskApplyResult]):
         # Decoded BEFORE anything is saved: a mask saved undecodable made every
         # render after it raise, and stayed saved across restarts (2026-11-13).
         try:
-            mw, mh = _mask_size(app, resolved_file)
+            mw, mh = decoded_size(app, resolved_file)
         except TrccError as e:
             log.warning("ApplyMask: %s does not decode (%s) — rejecting",
                         resolved_file, e)
